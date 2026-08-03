@@ -9,13 +9,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/dbt-FF694B?style=flat&logo=dbt&logoColor=white" />
-  <img src="https://img.shields.io/badge/Snowflake-29B5E8?style=flat&logo=snowflake&logoColor=white" />
-  <img src="https://img.shields.io/badge/Databricks-FF3621?style=flat&logo=databricks&logoColor=white" />
-  <img src="https://img.shields.io/badge/Apache%20Iceberg-3D7EBB?style=flat&logo=apache&logoColor=white" />
-  <img src="https://img.shields.io/badge/Dataiku-2AB1AC?style=flat&logo=dataiku&logoColor=white" />
+  <img src="https://img.shields.io/badge/SPARQL%201.1-3D7EBB?style=flat&logo=w3c&logoColor=white" />
+  <img src="https://img.shields.io/badge/YAML-CB171E?style=flat&logo=yaml&logoColor=white" />
+  <img src="https://img.shields.io/badge/RDF-0C479C?style=flat&logo=w3c&logoColor=white" />
+  <img src="https://img.shields.io/badge/MCP-191919?style=flat&logo=modelcontextprotocol&logoColor=white" />
   <img src="https://img.shields.io/badge/Claude-191919?style=flat&logo=anthropic&logoColor=white" />
-  <img src="https://img.shields.io/badge/OpenAI-10A37F?style=flat&logo=openai&logoColor=white" />
 </p>
 
 # trikedb
