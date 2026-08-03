@@ -2,6 +2,22 @@
   <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/logo.png" width="260" alt="TrikeDB — a triceratops carrying a knowledge graph on its frill">
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/trikedb/"><img src="https://img.shields.io/pypi/v/trikedb?style=flat&color=4a6fa5" /></a>
+  <img src="https://img.shields.io/pypi/pyversions/trikedb?style=flat&color=4a6fa5" />
+  <img src="https://img.shields.io/badge/license-MIT-4a6fa5?style=flat" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/dbt-FF694B?style=flat&logo=dbt&logoColor=white" />
+  <img src="https://img.shields.io/badge/Snowflake-29B5E8?style=flat&logo=snowflake&logoColor=white" />
+  <img src="https://img.shields.io/badge/Databricks-FF3621?style=flat&logo=databricks&logoColor=white" />
+  <img src="https://img.shields.io/badge/Apache%20Iceberg-3D7EBB?style=flat&logo=apache&logoColor=white" />
+  <img src="https://img.shields.io/badge/Dataiku-2AB1AC?style=flat&logo=dataiku&logoColor=white" />
+  <img src="https://img.shields.io/badge/Claude-191919?style=flat&logo=anthropic&logoColor=white" />
+  <img src="https://img.shields.io/badge/OpenAI-10A37F?style=flat&logo=openai&logoColor=white" />
+</p>
+
 # trikedb
 
 **The DuckDB of graph databases.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's a single YAML file. Built for LLM agents.
