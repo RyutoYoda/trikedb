@@ -385,3 +385,14 @@ def test_mcp_rejects_ontology_violation_and_full_wipe(tmp_path):
         asyncio.run(raw_call("add_triple", {"s": "a", "p": "MADE_UP", "o": "b"}))
     with pytest.raises(Exception):
         asyncio.run(raw_call("remove_triples", {}))
+
+
+def test_html_explicit_event_predicates():
+    db = TrikeDB()
+    db.add("T", "AFFECTED_BY", "2025-04 API change happened")
+    db.add("mdb", "LOADS_FROM", "mysql (asteria 17)")  # free text but NOT an event
+    auto = db.to_html()
+    assert '"LOADS_FROM"' in auto.split("EVENT_PREDICATES = ")[1].split(";")[0]  # heuristic picks it up
+    explicit = db.to_html(event_predicates=["AFFECTED_BY"])
+    block = explicit.split("EVENT_PREDICATES = ")[1].split(";")[0]
+    assert '"AFFECTED_BY"' in block and '"LOADS_FROM"' not in block

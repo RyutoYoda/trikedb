@@ -325,8 +325,19 @@ document.getElementById("btn-run").onclick = async () => {
 """
 
 
-def to_html(db, path: Union[str, Path, None] = None, title: str = "trikedb knowledge graph") -> str:
-    """Render the graph to a self-contained interactive HTML workbench."""
+def to_html(
+    db,
+    path: Union[str, Path, None] = None,
+    title: str = "trikedb knowledge graph",
+    event_predicates=None,
+) -> str:
+    """Render the graph to a self-contained interactive HTML workbench.
+
+    event_predicates: which predicates represent change events (red
+    diamonds + bottom timeline bar). None uses a heuristic — predicates
+    whose objects contain whitespace, i.e. look like free text rather
+    than node names. Pass an explicit list (or []) to override it.
+    """
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
     triples = [t.to_dict() for t in db]
@@ -336,11 +347,10 @@ def to_html(db, path: Union[str, Path, None] = None, title: str = "trikedb knowl
     type_colors = {t: reversed_palette[i % len(reversed_palette)] for i, t in enumerate(types)}
     nt = db.to_rdflib().serialize(format="nt")
 
-    # change-event predicates power the bottom bar: heuristically, those
-    # whose objects are free text (whitespace) rather than node names
-    event_preds = sorted({
-        t.p for t in db if any(c.isspace() for c in t.o)
-    })
+    if event_predicates is None:
+        event_preds = sorted({t.p for t in db if any(c.isspace() for c in t.o)})
+    else:
+        event_preds = sorted({str(p) for p in event_predicates})
 
     n_nodes = len(db.nodes())
     subtitle = (

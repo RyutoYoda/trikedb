@@ -60,6 +60,11 @@ def main(argv=None) -> int:
     p_html.add_argument("file")
     p_html.add_argument("-o", "--out", default=None)
     p_html.add_argument("--title", default=None)
+    p_html.add_argument(
+        "--events", default=None, metavar="PRED1,PRED2",
+        help="comma-separated predicates to treat as change events "
+             "(default: auto-detect predicates whose objects look like free text)",
+    )
 
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
@@ -160,7 +165,8 @@ def _cmd_html(args) -> int:
     db = TrikeDB(args.file)
     out = args.out or args.file.rsplit(".", 1)[0] + ".html"
     title = args.title or f"trikedb — {args.file}"
-    db.to_html(out, title=title)
+    events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
+    db.to_html(out, title=title, event_predicates=events)
     print(f"wrote {out}")
     return 0
 

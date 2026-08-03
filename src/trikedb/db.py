@@ -383,10 +383,15 @@ class TrikeDB:
             node.setdefault(t.p, []).append(t.o)
         return {"@context": context, "@graph": list(nodes.values())}
 
-    def to_html(self, path: Union[str, Path, None] = None, title: str = "trikedb knowledge graph") -> str:
+    def to_html(
+        self,
+        path: Union[str, Path, None] = None,
+        title: str = "trikedb knowledge graph",
+        event_predicates=None,
+    ) -> str:
         from .html import to_html
 
-        return to_html(self, path=path, title=title)
+        return to_html(self, path=path, title=title, event_predicates=event_predicates)
 
     # ------------------------------------------------------------- protocol
 
