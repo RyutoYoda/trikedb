@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="220" alt="triplite — a triceratops whose three horns are the triple: subject, predicate, object">
+</p>
+
 # triplite
 
 **The SQLite of triple stores.** A knowledge graph that lives in a single YAML file, with a graph-database interface. Built for LLM agents.
