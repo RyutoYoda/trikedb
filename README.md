@@ -10,7 +10,6 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/SPARQL%201.1-3D7EBB?style=flat&logo=w3c&logoColor=white" />
-  <img src="https://img.shields.io/badge/YAML-CB171E?style=flat&logo=yaml&logoColor=white" />
   <img src="https://img.shields.io/badge/RDF-0C479C?style=flat&logo=w3c&logoColor=white" />
   <img src="https://img.shields.io/badge/MCP-191919?style=flat&logo=modelcontextprotocol&logoColor=white" />
   <img src="https://img.shields.io/badge/Claude-191919?style=flat&logo=anthropic&logoColor=white" />
