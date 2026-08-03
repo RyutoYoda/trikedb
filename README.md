@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" width="260" alt="TrikeDB — a triceratops carrying a knowledge graph on its frill">
+  <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/logo.png" width="260" alt="TrikeDB — a triceratops carrying a knowledge graph on its frill">
 </p>
 
 # trikedb
