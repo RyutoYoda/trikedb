@@ -219,6 +219,64 @@ class TripLite:
             )
         return tuple(parts)
 
+    # -------------------------------------------------------------- sparql
+
+    def to_rdflib(self, base: str = "urn:triplite:"):
+        """Convert to an rdflib.Graph. Requires the [sparql] extra.
+
+        Subjects and predicates become URIRefs under `base`. Objects become
+        URIRefs too, unless they contain whitespace (e.g. change-event
+        descriptions), in which case they become Literals.
+        """
+        try:
+            from rdflib import Graph, Literal, URIRef
+        except ImportError:  # pragma: no cover
+            raise ImportError(
+                "SPARQL support requires rdflib — pip install 'triplite[sparql]'"
+            ) from None
+        from urllib.parse import quote
+
+        def node(name: str):
+            return URIRef(base + quote(name, safe=""))
+
+        g = Graph()
+        g.bind("t", base)
+        for t in self._triples:
+            obj = Literal(t.o) if any(c.isspace() for c in t.o) else node(t.o)
+            g.add((node(t.s), node(t.p), obj))
+        return g
+
+    def sparql(self, query: str, base: str = "urn:triplite:"):
+        """Run a real SPARQL 1.1 query (via rdflib) against the graph.
+
+        The prefix `t:` is bound to `base`, so predicates are written
+        `t:PROVIDES`. SELECT returns a list of {var: value} dicts with
+        URIs shortened back to plain names; ASK returns a bool.
+
+        >>> db.sparql("SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }")
+        """
+        from urllib.parse import unquote
+
+        g = self.to_rdflib(base)
+        result = g.query(f"PREFIX t: <{base}>\n" + query)
+        if result.type == "ASK":
+            return result.askAnswer
+
+        def shorten(value) -> str:
+            text = str(value)
+            if text.startswith(base):
+                return unquote(text[len(base):])
+            return text
+
+        rows = []
+        for binding in result:
+            row = {}
+            for var, value in zip(result.vars, binding):
+                if value is not None:
+                    row[str(var)] = shorten(value)
+            rows.append(row)
+        return rows
+
     # -------------------------------------------------------------- exports
 
     def to_jsonld(self, base: str = "urn:triplite:") -> dict:

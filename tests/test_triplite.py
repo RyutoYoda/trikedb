@@ -127,3 +127,36 @@ def test_examples_load_and_query():
     eco = TripLite(examples / "python_ecosystem.yaml")
     assert eco.ontology == {}
     assert "numpy" in eco.objects(p="DEPENDS_ON")
+
+
+# ---------------------------------------------------------------- sparql
+
+def test_sparql_select_join(db):
+    rows = db.sparql(
+        "SELECT ?vendor ?table WHERE { ?vendor t:PROVIDES ?job . ?job t:INGESTS_TO ?table }"
+    )
+    assert {"vendor": "salesflow-crm", "table": "RAW_CRM_CONTACTS"} in rows
+    assert {"vendor": "adastra-ads", "table": "RAW_AD_SPEND_DAILY"} in rows
+
+
+def test_sparql_filter(db):
+    rows = db.sparql(
+        'SELECT ?t WHERE { ?j t:INGESTS_TO ?t . FILTER(STRSTARTS(STR(?t), "urn:triplite:RAW_CRM")) }'
+    )
+    assert rows == [{"t": "RAW_CRM_CONTACTS"}]
+
+
+def test_sparql_ask(db):
+    assert db.sparql("ASK { ?x t:MIGRATED_TO ?y }") is True
+    assert db.sparql("ASK { ?x t:NOPE ?y }") is False
+
+
+def test_sparql_freetext_objects_are_literals():
+    db = TripLite()
+    db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
+    g = db.to_rdflib()
+    from rdflib import Literal
+
+    assert list(g)[0][2] == Literal("2025-04 API v3: units changed")
+    rows = db.sparql("SELECT ?event WHERE { t:T t:AFFECTED_BY ?event }")
+    assert rows == [{"event": "2025-04 API v3: units changed"}]

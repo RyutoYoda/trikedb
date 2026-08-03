@@ -40,6 +40,13 @@ def main(argv=None) -> int:
     p_rm.add_argument("-p", default=None)
     p_rm.add_argument("-o", default=None)
 
+    p_sparql = sub.add_parser(
+        "sparql", help="run a real SPARQL 1.1 query (requires 'triplite[sparql]')"
+    )
+    p_sparql.add_argument("file")
+    p_sparql.add_argument("query", help="SPARQL query; prefix t: is pre-bound, e.g. t:PROVIDES")
+    p_sparql.add_argument("--json", action="store_true", help="output JSON instead of a table")
+
     p_stats = sub.add_parser("stats", help="summarize the graph")
     p_stats.add_argument("file")
 
@@ -55,10 +62,8 @@ def main(argv=None) -> int:
     return _COMMANDS[args.command](args)
 
 
-def _cmd_query(args) -> int:
-    db = TripLite(args.file)
-    rows = db.query(args.where)
-    if args.json:
+def _print_rows(rows, as_json: bool) -> int:
+    if as_json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
     if not rows:
@@ -71,6 +76,20 @@ def _cmd_query(args) -> int:
     for r in rows:
         print("  ".join(str(r.get(c, "")).ljust(widths[c]) for c in cols))
     return 0
+
+
+def _cmd_query(args) -> int:
+    db = TripLite(args.file)
+    return _print_rows(db.query(args.where), args.json)
+
+
+def _cmd_sparql(args) -> int:
+    db = TripLite(args.file)
+    result = db.sparql(args.query)
+    if isinstance(result, bool):
+        print(json.dumps(result) if args.json else ("yes" if result else "no"))
+        return 0 if result else 1
+    return _print_rows(result, args.json)
 
 
 def _cmd_add(args) -> int:
@@ -127,6 +146,7 @@ def _cmd_jsonld(args) -> int:
 
 _COMMANDS = {
     "query": _cmd_query,
+    "sparql": _cmd_sparql,
     "add": _cmd_add,
     "rm": _cmd_rm,
     "stats": _cmd_stats,

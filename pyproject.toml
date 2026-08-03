@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triplite"
-version = "0.1.0"
+version = "0.2.0"
 description = "The SQLite of triple stores: a knowledge graph that lives in a single YAML file, with a graph-database interface. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,7 +25,8 @@ classifiers = [
 Homepage = "https://github.com/RyutoYoda/triplite"
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+sparql = ["rdflib>=7"]
+dev = ["pytest>=7", "rdflib>=7"]
 
 [project.scripts]
 triplite = "triplite.cli:main"

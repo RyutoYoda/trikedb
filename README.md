@@ -24,7 +24,7 @@ SQLite proved that "the database is just a file" unlocks a huge class of use cas
 |  | Full triple store (Jena, Virtuoso, Neptune, ...) | triplite |
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
-| Query | SPARQL | triple patterns with variable joins |
+| Query | SPARQL | triple patterns built in, real SPARQL 1.1 via the `[sparql]` extra |
 | Schema | OWL + reasoners | a list of allowed predicates |
 | Agent integration | MCP / API layer | the agent just reads the file |
 | Setup time | an afternoon (or a sprint) | `pip install triplite` |
@@ -44,7 +44,8 @@ there is no step where a table name can be made up.
 ## Install
 
 ```bash
-pip install triplite
+pip install triplite            # core: PyYAML only
+pip install 'triplite[sparql]'  # + real SPARQL 1.1 queries (rdflib)
 ```
 
 ## Quickstart (Python)
@@ -66,9 +67,21 @@ db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
 for t in db.triples(p="INGESTS_TO", o="RAW_*"):
     print(t.s, "->", t.o, t.attrs)
 
-# Multi-pattern queries with variable joins (SPARQL-style basic graph patterns)
+# Multi-pattern queries with variable joins (zero dependencies)
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
+
+# Or real SPARQL 1.1 — FILTER, OPTIONAL, aggregates, the lot.
+# Delegated to rdflib, not hand-rolled. The prefix t: is pre-bound.
+db.sparql("""
+  SELECT ?vendor ?table WHERE {
+    ?vendor t:PROVIDES ?job .
+    ?job t:INGESTS_TO ?table .
+    FILTER(STRSTARTS(STR(?table), "urn:triplite:RAW_"))
+  }
+""")
+db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
+db.to_rdflib()  # plain rdflib.Graph, if you want to go further
 
 db.save()                    # writes pipeline.yaml
 db.to_html("pipeline.html")  # interactive vis-network visualization
@@ -85,6 +98,9 @@ triplite query pipeline.yaml -w "?vendor PROVIDES ?job" -w "?job INGESTS_TO ?tab
 # vendor         job           table
 # -------------  ------------  ----------------
 # salesflow-crm  crm-sync-job  RAW_CRM_CONTACTS
+
+triplite sparql pipeline.yaml \
+  "SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }"
 
 triplite stats pipeline.yaml
 triplite html pipeline.yaml -o pipeline.html
@@ -135,7 +151,7 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## What triplite is not
 
-- **Not a SPARQL engine.** Queries are basic graph patterns (conjunctive triple patterns with variables). No `OPTIONAL`, no `FILTER`, no federation. If you outgrow this, export JSON-LD and graduate to real RDF tooling.
+- **Not a SPARQL implementation of its own.** The built-in `query()` covers basic graph patterns with zero dependencies. Full SPARQL 1.1 is available via `pip install 'triplite[sparql]'`, and it is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:triplite:`; objects with whitespace (change events, notes) become literals.
 - **Not an extraction pipeline.** It won't turn your PDFs into a graph. Pair it with an extractor if you want that — then curate what comes out.
 - **Not for millions of triples.** Everything is in memory and scans are linear. The sweet spot is the hundreds-to-thousands range, where a curated graph is even possible.
 
