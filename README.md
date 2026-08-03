@@ -12,7 +12,6 @@
   <img src="https://img.shields.io/badge/SPARQL%201.1-3D7EBB?style=flat&logo=w3c&logoColor=white" />
   <img src="https://img.shields.io/badge/RDF-0C479C?style=flat&logo=w3c&logoColor=white" />
   <img src="https://img.shields.io/badge/MCP-191919?style=flat&logo=modelcontextprotocol&logoColor=white" />
-  <img src="https://img.shields.io/badge/Claude-191919?style=flat&logo=anthropic&logoColor=white" />
 </p>
 
 # trikedb
@@ -185,10 +184,17 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/a
 
 ## An ontology layer for AI agents (MCP)
 
-trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
+trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate. Register it with any MCP client:
 
-```bash
-claude mcp add kg -- uvx --from 'trikedb[mcp]' trikedb mcp /absolute/path/to/graph.yaml
+```json
+{
+  "mcpServers": {
+    "kg": {
+      "command": "uvx",
+      "args": ["--from", "trikedb[mcp]", "trikedb", "mcp", "/absolute/path/to/graph.yaml"]
+    }
+  }
+}
 ```
 
 The agent gets `sparql`, `match`, `get_node`, `ontology`, `stats` to read, and `add_triple`, `set_node`, `remove_triples`, `import_source` to write. Every write autosaves to the YAML — so agent contributions arrive as reviewable git diffs.
@@ -200,7 +206,7 @@ This is also the answer to "just throw docs at it": **the agent is the extractor
 The zero-setup loop:
 
 1. Keep `graph.yaml` in your repo, next to the code it describes.
-2. Tell your agent about it once (e.g. in `CLAUDE.md` / your system prompt):
+2. Tell your agent about it once (in your agent's project instructions / system prompt):
 
    > Before any task touching the data pipeline, read `pipeline.yaml`.
    > It is the source of truth for which jobs feed which tables.

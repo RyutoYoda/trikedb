@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.8.4"
+version = "0.8.5"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
