@@ -1,10 +1,10 @@
-"""trikedb — the DuckDB of graph databases.
+"""trikedb — the single-file graph database.
 
-A knowledge graph that lives in a single YAML file, queried and
+A knowledge graph that lives in one YAML file, queried and
 updated with full SPARQL 1.1. Built for LLM agents.
 """
 
 from .db import OntologyError, Triple, TrikeDB
 
-__version__ = "0.8.2"
+__version__ = "0.8.3"
 __all__ = ["TrikeDB", "Triple", "OntologyError", "__version__"]

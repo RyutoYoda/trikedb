@@ -17,7 +17,7 @@
 
 # trikedb
 
-**The DuckDB of graph databases.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's a single YAML file. Built for LLM agents.
+**The single-file graph database.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's one YAML file. Built for LLM agents.
 
 ```yaml
 triples:
@@ -30,9 +30,9 @@ That file **is** the database. No server, no daemon, no cloud deployment. It dif
 
 ## Why
 
-RDF graph databases are like Oracle: powerful, correct, and heavy. SPARQL endpoints, OWL reasoners, enterprise semantic layers — great at scale, overkill when what you need is a curated map of a few hundred facts that your AI agents (and teammates) can trust.
+RDF graph databases are powerful, correct — and heavy. SPARQL endpoints, OWL reasoners, enterprise semantic layers: great at scale, overkill when what you need is a curated map of a few hundred facts that your AI agents (and teammates) can trust.
 
-DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in DuckDB's case) and shrink the *machinery* down to an embedded library over a file. trikedb applies the same move to RDF graph databases — the interface is real SPARQL 1.1 (rdflib's engine, not a homegrown subset), the storage is YAML you can read, diff, and commit:
+trikedb keeps the *interface* of the big system — real SPARQL 1.1 (rdflib's engine, not a homegrown subset) — and shrinks the *machinery* down to an embedded library over a file you can read, diff, and commit:
 
 |  | A full triple-store deployment | trikedb |
 |---|---|---|
@@ -96,7 +96,7 @@ db.sparql("""
 """)
 db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
 
-# Writes go through SPARQL too, DuckDB-style — and land back in the YAML
+# Writes go through SPARQL too — and land back in the YAML
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 db.sparql("DELETE WHERE { ?job t:INGESTS_TO t:LEGACY_CONTACTS_DUMP }")
 db.save()  # or pass autosave=True and skip this
@@ -185,7 +185,7 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/a
 
 ## An ontology layer for AI agents (MCP)
 
-Like the database it takes its analogy from, trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
+trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
 
 ```bash
 claude mcp add kg -- uvx --from 'trikedb[mcp]' trikedb mcp /absolute/path/to/graph.yaml
