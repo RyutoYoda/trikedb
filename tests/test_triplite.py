@@ -209,3 +209,78 @@ def test_autosave_roundtrip(tmp_path):
     assert len(TripLite(path)) == 2
     db.remove(s="a")
     assert len(TripLite(path)) == 1
+
+
+# --------------------------------------------------------------- imports
+
+def test_import_csv(tmp_path):
+    src = tmp_path / "extra.csv"
+    src.write_text(
+        "s,p,o,schedule,deprecated\n"
+        "figly,PROVIDES,figly-job,,\n"
+        "figly-job,INGESTS_TO,RAW_FIGLY,daily,\n"
+        "OLD_FIGLY,MIGRATED_TO,RAW_FIGLY,,true\n"
+    )
+    db = TripLite()
+    assert db.import_file(src) == 3
+    t = next(db.triples(s="figly-job"))
+    assert t.attrs == {"schedule": "daily"}
+    assert next(db.triples(s="OLD_FIGLY")).attrs == {"deprecated": True}
+
+
+def test_import_csv_requires_spo_header(tmp_path):
+    src = tmp_path / "bad.csv"
+    src.write_text("from,to\na,b\n")
+    with pytest.raises(ValueError):
+        TripLite().import_file(src)
+
+
+def test_import_markdown_tables_only_spo(tmp_path):
+    src = tmp_path / "doc.md"
+    src.write_text(
+        "# Design doc\n\nprose here\n\n"
+        "| s | p | o | schedule |\n|---|---|---|---|\n"
+        "| v | PROVIDES | j |  |\n"
+        "| j | INGESTS_TO | T | streaming |\n\n"
+        "more prose\n\n"
+        "| subject | predicate | object |\n|---|---|---|\n"
+        "| T | AFFECTED_BY | 2025-09-01 field dropped |\n\n"
+        "| step | owner |\n|------|-------|\n| a | alice |\n"
+    )
+    db = TripLite()
+    assert db.import_file(src) == 3
+    assert ("j", "INGESTS_TO", "T") in db
+    assert next(db.triples(s="j")).attrs == {"schedule": "streaming"}
+    assert not list(db.triples(s="a"))  # non-triple table ignored
+
+
+def test_import_respects_ontology(tmp_path):
+    src = tmp_path / "extra.csv"
+    src.write_text("s,p,o\na,NOT_ALLOWED,b\n")
+    db = TripLite(ontology={"PROVIDES": ""})
+    with pytest.raises(OntologyError):
+        db.import_file(src)
+
+
+def test_import_yaml_merge(tmp_path):
+    other = tmp_path / "other.yaml"
+    TripLite(other).add("x", "P", "y") and None
+    db_other = TripLite(other)
+    db_other.add("x", "P", "y")
+    db_other.save()
+    db = TripLite()
+    db.add("a", "P", "b")
+    assert db.import_file(other) == 1
+    assert len(db) == 2
+
+
+def test_import_example_files():
+    from pathlib import Path
+
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    db = TripLite(examples / "acme_pipeline.yaml")
+    added = db.import_file(examples / "acme_new_vendors.csv")
+    added += db.import_file(examples / "acme_design_doc.md")
+    assert added == 8  # 5 from the CSV, 3 from the two s/p/o tables in the doc
+    assert ("clickpath-pa", "PROVIDES", "clickpath-webhook") in db
+    assert next(db.triples(s="figly-export-job")).attrs["via"].startswith("https://")

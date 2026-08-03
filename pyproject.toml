@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triplite"
-version = "0.4.0"
+version = "0.5.0"
 description = "The SQLite of triple stores: a knowledge graph that lives in a single YAML file, with a graph-database interface. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }

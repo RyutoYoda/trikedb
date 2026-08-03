@@ -47,6 +47,12 @@ def main(argv=None) -> int:
     p_sparql.add_argument("query", help="SPARQL query or update; prefix t: is pre-bound, e.g. t:PROVIDES")
     p_sparql.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
+    p_import = sub.add_parser(
+        "import", help="merge triples from CSV/TSV, Markdown tables, or another YAML graph"
+    )
+    p_import.add_argument("file", help="the graph YAML to merge into (created if missing)")
+    p_import.add_argument("sources", nargs="+", help=".csv/.tsv/.md/.yaml files to import")
+
     p_stats = sub.add_parser("stats", help="summarize the graph")
     p_stats.add_argument("file")
 
@@ -122,6 +128,18 @@ def _cmd_rm(args) -> int:
     return 0
 
 
+def _cmd_import(args) -> int:
+    db = TripLite(args.file)
+    added = 0
+    for source in args.sources:
+        n = db.import_file(source)
+        added += n
+        print(f"{source}: +{n}")
+    db.save()
+    print(f"added {added} triple(s) — {len(db)} total in {args.file}")
+    return 0
+
+
 def _cmd_stats(args) -> int:
     db = TripLite(args.file)
     print(db)
@@ -151,6 +169,7 @@ def _cmd_jsonld(args) -> int:
 _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
+    "import": _cmd_import,
     "add": _cmd_add,
     "rm": _cmd_rm,
     "stats": _cmd_stats,

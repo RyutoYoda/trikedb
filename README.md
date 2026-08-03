@@ -117,6 +117,29 @@ triplite html pipeline.yaml -o pipeline.html
 triplite jsonld pipeline.yaml
 ```
 
+## Importing from CSV and Markdown docs
+
+The YAML file is the store, but triples can come from wherever your team already writes:
+
+```bash
+# CSV/TSV with an s,p,o header — extra columns become edge attributes
+triplite import pipeline.yaml new_vendors.csv
+
+# Markdown: every table whose header has s/p/o columns is picked up;
+# prose and other tables are ignored. Your design docs are data.
+triplite import pipeline.yaml design_doc.md
+```
+
+```markdown
+<!-- anywhere inside an ordinary design doc: -->
+| s                 | p          | o                  | schedule  |
+|-------------------|------------|--------------------|-----------|
+| clickpath-pa      | PROVIDES   | clickpath-webhook  |           |
+| clickpath-webhook | INGESTS_TO | RAW_PRODUCT_EVENTS | streaming |
+```
+
+Imports are deterministic — no LLM extraction, so nothing gets invented. The ontology is enforced on the way in, and `"true"`/`"false"` cells become booleans. See [`examples/acme_design_doc.md`](examples/acme_design_doc.md) and [`examples/acme_new_vendors.csv`](examples/acme_new_vendors.csv).
+
 ## The file format
 
 A triplite file is ordinary YAML with two top-level keys:

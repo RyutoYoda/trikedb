@@ -229,6 +229,36 @@ class TripLite:
             )
         return tuple(parts)
 
+    # ------------------------------------------------------------- imports
+
+    def import_file(self, path: Union[str, Path]) -> int:
+        """Merge triples from a YAML graph, CSV/TSV, or Markdown document.
+
+        CSV needs an s/p/o header (extra columns become attributes);
+        Markdown contributes every table whose header has s/p/o columns.
+        The ontology, if any, is enforced. Returns how many triples were
+        added (upserts of existing triples don't count).
+        """
+        from . import importers
+
+        path = Path(path)
+        suffix = path.suffix.lower()
+        if suffix in (".yaml", ".yml"):
+            dicts = [t.to_dict() for t in TripLite(path)]
+        elif suffix in (".csv", ".tsv"):
+            dicts = importers.read_csv(path)
+        elif suffix in (".md", ".markdown"):
+            dicts = importers.read_markdown(path)
+        else:
+            raise ValueError(
+                f"unsupported import format {path.suffix!r} (use .yaml/.csv/.tsv/.md)"
+            )
+        before = len(self._triples)
+        for d in dicts:
+            d = dict(d)
+            self.add(d.pop("s"), d.pop("p"), d.pop("o"), **d)
+        return len(self._triples) - before
+
     # -------------------------------------------------------------- sparql
 
     def to_rdflib(self, base: str = "urn:triplite:"):

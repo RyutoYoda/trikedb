@@ -1,0 +1,6 @@
+s,p,o,schedule,via,deprecated
+figly-design,PROVIDES,figly-export-job,,,
+figly-export-job,INGESTS_TO,RAW_FIGLY_SEATS,daily 07:00 UTC,https://api.figly.example/v1/seats,
+metricly-bi,PROVIDES,metricly-pull-job,,,
+metricly-pull-job,INGESTS_TO,RAW_METRICLY_USAGE,hourly,,
+RAW_FIGLY_SEATS_OLD,MIGRATED_TO,RAW_FIGLY_SEATS,,,true

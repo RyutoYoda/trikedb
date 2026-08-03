@@ -6,5 +6,5 @@ graph-database interface. Built for LLM agents.
 
 from .db import OntologyError, Triple, TripLite
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = ["TripLite", "Triple", "OntologyError", "__version__"]
