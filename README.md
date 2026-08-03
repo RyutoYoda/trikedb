@@ -21,7 +21,7 @@ RDF graph databases are like Oracle: powerful, correct, and heavy. SPARQL endpoi
 
 DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in DuckDB's case) and shrink the *machinery* down to an embedded library over a file. triplite applies the same move to RDF graph databases — the interface is real SPARQL 1.1 (rdflib's engine, not a homegrown subset), the storage is YAML you can read, diff, and commit:
 
-|  | Full triple store (Jena, Virtuoso, Neptune, ...) | triplite |
+|  | A full triple-store deployment | triplite |
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
 | Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
@@ -30,7 +30,7 @@ DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in 
 | Agent integration | MCP / API layer | the agent just reads the file |
 | Setup time | an afternoon (or a sprint) | `pip install triplite` |
 
-If you need inference engines, named graphs, and multi-tenant governance, use a real triple store (AWS's [context-ontology-accelerator](https://github.com/aws/context-ontology-accelerator) is the enterprise-grade take on the same "give agents trustworthy context" problem). If you want a knowledge graph **today, in a file, in git** — that's triplite.
+If you need inference engines, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's triplite. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
 
 ### Curation-first, not extraction-first
 
@@ -142,13 +142,17 @@ Imports are deterministic — no LLM extraction, so nothing gets invented. The o
 
 ## The file format
 
-A triplite file is ordinary YAML with two top-level keys:
+A triplite file is ordinary YAML with three top-level keys (only `triples` is required):
 
 ```yaml
 ontology:            # optional — omit it for free-form predicates
   predicates:
     PROVIDES: "SaaS vendor -> ingestion job"
     AFFECTED_BY: "table -> change event"
+
+nodes:               # optional — free-form node properties
+  salesflow-crm: {type: saas, url: "https://salesflow.example", plan: enterprise}
+  RAW_CRM_CONTACTS: {type: table, schema: ACME_RAW, pii: true}
 
 triples:
   # compact form for plain facts
@@ -165,6 +169,7 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/a
 - **Change events as objects.** `AFFECTED_BY` edges pointing at dated event strings give your graph a memory — "why did this number change in April?" becomes a query.
 - **`deprecated: true`** on edges renders them dashed in the HTML view and lets agents filter dead paths.
 - **`via:` / `schedule:`** attributes carry operational detail without polluting the node set.
+- **Node properties keep growing.** That's the RDF promise: attach `type`, `url`, `schema`, owners — whatever your team needs — without a schema migration. `type` drives color grouping in the HTML view, and node properties are queryable in SPARQL (`?x t:type "table"`). Set them from code with `db.set_node("RAW_CRM_CONTACTS", pii=True)`.
 
 ## Using it with LLM agents
 

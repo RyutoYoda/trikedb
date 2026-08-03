@@ -70,6 +70,8 @@ class TripLite:
         self.path: Optional[Path] = Path(path) if path else None
         #: when True, every mutation writes straight back to the file.
         self.autosave = autosave
+        #: node name -> free-form properties (type, label, url, description, ...)
+        self.nodes_meta: dict = {}
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
         self._triples: list = []
@@ -93,6 +95,8 @@ class TripLite:
         elif isinstance(preds, (list, tuple)):
             for p in preds:
                 self.ontology.setdefault(str(p), "")
+        for name, props in (data.get("nodes") or {}).items():
+            self.nodes_meta[str(name)] = dict(props or {})
         for item in data.get("triples") or []:
             self._triples.append(Triple.from_dict(item))
 
@@ -104,6 +108,8 @@ class TripLite:
         doc: dict = {}
         if self.ontology:
             doc["ontology"] = {"predicates": dict(self.ontology)}
+        if self.nodes_meta:
+            doc["nodes"] = {k: dict(v) for k, v in self.nodes_meta.items()}
         doc["triples"] = [t.to_dict() for t in self._triples]
         text = yaml.dump(
             doc,
@@ -152,6 +158,22 @@ class TripLite:
         if self.autosave and self.path:
             self.save()
 
+    def set_node(self, name: str, **props: Any) -> dict:
+        """Attach (or merge) free-form properties onto a node.
+
+        Conventional keys the HTML export understands: `type` (color
+        grouping + legend), `label` (display name), `level` (column in
+        the flow layout). Everything else shows up in the detail panel.
+        """
+        merged = self.nodes_meta.setdefault(str(name), {})
+        merged.update(props)
+        self._autosave()
+        return merged
+
+    def node(self, name: str) -> dict:
+        """The properties attached to a node (empty dict if none)."""
+        return dict(self.nodes_meta.get(str(name), {}))
+
     # -------------------------------------------------------------- reading
 
     @staticmethod
@@ -185,7 +207,9 @@ class TripLite:
         return _unique(t.p for t in self._triples)
 
     def nodes(self) -> list:
-        return _unique(x for t in self._triples for x in (t.s, t.o))
+        return _unique(
+            [x for t in self._triples for x in (t.s, t.o)] + list(self.nodes_meta)
+        )
 
     # ---------------------------------------------------------------- query
 
@@ -261,12 +285,14 @@ class TripLite:
 
     # -------------------------------------------------------------- sparql
 
-    def to_rdflib(self, base: str = "urn:triplite:"):
+    def to_rdflib(self, base: str = "urn:triplite:", node_props: bool = True):
         """Convert to an rdflib.Graph.
 
         Subjects and predicates become URIRefs under `base`. Objects become
         URIRefs too, unless they contain whitespace (e.g. change-event
-        descriptions), in which case they become Literals.
+        descriptions), in which case they become Literals. Node properties
+        are included as literal-valued statements (so SPARQL can filter on
+        them, e.g. `?x t:type "table"`) unless node_props=False.
         """
         from urllib.parse import quote
 
@@ -280,6 +306,10 @@ class TripLite:
         for t in self._triples:
             obj = Literal(t.o) if any(c.isspace() for c in t.o) else node(t.o)
             g.add((node(t.s), node(t.p), obj))
+        if node_props:
+            for name, props in self.nodes_meta.items():
+                for key, value in props.items():
+                    g.add((node(name), node(str(key)), Literal(value)))
         return g
 
     _UPDATE_KEYWORDS = frozenset(
@@ -323,7 +353,7 @@ class TripLite:
         SPARQL start with no attributes. The ontology (if any) is enforced
         on inserted predicates. Returns the net change in triple count.
         """
-        g = self.to_rdflib(base)
+        g = self.to_rdflib(base, node_props=False)
         g.update(f"PREFIX t: <{base}>\n" + query)
 
         new_spos = {tuple(_shorten(x, base) for x in triple) for triple in g}

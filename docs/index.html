@@ -17,6 +17,8 @@
   #legend { display: flex; gap: 8px; margin-left: 6px; overflow: hidden; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
   .lg b { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .lg i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; border: 2px solid;
+          vertical-align: middle; margin-right: 4px; background: var(--bg); }
   #spacer { flex: 1; }
   #search { width: 210px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
             background: var(--bg); color: var(--text); font-size: 12px; }
@@ -77,7 +79,7 @@
   <input id="search" placeholder="search nodes...">
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn active" id="btn-physics">Physics ON</button>
+  <button class="btn active" id="btn-layout">Flow</button>
 </div>
 
 <div id="sparql">
@@ -103,21 +105,30 @@
 <script>
 const TRIPLES = [{"s": "salesflow-crm", "p": "PROVIDES", "o": "crm-sync-job"}, {"s": "adastra-ads", "p": "PROVIDES", "o": "ads-spend-collector"}, {"s": "pingtrack-web", "p": "PROVIDES", "o": "web-events-stream"}, {"s": "salesflow-crm", "p": "PROVIDES", "o": "crm-nightly-dump", "deprecated": true}, {"s": "crm-sync-job", "p": "INGESTS_TO", "o": "RAW_CRM_CONTACTS", "schedule": "hourly", "via": "https://api.salesflow.example/v2/contacts"}, {"s": "ads-spend-collector", "p": "INGESTS_TO", "o": "RAW_AD_SPEND_DAILY", "schedule": "daily 06:00 UTC", "via": "https://api.adastra.example/v3/spend"}, {"s": "web-events-stream", "p": "INGESTS_TO", "o": "RAW_WEB_EVENTS", "schedule": "streaming"}, {"s": "crm-nightly-dump", "p": "INGESTS_TO", "o": "LEGACY_CONTACTS_DUMP", "deprecated": true}, {"s": "RAW_AD_SPEND_DAILY", "p": "AFFECTED_BY", "o": "2025-04-01 adastra API v3: spend now reported in micros (was cents)"}, {"s": "RAW_CRM_CONTACTS", "p": "AFFECTED_BY", "o": "2025-06-15 email column dropped for privacy compliance"}, {"s": "LEGACY_CONTACTS_DUMP", "p": "MIGRATED_TO", "o": "RAW_CRM_CONTACTS", "deprecated": true}, {"s": "RAW_AD_SPEND_MANUAL", "p": "SUPPLEMENTS", "o": "RAW_AD_SPEND_DAILY", "note": "manual backfill covering spend before 2024"}, {"s": "figly-design", "p": "PROVIDES", "o": "figly-export-job"}, {"s": "figly-export-job", "p": "INGESTS_TO", "o": "RAW_FIGLY_SEATS", "schedule": "daily 07:00 UTC", "via": "https://api.figly.example/v1/seats"}, {"s": "metricly-bi", "p": "PROVIDES", "o": "metricly-pull-job"}, {"s": "metricly-pull-job", "p": "INGESTS_TO", "o": "RAW_METRICLY_USAGE", "schedule": "hourly"}, {"s": "RAW_FIGLY_SEATS_OLD", "p": "MIGRATED_TO", "o": "RAW_FIGLY_SEATS", "deprecated": true}, {"s": "clickpath-pa", "p": "PROVIDES", "o": "clickpath-webhook"}, {"s": "clickpath-webhook", "p": "INGESTS_TO", "o": "RAW_PRODUCT_EVENTS", "schedule": "streaming"}, {"s": "RAW_PRODUCT_EVENTS", "p": "AFFECTED_BY", "o": "2025-09-01 clickpath drops the legacy session_id field"}];
 const PREDICATES = {"PROVIDES": "#4f8ef7", "INGESTS_TO": "#f7784f", "AFFECTED_BY": "#2fbf71", "MIGRATED_TO": "#b04ff7", "SUPPLEMENTS": "#f7c34f"};
-const NT = "<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-sync-job> .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:AFFECTED_BY> \"2025-04-01 adastra API v3: spend now reported in micros (was cents)\" .\n<urn:triplite:figly-design> <urn:triplite:PROVIDES> <urn:triplite:figly-export-job> .\n<urn:triplite:metricly-bi> <urn:triplite:PROVIDES> <urn:triplite:metricly-pull-job> .\n<urn:triplite:adastra-ads> <urn:triplite:PROVIDES> <urn:triplite:ads-spend-collector> .\n<urn:triplite:pingtrack-web> <urn:triplite:PROVIDES> <urn:triplite:web-events-stream> .\n<urn:triplite:figly-export-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_FIGLY_SEATS> .\n<urn:triplite:metricly-pull-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_METRICLY_USAGE> .\n<urn:triplite:clickpath-webhook> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_PRODUCT_EVENTS> .\n<urn:triplite:ads-spend-collector> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:RAW_PRODUCT_EVENTS> <urn:triplite:AFFECTED_BY> \"2025-09-01 clickpath drops the legacy session_id field\" .\n<urn:triplite:web-events-stream> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_WEB_EVENTS> .\n<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-nightly-dump> .\n<urn:triplite:crm-nightly-dump> <urn:triplite:INGESTS_TO> <urn:triplite:LEGACY_CONTACTS_DUMP> .\n<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:AFFECTED_BY> \"2025-06-15 email column dropped for privacy compliance\" .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:SUPPLEMENTS> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:RAW_FIGLY_SEATS_OLD> <urn:triplite:MIGRATED_TO> <urn:triplite:RAW_FIGLY_SEATS> .\n<urn:triplite:clickpath-pa> <urn:triplite:PROVIDES> <urn:triplite:clickpath-webhook> .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:MIGRATED_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n<urn:triplite:crm-sync-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n";
+const NODES_META = {"salesflow-crm": {"type": "saas", "url": "https://salesflow.example", "description": "CRM vendor", "plan": "enterprise"}, "adastra-ads": {"type": "saas", "url": "https://adastra.example", "description": "ad platform"}, "pingtrack-web": {"type": "saas", "url": "https://pingtrack.example", "description": "web analytics"}, "crm-sync-job": {"type": "job", "runtime": "lambda", "owner": "data-platform"}, "ads-spend-collector": {"type": "job", "runtime": "lambda", "owner": "data-platform"}, "web-events-stream": {"type": "job", "runtime": "kinesis", "owner": "data-platform"}, "crm-nightly-dump": {"type": "job", "runtime": "cron", "deprecated": true}, "RAW_CRM_CONTACTS": {"type": "table", "schema": "ACME_RAW", "description": "one row per CRM contact", "pii": true}, "RAW_AD_SPEND_DAILY": {"type": "table", "schema": "ACME_RAW", "description": "daily ad spend by campaign"}, "RAW_WEB_EVENTS": {"type": "table", "schema": "ACME_RAW", "description": "clickstream events", "append-only": null}, "RAW_AD_SPEND_MANUAL": {"type": "table", "schema": "ACME_RAW", "description": "hand-maintained backfill sheet"}, "LEGACY_CONTACTS_DUMP": {"type": "table", "schema": "ACME_LEGACY", "deprecated": true}};
+const NODE_TYPES = {"job": "#4f6af7", "saas": "#f74f4f", "table": "#8ef74f"};
+const NT = "<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:pii> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .\n<urn:triplite:crm-sync-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n<urn:triplite:adastra-ads> <urn:triplite:PROVIDES> <urn:triplite:ads-spend-collector> .\n<urn:triplite:crm-nightly-dump> <urn:triplite:INGESTS_TO> <urn:triplite:LEGACY_CONTACTS_DUMP> .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:AFFECTED_BY> \"2025-04-01 adastra API v3: spend now reported in micros (was cents)\" .\n<urn:triplite:web-events-stream> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_WEB_EVENTS> .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:SUPPLEMENTS> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:schema> \"ACME_LEGACY\" .\n<urn:triplite:ads-spend-collector> <urn:triplite:runtime> \"lambda\" .\n<urn:triplite:clickpath-pa> <urn:triplite:PROVIDES> <urn:triplite:clickpath-webhook> .\n<urn:triplite:RAW_WEB_EVENTS> <urn:triplite:append-only> \"None\" .\n<urn:triplite:crm-sync-job> <urn:triplite:runtime> \"lambda\" .\n<urn:triplite:salesflow-crm> <urn:triplite:url> \"https://salesflow.example\" .\n<urn:triplite:pingtrack-web> <urn:triplite:type> \"saas\" .\n<urn:triplite:RAW_FIGLY_SEATS_OLD> <urn:triplite:MIGRATED_TO> <urn:triplite:RAW_FIGLY_SEATS> .\n<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:description> \"one row per CRM contact\" .\n<urn:triplite:salesflow-crm> <urn:triplite:description> \"CRM vendor\" .\n<urn:triplite:web-events-stream> <urn:triplite:type> \"job\" .\n<urn:triplite:RAW_WEB_EVENTS> <urn:triplite:schema> \"ACME_RAW\" .\n<urn:triplite:metricly-bi> <urn:triplite:PROVIDES> <urn:triplite:metricly-pull-job> .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:description> \"daily ad spend by campaign\" .\n<urn:triplite:crm-nightly-dump> <urn:triplite:runtime> \"cron\" .\n<urn:triplite:RAW_WEB_EVENTS> <urn:triplite:type> \"table\" .\n<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:schema> \"ACME_RAW\" .\n<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:type> \"table\" .\n<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-nightly-dump> .\n<urn:triplite:adastra-ads> <urn:triplite:description> \"ad platform\" .\n<urn:triplite:web-events-stream> <urn:triplite:runtime> \"kinesis\" .\n<urn:triplite:figly-design> <urn:triplite:PROVIDES> <urn:triplite:figly-export-job> .\n<urn:triplite:metricly-pull-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_METRICLY_USAGE> .\n<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-sync-job> .\n<urn:triplite:salesflow-crm> <urn:triplite:type> \"saas\" .\n<urn:triplite:crm-nightly-dump> <urn:triplite:type> \"job\" .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:schema> \"ACME_RAW\" .\n<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:AFFECTED_BY> \"2025-06-15 email column dropped for privacy compliance\" .\n<urn:triplite:salesflow-crm> <urn:triplite:plan> \"enterprise\" .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:type> \"table\" .\n<urn:triplite:crm-nightly-dump> <urn:triplite:deprecated> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .\n<urn:triplite:pingtrack-web> <urn:triplite:description> \"web analytics\" .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:type> \"table\" .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:deprecated> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .\n<urn:triplite:figly-export-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_FIGLY_SEATS> .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:MIGRATED_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:schema> \"ACME_RAW\" .\n<urn:triplite:ads-spend-collector> <urn:triplite:owner> \"data-platform\" .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:type> \"table\" .\n<urn:triplite:crm-sync-job> <urn:triplite:owner> \"data-platform\" .\n<urn:triplite:RAW_WEB_EVENTS> <urn:triplite:description> \"clickstream events\" .\n<urn:triplite:clickpath-webhook> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_PRODUCT_EVENTS> .\n<urn:triplite:adastra-ads> <urn:triplite:type> \"saas\" .\n<urn:triplite:adastra-ads> <urn:triplite:url> \"https://adastra.example\" .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:description> \"hand-maintained backfill sheet\" .\n<urn:triplite:web-events-stream> <urn:triplite:owner> \"data-platform\" .\n<urn:triplite:pingtrack-web> <urn:triplite:url> \"https://pingtrack.example\" .\n<urn:triplite:ads-spend-collector> <urn:triplite:type> \"job\" .\n<urn:triplite:crm-sync-job> <urn:triplite:type> \"job\" .\n<urn:triplite:ads-spend-collector> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:pingtrack-web> <urn:triplite:PROVIDES> <urn:triplite:web-events-stream> .\n<urn:triplite:RAW_PRODUCT_EVENTS> <urn:triplite:AFFECTED_BY> \"2025-09-01 clickpath drops the legacy session_id field\" .\n";
 const EVENT_PREDICATES = ["AFFECTED_BY"];
 const BASE = "urn:triplite:";
 
 // ---------------------------------------------------------------- graph
-const ids = [...new Set(TRIPLES.flatMap(t => [t.s, t.o]))];
+const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
 const degree = {};
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\-])/g, "$1\n").replace(/\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
-const nodes = new vis.DataSet(ids.map(id => eventNodes.has(id)
-  ? { id, label: id.length > 26 ? id.slice(0, 26) + "\u2026" : id, shape: "diamond", size: 9,
-      color: { border: "#f74f4f", background: "#3a1f1f" },
-      font: { color: "#f0a0a0", size: 10 } }
-  : { id, label: wrap(id), value: degree[id] || 1 }));
+const nodes = new vis.DataSet(ids.map(id => {
+  if (eventNodes.has(id)) return {
+    id, label: id.length > 26 ? id.slice(0, 26) + "\u2026" : id, shape: "diamond", size: 9,
+    color: { border: "#f74f4f", background: "#3a1f1f" }, font: { color: "#f0a0a0", size: 10 } };
+  const meta = NODES_META[id] || {};
+  const n = { id, label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
+  const tc = NODE_TYPES[meta.type];
+  if (tc) n.color = { border: tc, background: "#1e2129",
+                      highlight: { border: "#ffffff", background: "#2c4a6e" } };
+  if (typeof meta.level === "number") n.level = meta.level;
+  return n;
+}));
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: t.s, to: t.o, label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
@@ -126,19 +137,34 @@ const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
   return e;
 }));
+const FLOW_OPTS = {
+  layout: { hierarchical: { enabled: true, direction: "LR", sortMethod: "directed",
+                            levelSeparation: 240, nodeSpacing: 95, treeSpacing: 130 } },
+  physics: { enabled: false },
+};
+const FREE_OPTS = {
+  layout: { hierarchical: { enabled: false } },
+  physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
+};
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
-  physics: { solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
+  ...FLOW_OPTS,
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
   edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0 },
-           smooth: { type: "continuous" } },
+           smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
   interaction: { hover: true },
 });
 
 // --------------------------------------------------------------- header
 const legend = document.getElementById("legend");
+for (const [ty, color] of Object.entries(NODE_TYPES)) {
+  const el = document.createElement("span");
+  el.className = "lg";
+  el.innerHTML = `<i style="border-color:${color}"></i>${ty}`;
+  legend.appendChild(el);
+}
 for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
   el.className = "lg";
@@ -146,12 +172,13 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   legend.appendChild(el);
 }
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-let physics = true;
-document.getElementById("btn-physics").onclick = (e) => {
-  physics = !physics;
-  network.setOptions({ physics: { enabled: physics } });
-  e.target.textContent = physics ? "Physics ON" : "Physics OFF";
-  e.target.classList.toggle("active", physics);
+let flow = true;
+document.getElementById("btn-layout").onclick = (e) => {
+  flow = !flow;
+  network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
+  e.target.textContent = flow ? "Flow" : "Free";
+  e.target.classList.toggle("active", flow);
+  network.fit({ animation: true });
 };
 document.getElementById("search").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
@@ -176,9 +203,14 @@ function relHTML(t, other, arrow) {
 }
 
 function showDetail(id) {
+  const meta = NODES_META[id] || {};
   const out = TRIPLES.filter(t => t.s === id);
   const inc = TRIPLES.filter(t => t.o === id);
   let html = `<h2>${esc(id)}</h2>`;
+  if (meta.type) html += `<span class="pred" style="background:${NODE_TYPES[meta.type] || "#5a83b8"}">${esc(meta.type)}</span>`;
+  const props = Object.entries(meta).filter(([k]) => k !== "type");
+  if (props.length) html += "<h3>properties</h3>" + props.map(([k, v]) =>
+    `<div class="rel"><div class="attr">${esc(k)}: ${linkify(v)}</div></div>`).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
   document.getElementById("detail-body").innerHTML = html;

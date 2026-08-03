@@ -284,3 +284,51 @@ def test_import_example_files():
     assert added == 8  # 5 from the CSV, 3 from the two s/p/o tables in the doc
     assert ("clickpath-pa", "PROVIDES", "clickpath-webhook") in db
     assert next(db.triples(s="figly-export-job")).attrs["via"].startswith("https://")
+
+
+# ----------------------------------------------------------- node props
+
+def test_node_props_roundtrip(tmp_path):
+    path = tmp_path / "g.yaml"
+    db = TripLite(path)
+    db.add("v", "PROVIDES", "j")
+    db.set_node("v", type="saas", url="https://v.example")
+    db.set_node("v", plan="enterprise")  # merges
+    db.save()
+    again = TripLite(path)
+    assert again.node("v") == {"type": "saas", "url": "https://v.example", "plan": "enterprise"}
+    assert again.node("j") == {}
+
+
+def test_node_props_queryable_via_sparql():
+    db = TripLite()
+    db.add("v", "PROVIDES", "j")
+    db.set_node("v", type="saas")
+    db.set_node("j", type="job")
+    rows = db.sparql('SELECT ?x WHERE { ?x t:type "saas" }')
+    assert rows == [{"x": "v"}]
+
+
+def test_update_does_not_absorb_node_props():
+    db = TripLite()
+    db.add("a", "P", "b")
+    db.set_node("a", type="saas")
+    db.sparql("INSERT DATA { t:c t:P t:d }")
+    assert len(db) == 2  # node-prop statements didn't become triples
+    assert db.node("a") == {"type": "saas"}
+
+
+def test_meta_only_node_appears_in_nodes():
+    db = TripLite()
+    db.set_node("lonely", type="table")
+    assert "lonely" in db.nodes()
+
+
+def test_html_includes_node_meta_and_flow():
+    db = TripLite()
+    db.add("v", "PROVIDES", "j")
+    db.set_node("v", type="saas", url="https://v.example")
+    html = db.to_html()
+    assert '"type": "saas"' in html
+    assert "hierarchical" in html  # flow layout
+    assert "NODE_TYPES" in html

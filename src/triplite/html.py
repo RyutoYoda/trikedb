@@ -38,6 +38,8 @@ _TEMPLATE = """<!DOCTYPE html>
   #legend { display: flex; gap: 8px; margin-left: 6px; overflow: hidden; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
   .lg b { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .lg i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; border: 2px solid;
+          vertical-align: middle; margin-right: 4px; background: var(--bg); }
   #spacer { flex: 1; }
   #search { width: 210px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
             background: var(--bg); color: var(--text); font-size: 12px; }
@@ -98,7 +100,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <input id="search" placeholder="search nodes...">
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn active" id="btn-physics">Physics ON</button>
+  <button class="btn active" id="btn-layout">Flow</button>
 </div>
 
 <div id="sparql">
@@ -124,21 +126,30 @@ _TEMPLATE = """<!DOCTYPE html>
 <script>
 const TRIPLES = __TRIPLES__;
 const PREDICATES = __PREDICATES__;
+const NODES_META = __NODES_META__;
+const NODE_TYPES = __NODE_TYPES__;
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
 const BASE = "urn:triplite:";
 
 // ---------------------------------------------------------------- graph
-const ids = [...new Set(TRIPLES.flatMap(t => [t.s, t.o]))];
+const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
 const degree = {};
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
-const nodes = new vis.DataSet(ids.map(id => eventNodes.has(id)
-  ? { id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
-      color: { border: "#f74f4f", background: "#3a1f1f" },
-      font: { color: "#f0a0a0", size: 10 } }
-  : { id, label: wrap(id), value: degree[id] || 1 }));
+const nodes = new vis.DataSet(ids.map(id => {
+  if (eventNodes.has(id)) return {
+    id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
+    color: { border: "#f74f4f", background: "#3a1f1f" }, font: { color: "#f0a0a0", size: 10 } };
+  const meta = NODES_META[id] || {};
+  const n = { id, label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
+  const tc = NODE_TYPES[meta.type];
+  if (tc) n.color = { border: tc, background: "#1e2129",
+                      highlight: { border: "#ffffff", background: "#2c4a6e" } };
+  if (typeof meta.level === "number") n.level = meta.level;
+  return n;
+}));
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: t.s, to: t.o, label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
@@ -147,19 +158,34 @@ const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
   return e;
 }));
+const FLOW_OPTS = {
+  layout: { hierarchical: { enabled: true, direction: "LR", sortMethod: "directed",
+                            levelSeparation: 240, nodeSpacing: 95, treeSpacing: 130 } },
+  physics: { enabled: false },
+};
+const FREE_OPTS = {
+  layout: { hierarchical: { enabled: false } },
+  physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
+};
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
-  physics: { solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
+  ...FLOW_OPTS,
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
   edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0 },
-           smooth: { type: "continuous" } },
+           smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
   interaction: { hover: true },
 });
 
 // --------------------------------------------------------------- header
 const legend = document.getElementById("legend");
+for (const [ty, color] of Object.entries(NODE_TYPES)) {
+  const el = document.createElement("span");
+  el.className = "lg";
+  el.innerHTML = `<i style="border-color:${color}"></i>${ty}`;
+  legend.appendChild(el);
+}
 for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
   el.className = "lg";
@@ -167,12 +193,13 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   legend.appendChild(el);
 }
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-let physics = true;
-document.getElementById("btn-physics").onclick = (e) => {
-  physics = !physics;
-  network.setOptions({ physics: { enabled: physics } });
-  e.target.textContent = physics ? "Physics ON" : "Physics OFF";
-  e.target.classList.toggle("active", physics);
+let flow = true;
+document.getElementById("btn-layout").onclick = (e) => {
+  flow = !flow;
+  network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
+  e.target.textContent = flow ? "Flow" : "Free";
+  e.target.classList.toggle("active", flow);
+  network.fit({ animation: true });
 };
 document.getElementById("search").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
@@ -197,9 +224,14 @@ function relHTML(t, other, arrow) {
 }
 
 function showDetail(id) {
+  const meta = NODES_META[id] || {};
   const out = TRIPLES.filter(t => t.s === id);
   const inc = TRIPLES.filter(t => t.o === id);
   let html = `<h2>${esc(id)}</h2>`;
+  if (meta.type) html += `<span class="pred" style="background:${NODE_TYPES[meta.type] || "#5a83b8"}">${esc(meta.type)}</span>`;
+  const props = Object.entries(meta).filter(([k]) => k !== "type");
+  if (props.length) html += "<h3>properties</h3>" + props.map(([k, v]) =>
+    `<div class="rel"><div class="attr">${esc(k)}: ${linkify(v)}</div></div>`).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
   document.getElementById("detail-body").innerHTML = html;
@@ -290,6 +322,10 @@ def to_html(db, path: Union[str, Path, None] = None, title: str = "triplite know
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
     triples = [t.to_dict() for t in db]
+    nodes_meta = dict(getattr(db, "nodes_meta", {}))
+    types = sorted({p["type"] for p in nodes_meta.values() if p.get("type")})
+    reversed_palette = PALETTE[::-1]
+    type_colors = {t: reversed_palette[i % len(reversed_palette)] for i, t in enumerate(types)}
     nt = db.to_rdflib().serialize(format="nt")
 
     # change-event predicates power the bottom bar: heuristically, those
@@ -309,6 +345,8 @@ def to_html(db, path: Union[str, Path, None] = None, title: str = "triplite know
         .replace("__SUBTITLE__", subtitle)
         .replace("__TRIPLES__", json.dumps(triples, ensure_ascii=False))
         .replace("__PREDICATES__", json.dumps(colors, ensure_ascii=False))
+        .replace("__NODES_META__", json.dumps(nodes_meta, ensure_ascii=False))
+        .replace("__NODE_TYPES__", json.dumps(type_colors, ensure_ascii=False))
         .replace("__NT__", json.dumps(nt, ensure_ascii=False))
         .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
     )

@@ -14,6 +14,22 @@ ontology:
     SUPPLEMENTS: "table -> table it fills gaps for"
     MIGRATED_TO: "deprecated table -> its replacement"
 
+# node properties: type drives color + legend, everything else shows in
+# the detail panel and is queryable via SPARQL (?x t:type "table")
+nodes:
+  salesflow-crm: {type: saas, url: "https://salesflow.example", description: CRM vendor, plan: enterprise}
+  adastra-ads: {type: saas, url: "https://adastra.example", description: ad platform}
+  pingtrack-web: {type: saas, url: "https://pingtrack.example", description: web analytics}
+  crm-sync-job: {type: job, runtime: lambda, owner: data-platform}
+  ads-spend-collector: {type: job, runtime: lambda, owner: data-platform}
+  web-events-stream: {type: job, runtime: kinesis, owner: data-platform}
+  crm-nightly-dump: {type: job, runtime: cron, deprecated: true}
+  RAW_CRM_CONTACTS: {type: table, schema: ACME_RAW, description: one row per CRM contact, pii: true}
+  RAW_AD_SPEND_DAILY: {type: table, schema: ACME_RAW, description: daily ad spend by campaign}
+  RAW_WEB_EVENTS: {type: table, schema: ACME_RAW, description: clickstream events, append-only}
+  RAW_AD_SPEND_MANUAL: {type: table, schema: ACME_RAW, description: hand-maintained backfill sheet}
+  LEGACY_CONTACTS_DUMP: {type: table, schema: ACME_LEGACY, deprecated: true}
+
 triples:
   # vendors -> ingestion jobs
   - {s: salesflow-crm, p: PROVIDES, o: crm-sync-job}
