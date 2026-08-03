@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" width="220" alt="trikedb — a triceratops whose three horns are the triple: subject, predicate, object">
+  <img src="docs/logo.png" width="260" alt="TrikeDB — a triceratops carrying a knowledge graph on its frill">
 </p>
 
 # trikedb
