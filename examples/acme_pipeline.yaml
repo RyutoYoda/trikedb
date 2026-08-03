@@ -1,0 +1,51 @@
+# Example: the data platform of Acme Corp (a fictional company).
+#
+# This is the use case triplite was designed for: a curated map of
+# "which SaaS feeds which ingestion job feeds which warehouse table",
+# including change events, deprecations and migrations — so that an
+# LLM agent can Read this one file and reason about the pipeline
+# without hallucinating table names.
+
+ontology:
+  predicates:
+    PROVIDES: "SaaS vendor -> ingestion job"
+    INGESTS_TO: "ingestion job -> warehouse table"
+    AFFECTED_BY: "warehouse table -> change event"
+    SUPPLEMENTS: "table -> table it fills gaps for"
+    MIGRATED_TO: "deprecated table -> its replacement"
+
+triples:
+  # vendors -> ingestion jobs
+  - {s: salesflow-crm, p: PROVIDES, o: crm-sync-job}
+  - {s: adastra-ads, p: PROVIDES, o: ads-spend-collector}
+  - {s: pingtrack-web, p: PROVIDES, o: web-events-stream}
+  - {s: salesflow-crm, p: PROVIDES, o: crm-nightly-dump, deprecated: true}
+
+  # ingestion jobs -> warehouse tables
+  - s: crm-sync-job
+    p: INGESTS_TO
+    o: RAW_CRM_CONTACTS
+    schedule: hourly
+    via: https://api.salesflow.example/v2/contacts
+  - s: ads-spend-collector
+    p: INGESTS_TO
+    o: RAW_AD_SPEND_DAILY
+    schedule: "daily 06:00 UTC"
+    via: https://api.adastra.example/v3/spend
+  - {s: web-events-stream, p: INGESTS_TO, o: RAW_WEB_EVENTS, schedule: streaming}
+  - {s: crm-nightly-dump, p: INGESTS_TO, o: LEGACY_CONTACTS_DUMP, deprecated: true}
+
+  # change events — the part most knowledge-graph tools can't express
+  - s: RAW_AD_SPEND_DAILY
+    p: AFFECTED_BY
+    o: "2025-04-01 adastra API v3: spend now reported in micros (was cents)"
+  - s: RAW_CRM_CONTACTS
+    p: AFFECTED_BY
+    o: "2025-06-15 email column dropped for privacy compliance"
+
+  # deprecations and gap-filling
+  - {s: LEGACY_CONTACTS_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
+  - s: RAW_AD_SPEND_MANUAL
+    p: SUPPLEMENTS
+    o: RAW_AD_SPEND_DAILY
+    note: manual backfill covering spend before 2024

@@ -1,0 +1,33 @@
+# Example: a slice of the Python packaging ecosystem (public facts).
+#
+# Shows triplite on a different domain: free-form predicates
+# (no ontology section), dependency edges, and the same
+# deprecation/migration vocabulary applied to software history.
+
+triples:
+  # runtime dependencies
+  - {s: requests, p: DEPENDS_ON, o: urllib3}
+  - {s: requests, p: DEPENDS_ON, o: certifi}
+  - {s: requests, p: DEPENDS_ON, o: charset-normalizer}
+  - {s: pandas, p: DEPENDS_ON, o: numpy}
+  - {s: matplotlib, p: DEPENDS_ON, o: numpy}
+  - {s: scikit-learn, p: DEPENDS_ON, o: numpy}
+  - {s: scikit-learn, p: DEPENDS_ON, o: scipy}
+  - {s: scipy, p: DEPENDS_ON, o: numpy}
+
+  # deprecations and successions in packaging history
+  - {s: nose, p: MIGRATED_TO, o: pytest, deprecated: true}
+  - s: distutils
+    p: MIGRATED_TO
+    o: setuptools
+    deprecated: true
+    note: removed from the standard library in Python 3.12
+  - {s: pip, p: DEPENDS_ON, o: setuptools, note: build-time, historical}
+
+  # change events
+  - s: numpy
+    p: AFFECTED_BY
+    o: "2024-06 NumPy 2.0: ABI break, many packages required rebuilds"
+  - s: setuptools
+    p: AFFECTED_BY
+    o: "2025 gradual deprecation of setup.py invocation in favor of pyproject.toml"
