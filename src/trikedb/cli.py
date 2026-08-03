@@ -53,6 +53,25 @@ def main(argv=None) -> int:
     p_import.add_argument("file", help="the graph YAML to merge into (created if missing)")
     p_import.add_argument("sources", nargs="+", help=".csv/.tsv/.md/.yaml files to import")
 
+    p_node = sub.add_parser(
+        "node", help="show a node (props + edges), or set properties with -a"
+    )
+    p_node.add_argument("file")
+    p_node.add_argument("name")
+    p_node.add_argument(
+        "-a", "--attr", action="append", default=[], metavar="key=value",
+        help="set node properties; conventional keys: label, type, url, description, level",
+    )
+
+    p_onto = sub.add_parser(
+        "ontology", help="show the predicate vocabulary, or extend it with --set"
+    )
+    p_onto.add_argument("file")
+    p_onto.add_argument(
+        "--set", action="append", default=[], metavar="PRED=description",
+        help="add or update a predicate (a schema change — review it like one)",
+    )
+
     p_stats = sub.add_parser("stats", help="summarize the graph")
     p_stats.add_argument("file")
 
@@ -150,6 +169,43 @@ def _cmd_import(args) -> int:
     return 0
 
 
+def _parse_attrs(pairs) -> dict:
+    from .importers import _coerce
+
+    attrs = {}
+    for pair in pairs:
+        if "=" not in pair:
+            raise SystemExit(f"error: expected key=value, got {pair!r}")
+        k, v = pair.split("=", 1)
+        attrs[k] = _coerce(v)
+    return attrs
+
+
+def _cmd_node(args) -> int:
+    db = TrikeDB(args.file)
+    if args.attr:
+        db.set_node(args.name, **_parse_attrs(args.attr))
+        db.save()
+    print(json.dumps({
+        "name": args.name,
+        "properties": db.node(args.name),
+        "outgoing": [t.to_dict() for t in db.triples(s=args.name)],
+        "incoming": [t.to_dict() for t in db.triples(o=args.name)],
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_ontology(args) -> int:
+    db = TrikeDB(args.file)
+    if args.set:
+        for pair in args.set:
+            pred, _, desc = pair.partition("=")
+            db.ontology[pred.strip()] = desc.strip()
+        db.save()
+    print(json.dumps(db.ontology, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _cmd_stats(args) -> int:
     db = TrikeDB(args.file)
     print(db)
@@ -190,6 +246,8 @@ _COMMANDS = {
     "import": _cmd_import,
     "add": _cmd_add,
     "rm": _cmd_rm,
+    "node": _cmd_node,
+    "ontology": _cmd_ontology,
     "stats": _cmd_stats,
     "html": _cmd_html,
     "jsonld": _cmd_jsonld,

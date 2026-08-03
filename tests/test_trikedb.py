@@ -396,3 +396,33 @@ def test_html_explicit_event_predicates():
     explicit = db.to_html(event_predicates=["AFFECTED_BY"])
     block = explicit.split("EVENT_PREDICATES = ")[1].split(";")[0]
     assert '"AFFECTED_BY"' in block and '"LOADS_FROM"' not in block
+
+
+def test_cli_node_set_and_show(tmp_path, capsys):
+    import json as _json
+
+    from trikedb.cli import main
+
+    g = str(tmp_path / "g.yaml")
+    assert main(["add", g, "svc-etl-01", "USES_ROLE", "LV3_FULL"]) == 0
+    capsys.readouterr()  # discard the add command's output
+    assert main(["node", g, "svc-etl-01", "-a", "label=etl-bot", "-a", "type=bot", "-a", "pii=false"]) == 0
+    shown = _json.loads(capsys.readouterr().out)
+    assert shown["properties"]["label"] == "etl-bot"
+    again = TrikeDB(g)
+    assert again.node("svc-etl-01") == {"label": "etl-bot", "type": "bot", "pii": False}
+    assert main(["node", g, "svc-etl-01"]) == 0  # show-only does not error
+
+
+def test_cli_ontology_set(tmp_path):
+    from trikedb.cli import main
+
+    g = str(tmp_path / "g.yaml")
+    assert main(["add", g, "a", "P", "b"]) == 0
+    assert main(["ontology", g, "--set", "P=first predicate", "--set", "Q=second"]) == 0
+    again = TrikeDB(g)
+    assert again.ontology == {"P": "first predicate", "Q": "second"}
+    import pytest as _pytest
+
+    with _pytest.raises(OntologyError):
+        again.add("x", "NOT_DECLARED", "y")
