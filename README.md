@@ -4,7 +4,7 @@
 
 # triplite
 
-**The SQLite of triple stores.** A knowledge graph that lives in a single YAML file, with a graph-database interface. Built for LLM agents.
+**The DuckDB of graph databases.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's a single YAML file. Built for LLM agents.
 
 ```yaml
 triples:
@@ -19,12 +19,13 @@ That file **is** the database. No server, no daemon, no cloud deployment. It dif
 
 RDF graph databases are like Oracle: powerful, correct, and heavy. SPARQL endpoints, OWL reasoners, enterprise semantic layers — great at scale, overkill when what you need is a curated map of a few hundred facts that your AI agents (and teammates) can trust.
 
-SQLite proved that "the database is just a file" unlocks a huge class of use cases. triplite applies the same move to knowledge graphs:
+DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in DuckDB's case) and shrink the *machinery* down to an embedded library over a file. triplite applies the same move to RDF graph databases — the interface is real SPARQL 1.1 (rdflib's engine, not a homegrown subset), the storage is YAML you can read, diff, and commit:
 
 |  | Full triple store (Jena, Virtuoso, Neptune, ...) | triplite |
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
-| Query | SPARQL | triple patterns built in, real SPARQL 1.1 via the `[sparql]` extra |
+| Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
+| Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a list of allowed predicates |
 | Agent integration | MCP / API layer | the agent just reads the file |
 | Setup time | an afternoon (or a sprint) | `pip install triplite` |
@@ -44,8 +45,7 @@ there is no step where a table name can be made up.
 ## Install
 
 ```bash
-pip install triplite            # core: PyYAML only
-pip install 'triplite[sparql]'  # + real SPARQL 1.1 queries (rdflib)
+pip install triplite
 ```
 
 ## Quickstart (Python)
@@ -81,6 +81,12 @@ db.sparql("""
   }
 """)
 db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
+
+# Writes go through SPARQL too, DuckDB-style — and land back in the YAML
+db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
+db.sparql("DELETE WHERE { ?job t:INGESTS_TO t:LEGACY_CONTACTS_DUMP }")
+db.save()  # or pass autosave=True and skip this
+
 db.to_rdflib()  # plain rdflib.Graph, if you want to go further
 
 db.save()                    # writes pipeline.yaml
@@ -101,6 +107,10 @@ triplite query pipeline.yaml -w "?vendor PROVIDES ?job" -w "?job INGESTS_TO ?tab
 
 triplite sparql pipeline.yaml \
   "SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }"
+
+# updates persist straight back to the file
+triplite sparql pipeline.yaml \
+  "INSERT DATA { t:figly t:PROVIDES t:figly-export-job }"
 
 triplite stats pipeline.yaml
 triplite html pipeline.yaml -o pipeline.html
@@ -151,7 +161,7 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## What triplite is not
 
-- **Not a SPARQL implementation of its own.** The built-in `query()` covers basic graph patterns with zero dependencies. Full SPARQL 1.1 is available via `pip install 'triplite[sparql]'`, and it is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:triplite:`; objects with whitespace (change events, notes) become literals.
+- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried/updated by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:triplite:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
 - **Not an extraction pipeline.** It won't turn your PDFs into a graph. Pair it with an extractor if you want that — then curate what comes out.
 - **Not for millions of triples.** Everything is in memory and scans are linear. The sweet spot is the hundreds-to-thousands range, where a curated graph is even possible.
 

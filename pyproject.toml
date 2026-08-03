@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triplite"
-version = "0.2.0"
+version = "0.3.0"
 description = "The SQLite of triple stores: a knowledge graph that lives in a single YAML file, with a graph-database interface. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Ryuto Yoda" }]
 requires-python = ">=3.9"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "rdflib>=7"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -25,8 +25,7 @@ classifiers = [
 Homepage = "https://github.com/RyutoYoda/triplite"
 
 [project.optional-dependencies]
-sparql = ["rdflib>=7"]
-dev = ["pytest>=7", "rdflib>=7"]
+dev = ["pytest>=7"]
 
 [project.scripts]
 triplite = "triplite.cli:main"

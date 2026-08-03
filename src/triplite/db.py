@@ -65,8 +65,11 @@ class TripLite:
         self,
         path: Union[str, Path, None] = None,
         ontology: Union[dict, Sequence[str], None] = None,
+        autosave: bool = False,
     ):
         self.path: Optional[Path] = Path(path) if path else None
+        #: when True, every mutation writes straight back to the file.
+        self.autosave = autosave
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
         self._triples: list = []
@@ -128,6 +131,7 @@ class TripLite:
                 return t
         triple = Triple(str(s), str(p), str(o), dict(attrs))
         self._triples.append(triple)
+        self._autosave()
         return triple
 
     def remove(
@@ -140,7 +144,13 @@ class TripLite:
         keep = [t for t in self._triples if not self._matches(t, s, p, o)]
         removed = len(self._triples) - len(keep)
         self._triples = keep
+        if removed:
+            self._autosave()
         return removed
+
+    def _autosave(self) -> None:
+        if self.autosave and self.path:
+            self.save()
 
     # -------------------------------------------------------------- reading
 
@@ -222,19 +232,15 @@ class TripLite:
     # -------------------------------------------------------------- sparql
 
     def to_rdflib(self, base: str = "urn:triplite:"):
-        """Convert to an rdflib.Graph. Requires the [sparql] extra.
+        """Convert to an rdflib.Graph.
 
         Subjects and predicates become URIRefs under `base`. Objects become
         URIRefs too, unless they contain whitespace (e.g. change-event
         descriptions), in which case they become Literals.
         """
-        try:
-            from rdflib import Graph, Literal, URIRef
-        except ImportError:  # pragma: no cover
-            raise ImportError(
-                "SPARQL support requires rdflib — pip install 'triplite[sparql]'"
-            ) from None
         from urllib.parse import quote
+
+        from rdflib import Graph, Literal, URIRef
 
         def node(name: str):
             return URIRef(base + quote(name, safe=""))
@@ -246,36 +252,65 @@ class TripLite:
             g.add((node(t.s), node(t.p), obj))
         return g
 
+    _UPDATE_KEYWORDS = frozenset(
+        {"INSERT", "DELETE", "CLEAR", "DROP", "CREATE", "LOAD", "MOVE", "COPY", "ADD", "WITH"}
+    )
+
     def sparql(self, query: str, base: str = "urn:triplite:"):
-        """Run a real SPARQL 1.1 query (via rdflib) against the graph.
+        """Run real SPARQL 1.1 (via rdflib) against the graph — reads and writes.
 
         The prefix `t:` is bound to `base`, so predicates are written
-        `t:PROVIDES`. SELECT returns a list of {var: value} dicts with
-        URIs shortened back to plain names; ASK returns a bool.
+        `t:PROVIDES`. SELECT returns a list of {var: value} dicts with URIs
+        shortened back to plain names; ASK returns a bool. Update forms
+        (INSERT DATA, DELETE WHERE, ...) mutate the store and return the
+        change in triple count.
 
         >>> db.sparql("SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }")
+        >>> db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
         """
-        from urllib.parse import unquote
+        first = next((w.upper() for w in query.split() if not w.startswith("#")), "")
+        if first in self._UPDATE_KEYWORDS:
+            return self.update(query, base=base)
 
         g = self.to_rdflib(base)
         result = g.query(f"PREFIX t: <{base}>\n" + query)
         if result.type == "ASK":
             return result.askAnswer
 
-        def shorten(value) -> str:
-            text = str(value)
-            if text.startswith(base):
-                return unquote(text[len(base):])
-            return text
-
         rows = []
         for binding in result:
             row = {}
             for var, value in zip(result.vars, binding):
                 if value is not None:
-                    row[str(var)] = shorten(value)
+                    row[str(var)] = _shorten(value, base)
             rows.append(row)
         return rows
+
+    def update(self, query: str, base: str = "urn:triplite:") -> int:
+        """Apply a SPARQL 1.1 Update and sync the result back to the store.
+
+        Attributes of surviving triples are preserved; triples inserted via
+        SPARQL start with no attributes. The ontology (if any) is enforced
+        on inserted predicates. Returns the net change in triple count.
+        """
+        g = self.to_rdflib(base)
+        g.update(f"PREFIX t: <{base}>\n" + query)
+
+        new_spos = {tuple(_shorten(x, base) for x in triple) for triple in g}
+        before = len(self._triples)
+        kept = [t for t in self._triples if t.spo() in new_spos]
+        existing = {t.spo() for t in kept}
+        for s, p, o in sorted(new_spos - existing):
+            if self.ontology and p not in self.ontology:
+                raise OntologyError(
+                    f"update inserts predicate {p!r} not in the ontology "
+                    f"(allowed: {sorted(self.ontology)})"
+                )
+            kept.append(Triple(s, p, o))
+        self._triples = kept
+        if len(self._triples) != before or new_spos - existing:
+            self._autosave()
+        return len(self._triples) - before
 
     # -------------------------------------------------------------- exports
 
@@ -307,6 +342,16 @@ class TripLite:
     def __repr__(self) -> str:
         where = str(self.path) if self.path else "in-memory"
         return f"<TripLite {where}: {len(self)} triples, {len(self.predicates())} predicates>"
+
+
+def _shorten(value, base: str) -> str:
+    """Map a URI under `base` back to its plain name; literals pass through."""
+    from urllib.parse import unquote
+
+    text = str(value)
+    if text.startswith(base):
+        return unquote(text[len(base):])
+    return text
 
 
 def _unify(pattern: tuple, t: Triple, binding: dict) -> Optional[dict]:

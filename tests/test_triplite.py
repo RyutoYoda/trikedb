@@ -160,3 +160,41 @@ def test_sparql_freetext_objects_are_literals():
     assert list(g)[0][2] == Literal("2025-04 API v3: units changed")
     rows = db.sparql("SELECT ?event WHERE { t:T t:AFFECTED_BY ?event }")
     assert rows == [{"event": "2025-04 API v3: units changed"}]
+
+
+# ------------------------------------------------------- sparql update
+
+def test_sparql_insert_data(db):
+    delta = db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
+    assert delta == 1
+    assert ("figly", "PROVIDES", "figly-export-job") in db
+
+
+def test_sparql_delete_where(db):
+    delta = db.sparql("DELETE WHERE { ?s t:PROVIDES ?o }")
+    assert delta == -2
+    assert list(db.triples(p="PROVIDES")) == []
+
+
+def test_update_preserves_attrs_of_surviving_triples(db):
+    db.sparql("INSERT DATA { t:x t:PROVIDES t:y }")
+    t = next(db.triples(s="crm-sync-job"))
+    assert t.attrs == {"schedule": "hourly"}
+    assert next(db.triples(s="LEGACY_DUMP")).attrs == {"deprecated": True}
+
+
+def test_update_respects_ontology(tmp_path):
+    db = TripLite(tmp_path / "g.yaml", ontology={"PROVIDES": ""})
+    db.add("a", "PROVIDES", "b")
+    with pytest.raises(OntologyError):
+        db.sparql("INSERT DATA { t:a t:MADE_UP t:b }")
+
+
+def test_autosave_roundtrip(tmp_path):
+    path = tmp_path / "g.yaml"
+    db = TripLite(path, autosave=True)
+    db.add("a", "P", "b")
+    db.sparql("INSERT DATA { t:c t:P t:d }")
+    assert len(TripLite(path)) == 2
+    db.remove(s="a")
+    assert len(TripLite(path)) == 1

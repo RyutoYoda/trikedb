@@ -41,10 +41,10 @@ def main(argv=None) -> int:
     p_rm.add_argument("-o", default=None)
 
     p_sparql = sub.add_parser(
-        "sparql", help="run a real SPARQL 1.1 query (requires 'triplite[sparql]')"
+        "sparql", help="run SPARQL 1.1 — SELECT/ASK to read, INSERT/DELETE to write"
     )
     p_sparql.add_argument("file")
-    p_sparql.add_argument("query", help="SPARQL query; prefix t: is pre-bound, e.g. t:PROVIDES")
+    p_sparql.add_argument("query", help="SPARQL query or update; prefix t: is pre-bound, e.g. t:PROVIDES")
     p_sparql.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
     p_stats = sub.add_parser("stats", help="summarize the graph")
@@ -89,6 +89,10 @@ def _cmd_sparql(args) -> int:
     if isinstance(result, bool):
         print(json.dumps(result) if args.json else ("yes" if result else "no"))
         return 0 if result else 1
+    if isinstance(result, int):  # update form: store changed, persist it
+        db.save()
+        print(f"{result:+d} triple(s) — {len(db)} total")
+        return 0
     return _print_rows(result, args.json)
 
 
