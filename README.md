@@ -174,11 +174,20 @@ One source of truth, two projections: YAML for machines, HTML for people.
 triplite html examples/acme_pipeline.yaml -o acme.html && open acme.html
 ```
 
+**Live demos (GitHub Pages):**
+
+- [acme knowledge graph](https://ryutoyoda.github.io/triplite/) — the fictional data platform
+- [python ecosystem](https://ryutoyoda.github.io/triplite/python_ecosystem.html) — dependencies and deprecations
+
+The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom.
+
 ## Development
 
+Uses [uv](https://docs.astral.sh/uv/):
+
 ```bash
-pip install -e '.[dev]'
-pytest
+uv sync --extra dev
+uv run pytest
 ```
 
 ## License

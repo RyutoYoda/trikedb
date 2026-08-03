@@ -323,7 +323,7 @@ class TripLite:
             node.setdefault(t.p, []).append(t.o)
         return {"@context": context, "@graph": list(nodes.values())}
 
-    def to_html(self, path: Union[str, Path, None] = None, title: str = "triplite graph") -> str:
+    def to_html(self, path: Union[str, Path, None] = None, title: str = "triplite knowledge graph") -> str:
         from .html import to_html
 
         return to_html(self, path=path, title=title)

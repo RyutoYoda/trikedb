@@ -112,7 +112,18 @@ def test_html_export(db, tmp_path):
     assert out.exists()
     assert "vis-network" in html
     assert "RAW_CRM_CONTACTS" in html
-    assert '"dashes": true' in html
+    assert '"deprecated": true' in html  # drives dashed edges in the JS
+    assert "oxigraph" in html  # in-browser SPARQL console
+    assert "triplite knowledge graph" in html  # default title
+    assert "urn:triplite:LEGACY_DUMP" in html  # embedded N-Triples for the engine
+
+
+def test_html_event_predicates_detected(tmp_path):
+    db = TripLite()
+    db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
+    db.add("a", "DEPENDS_ON", "b")
+    html = db.to_html()
+    assert '"AFFECTED_BY"' in html.split("EVENT_PREDICATES = ")[1].split(";")[0]
 
 
 def test_examples_load_and_query():

@@ -1,29 +1,8 @@
-"""Interactive HTML export: vis-network graph + in-browser SPARQL console.
-
-The exported page is a small single-file "workbench" over the graph:
-a searchable network view, a right-hand detail panel showing every
-property of the clicked node (URLs become links — this is the RDF
-promise: keep attaching facts as properties), a bottom bar of change
-events, and a SPARQL console powered by Oxigraph compiled to WASM
-(loaded from CDN on first use, never hand-rolled).
-"""
-
-from __future__ import annotations
-
-import json
-from pathlib import Path
-from typing import Union
-
-PALETTE = [
-    "#4f8ef7", "#f7784f", "#2fbf71", "#b04ff7", "#f7c34f",
-    "#4ff7e3", "#f74f9e", "#8ef74f", "#f74f4f", "#4f6af7",
-]
-
-_TEMPLATE = """<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>__TITLE__</title>
+<title>acme knowledge graph — triplite demo</title>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
   :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa; }
@@ -91,8 +70,8 @@ _TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <div id="header">
-  <h1>&#x1F996; __TITLE__</h1>
-  <div id="subtitle">__SUBTITLE__</div>
+  <h1>&#x1F996; acme knowledge graph — triplite demo</h1>
+  <div id="subtitle">12 triples &middot; 14 nodes &middot; one YAML file</div>
   <div id="legend"></div>
   <div id="spacer"></div>
   <input id="search" placeholder="search nodes...">
@@ -122,20 +101,20 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <script>
-const TRIPLES = __TRIPLES__;
-const PREDICATES = __PREDICATES__;
-const NT = __NT__;
-const EVENT_PREDICATES = __EVENT_PREDICATES__;
+const TRIPLES = [{"s": "salesflow-crm", "p": "PROVIDES", "o": "crm-sync-job"}, {"s": "adastra-ads", "p": "PROVIDES", "o": "ads-spend-collector"}, {"s": "pingtrack-web", "p": "PROVIDES", "o": "web-events-stream"}, {"s": "salesflow-crm", "p": "PROVIDES", "o": "crm-nightly-dump", "deprecated": true}, {"s": "crm-sync-job", "p": "INGESTS_TO", "o": "RAW_CRM_CONTACTS", "schedule": "hourly", "via": "https://api.salesflow.example/v2/contacts"}, {"s": "ads-spend-collector", "p": "INGESTS_TO", "o": "RAW_AD_SPEND_DAILY", "schedule": "daily 06:00 UTC", "via": "https://api.adastra.example/v3/spend"}, {"s": "web-events-stream", "p": "INGESTS_TO", "o": "RAW_WEB_EVENTS", "schedule": "streaming"}, {"s": "crm-nightly-dump", "p": "INGESTS_TO", "o": "LEGACY_CONTACTS_DUMP", "deprecated": true}, {"s": "RAW_AD_SPEND_DAILY", "p": "AFFECTED_BY", "o": "2025-04-01 adastra API v3: spend now reported in micros (was cents)"}, {"s": "RAW_CRM_CONTACTS", "p": "AFFECTED_BY", "o": "2025-06-15 email column dropped for privacy compliance"}, {"s": "LEGACY_CONTACTS_DUMP", "p": "MIGRATED_TO", "o": "RAW_CRM_CONTACTS", "deprecated": true}, {"s": "RAW_AD_SPEND_MANUAL", "p": "SUPPLEMENTS", "o": "RAW_AD_SPEND_DAILY", "note": "manual backfill covering spend before 2024"}];
+const PREDICATES = {"PROVIDES": "#4f8ef7", "INGESTS_TO": "#f7784f", "AFFECTED_BY": "#2fbf71", "MIGRATED_TO": "#b04ff7", "SUPPLEMENTS": "#f7c34f"};
+const NT = "<urn:triplite:RAW_CRM_CONTACTS> <urn:triplite:AFFECTED_BY> \"2025-06-15 email column dropped for privacy compliance\" .\n<urn:triplite:crm-sync-job> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n<urn:triplite:crm-nightly-dump> <urn:triplite:INGESTS_TO> <urn:triplite:LEGACY_CONTACTS_DUMP> .\n<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-nightly-dump> .\n<urn:triplite:salesflow-crm> <urn:triplite:PROVIDES> <urn:triplite:crm-sync-job> .\n<urn:triplite:web-events-stream> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_WEB_EVENTS> .\n<urn:triplite:ads-spend-collector> <urn:triplite:INGESTS_TO> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:adastra-ads> <urn:triplite:PROVIDES> <urn:triplite:ads-spend-collector> .\n<urn:triplite:LEGACY_CONTACTS_DUMP> <urn:triplite:MIGRATED_TO> <urn:triplite:RAW_CRM_CONTACTS> .\n<urn:triplite:RAW_AD_SPEND_DAILY> <urn:triplite:AFFECTED_BY> \"2025-04-01 adastra API v3: spend now reported in micros (was cents)\" .\n<urn:triplite:RAW_AD_SPEND_MANUAL> <urn:triplite:SUPPLEMENTS> <urn:triplite:RAW_AD_SPEND_DAILY> .\n<urn:triplite:pingtrack-web> <urn:triplite:PROVIDES> <urn:triplite:web-events-stream> .\n";
+const EVENT_PREDICATES = ["AFFECTED_BY"];
 const BASE = "urn:triplite:";
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set(TRIPLES.flatMap(t => [t.s, t.o]))];
 const degree = {};
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
-const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
+const wrap = (id) => id.length > 14 ? id.replace(/([_\-])/g, "$1\n").replace(/\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
 const nodes = new vis.DataSet(ids.map(id => eventNodes.has(id)
-  ? { id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
+  ? { id, label: id.length > 26 ? id.slice(0, 26) + "\u2026" : id, shape: "diamond", size: 9,
       color: { border: "#f74f4f", background: "#3a1f1f" },
       font: { color: "#f0a0a0", size: 10 } }
   : { id, label: wrap(id), value: degree[id] || 1 }));
@@ -143,7 +122,7 @@ const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: t.s, to: t.o, label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
   const attrs = Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k));
-  if (attrs.length) e.title = attrs.map(([k, v]) => k + ": " + v).join("\\n");
+  if (attrs.length) e.title = attrs.map(([k, v]) => k + ": " + v).join("\n");
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
   return e;
 }));
@@ -183,7 +162,7 @@ document.getElementById("search").addEventListener("keydown", (e) => {
 
 // --------------------------------------------------------- detail panel
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const linkify = (s) => esc(s).replace(/(https?:\\/\\/[^\\s<]+)/g,
+const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g,
   '<a href="$1" target="_blank" rel="noopener">$1</a>');
 
 function relHTML(t, other, arrow) {
@@ -227,7 +206,7 @@ if (!eventTriples.length) eventsBar.style.display = "none";
 eventTriples.forEach(t => {
   const chip = document.createElement("span");
   chip.className = "chip";
-  chip.innerHTML = `<b>${esc(t.s)}</b>${esc(t.o.length > 70 ? t.o.slice(0, 70) + "\\u2026" : t.o)}`;
+  chip.innerHTML = `<b>${esc(t.s)}</b>${esc(t.o.length > 70 ? t.o.slice(0, 70) + "\u2026" : t.o)}`;
   chip.onclick = () => focusNode(t.s);
   eventsBar.appendChild(chip);
 });
@@ -251,10 +230,10 @@ const shorten = (v) => v && v.startsWith && v.startsWith(BASE)
   ? decodeURIComponent(v.slice(BASE.length)) : v;
 document.getElementById("btn-run").onclick = async () => {
   const box = document.getElementById("results");
-  box.innerHTML = '<span class="hint">loading engine\\u2026</span>';
+  box.innerHTML = '<span class="hint">loading engine\u2026</span>';
   try {
     const s = await ensureStore();
-    const result = s.query("PREFIX t: <" + BASE + ">\\n" + document.getElementById("sparql-input").value);
+    const result = s.query("PREFIX t: <" + BASE + ">\n" + document.getElementById("sparql-input").value);
     if (typeof result === "boolean") {
       box.innerHTML = `<table><tr><th>ASK</th></tr><tr><td>${result ? "yes" : "no"}</td></tr></table>`;
       return;
@@ -282,36 +261,3 @@ document.getElementById("btn-run").onclick = async () => {
 </script>
 </body>
 </html>
-"""
-
-
-def to_html(db, path: Union[str, Path, None] = None, title: str = "triplite knowledge graph") -> str:
-    """Render the graph to a self-contained interactive HTML workbench."""
-    predicates = db.predicates()
-    colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
-    triples = [t.to_dict() for t in db]
-    nt = db.to_rdflib().serialize(format="nt")
-
-    # change-event predicates power the bottom bar: heuristically, those
-    # whose objects are free text (whitespace) rather than node names
-    event_preds = sorted({
-        t.p for t in db if any(c.isspace() for c in t.o)
-    })
-
-    n_nodes = len(db.nodes())
-    subtitle = (
-        f"{len(triples)} triples &middot; {n_nodes} nodes &middot; one YAML file"
-    )
-
-    html = (
-        _TEMPLATE
-        .replace("__TITLE__", title)
-        .replace("__SUBTITLE__", subtitle)
-        .replace("__TRIPLES__", json.dumps(triples, ensure_ascii=False))
-        .replace("__PREDICATES__", json.dumps(colors, ensure_ascii=False))
-        .replace("__NT__", json.dumps(nt, ensure_ascii=False))
-        .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
-    )
-    if path is not None:
-        Path(path).write_text(html, encoding="utf-8")
-    return html
