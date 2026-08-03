@@ -138,16 +138,24 @@ const degree = {};
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
+// vis-network requires levels on ALL nodes or NONE — honor explicit level
+// props only when every non-event node has one (events go one past the max)
+const explicitLevels = ids.filter(id => !eventNodes.has(id)).map(id => (NODES_META[id] || {}).level);
+const useLevels = explicitLevels.length > 0 && explicitLevels.every(l => typeof l === "number");
+const maxLevel = useLevels ? Math.max(...explicitLevels) : 0;
 const nodes = new vis.DataSet(ids.map(id => {
-  if (eventNodes.has(id)) return {
-    id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
-    color: { border: "#f74f4f", background: "#3a1f1f" }, font: { color: "#f0a0a0", size: 10 } };
+  if (eventNodes.has(id)) {
+    const n = { id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
+                color: { border: "#f74f4f", background: "#3a1f1f" }, font: { color: "#f0a0a0", size: 10 } };
+    if (useLevels) n.level = maxLevel + 1;
+    return n;
+  }
   const meta = NODES_META[id] || {};
   const n = { id, label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
   const tc = NODE_TYPES[meta.type];
   if (tc) n.color = { border: tc, background: "#1e2129",
                       highlight: { border: "#ffffff", background: "#2c4a6e" } };
-  if (typeof meta.level === "number") n.level = meta.level;
+  if (useLevels) n.level = meta.level;
   return n;
 }));
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
