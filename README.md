@@ -27,7 +27,7 @@ DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in 
 | Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a list of allowed predicates |
-| Agent integration | MCP / API layer | the agent just reads the file |
+| Agent integration | a service to operate | the agent reads the file, or `triplite mcp` (stdio, embedded) |
 | Setup time | an afternoon (or a sprint) | `pip install triplite` |
 
 If you need inference engines, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's triplite. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
@@ -45,7 +45,8 @@ there is no step where a table name can be made up.
 ## Install
 
 ```bash
-pip install triplite
+pip install triplite           # library + CLI
+pip install 'triplite[mcp]'    # + MCP server for AI agents
 ```
 
 ## Quickstart (Python)
@@ -87,10 +88,8 @@ db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 db.sparql("DELETE WHERE { ?job t:INGESTS_TO t:LEGACY_CONTACTS_DUMP }")
 db.save()  # or pass autosave=True and skip this
 
-db.to_rdflib()  # plain rdflib.Graph, if you want to go further
-
-db.save()                    # writes pipeline.yaml
-db.to_html("pipeline.html")  # interactive vis-network visualization
+db.to_rdflib()               # plain rdflib.Graph, if you want to go further
+db.to_html("pipeline.html")  # interactive graph workbench (see demos below)
 db.to_jsonld()               # best-effort export for real RDF tooling
 ```
 
