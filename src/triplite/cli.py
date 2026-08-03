@@ -64,6 +64,11 @@ def main(argv=None) -> int:
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
 
+    p_mcp = sub.add_parser(
+        "mcp", help="serve the graph as an MCP server (stdio) — an ontology layer for AI agents"
+    )
+    p_mcp.add_argument("file")
+
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
 
@@ -166,6 +171,13 @@ def _cmd_jsonld(args) -> int:
     return 0
 
 
+def _cmd_mcp(args) -> int:
+    from .mcp_server import serve
+
+    serve(args.file)
+    return 0
+
+
 _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
@@ -175,6 +187,7 @@ _COMMANDS = {
     "stats": _cmd_stats,
     "html": _cmd_html,
     "jsonld": _cmd_jsonld,
+    "mcp": _cmd_mcp,
 }
 
 

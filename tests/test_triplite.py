@@ -332,3 +332,56 @@ def test_html_includes_node_meta_and_flow():
     assert '"type": "saas"' in html
     assert "hierarchical" in html  # flow layout
     assert "NODE_TYPES" in html
+
+
+# --------------------------------------------------------------- mcp
+
+def test_mcp_server_tools_and_roundtrip(tmp_path):
+    pytest.importorskip("mcp")
+    import asyncio
+    import json as _json
+
+    from triplite.mcp_server import build_server
+
+    path = tmp_path / "g.yaml"
+    TripLite(path, ontology={"PROVIDES": "vendor -> job"}).save()
+    server = build_server(path)
+
+    names = {t.name for t in asyncio.run(server.list_tools())}
+    assert {"sparql", "match", "add_triple", "remove_triples",
+            "set_node", "get_node", "ontology", "stats", "import_source"} <= names
+
+    async def call(name, args):
+        content = await server.call_tool(name, args)
+        blocks = content[0] if isinstance(content, tuple) else content
+        return _json.loads(blocks[0].text)
+
+    added = asyncio.run(call("add_triple", {"s": "v", "p": "PROVIDES", "o": "j",
+                                            "attrs": {"note": "from docs"}}))
+    assert added == {"s": "v", "p": "PROVIDES", "o": "j", "note": "from docs"}
+    assert len(TripLite(path)) == 1  # autosaved
+
+    node = asyncio.run(call("get_node", {"name": "v"}))
+    assert node["outgoing"][0]["o"] == "j"
+
+    onto = asyncio.run(call("ontology", {}))
+    assert onto == {"PROVIDES": "vendor -> job"}
+
+
+def test_mcp_rejects_ontology_violation_and_full_wipe(tmp_path):
+    pytest.importorskip("mcp")
+    import asyncio
+
+    from triplite.mcp_server import build_server
+
+    path = tmp_path / "g.yaml"
+    TripLite(path, ontology={"PROVIDES": ""}).save()
+    server = build_server(path)
+
+    async def raw_call(name, args):
+        return await server.call_tool(name, args)
+
+    with pytest.raises(Exception):
+        asyncio.run(raw_call("add_triple", {"s": "a", "p": "MADE_UP", "o": "b"}))
+    with pytest.raises(Exception):
+        asyncio.run(raw_call("remove_triples", {}))

@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "triplite"
-version = "0.6.0"
+version = "0.7.0"
 description = "The DuckDB of graph databases: a knowledge graph that lives in a single YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Ryuto Yoda" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0", "rdflib>=7"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
@@ -25,7 +25,8 @@ classifiers = [
 Homepage = "https://github.com/RyutoYoda/triplite"
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+mcp = ["mcp>=1.2,<2"]
+dev = ["pytest>=7", "mcp>=1.2,<2"]
 
 [project.scripts]
 triplite = "triplite.cli:main"

@@ -171,9 +171,21 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/a
 - **`via:` / `schedule:`** attributes carry operational detail without polluting the node set.
 - **Node properties keep growing.** That's the RDF promise: attach `type`, `url`, `schema`, owners — whatever your team needs — without a schema migration. `type` drives color grouping in the HTML view, and node properties are queryable in SPARQL (`?x t:type "table"`). Set them from code with `db.set_node("RAW_CRM_CONTACTS", pii=True)`.
 
-## Using it with LLM agents
+## An ontology layer for AI agents (MCP)
 
-The intended loop:
+Like the database it takes its analogy from, triplite is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
+
+```bash
+claude mcp add kg -- uvx --from 'triplite[mcp]' triplite mcp /absolute/path/to/graph.yaml
+```
+
+The agent gets `sparql`, `match`, `get_node`, `ontology`, `stats` to read, and `add_triple`, `set_node`, `remove_triples`, `import_source` to write. Every write autosaves to the YAML — so agent contributions arrive as reviewable git diffs.
+
+This is also the answer to "just throw docs at it": **the agent is the extractor, triplite is the validated write path.** Point your agent at a pile of documents and ask it to record the facts; it reads them (any format — it's an LLM), calls `add_triple` for each fact, and the ontology rejects any predicate it tries to invent. Extraction stays flexible, the graph stays clean, and a human reviews the diff.
+
+## Using it with LLM agents (no MCP)
+
+The zero-setup loop:
 
 1. Keep `graph.yaml` in your repo, next to the code it describes.
 2. Tell your agent about it once (e.g. in `CLAUDE.md` / your system prompt):
