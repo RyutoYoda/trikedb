@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "triplite"
-version = "0.7.0"
+name = "trikedb"
+version = "0.8.0"
 description = "The DuckDB of graph databases: a knowledge graph that lives in a single YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
@@ -22,14 +22,14 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/RyutoYoda/triplite"
+Homepage = "https://github.com/RyutoYoda/trikedb"
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.2,<2"]
 dev = ["pytest>=7", "mcp>=1.2,<2"]
 
 [project.scripts]
-triplite = "triplite.cli:main"
+trikedb = "trikedb.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

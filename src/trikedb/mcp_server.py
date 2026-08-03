@@ -1,6 +1,6 @@
-"""MCP server: expose a triplite graph as an ontology layer for AI agents.
+"""MCP server: expose a trikedb graph as an ontology layer for AI agents.
 
-Run with `triplite mcp graph.yaml` (stdio transport). The graph opens
+Run with `trikedb mcp graph.yaml` (stdio transport). The graph opens
 with autosave, so every write an agent makes lands in the YAML file
 immediately — reviewable as a plain git diff. The ontology, if the
 file declares one, is enforced on every write, which is what makes
@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from .db import TripLite
+from .db import TrikeDB
 
 
 def build_server(path: Union[str, Path]):
@@ -21,12 +21,12 @@ def build_server(path: Union[str, Path]):
         from mcp.server.fastmcp import FastMCP
     except ImportError:  # pragma: no cover
         raise ImportError(
-            "MCP support requires the mcp package — pip install 'triplite[mcp]'"
+            "MCP support requires the mcp package — pip install 'trikedb[mcp]'"
         ) from None
 
-    db = TripLite(path, autosave=True)
+    db = TrikeDB(path, autosave=True)
     server = FastMCP(
-        "triplite",
+        "trikedb",
         instructions=(
             f"Knowledge graph stored in {path}. Read with sparql/match/get_node, "
             "write with add_triple/set_node/import_source. Call ontology() before "

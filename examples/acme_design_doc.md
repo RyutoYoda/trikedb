@@ -1,7 +1,7 @@
 # Acme data platform — Q3 ingestion changes
 
 This is an ordinary design doc. The prose is for humans; the tables
-below are picked up by `triplite import` because their headers have
+below are picked up by `trikedb import` because their headers have
 s/p/o columns. Everything else (including this paragraph and the
 non-triple table at the bottom) is ignored.
 

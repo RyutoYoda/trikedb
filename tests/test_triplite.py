@@ -1,12 +1,12 @@
 import pytest
 import yaml
 
-from triplite import OntologyError, TripLite
+from trikedb import OntologyError, TrikeDB
 
 
 @pytest.fixture
 def db(tmp_path):
-    db = TripLite(tmp_path / "graph.yaml")
+    db = TrikeDB(tmp_path / "graph.yaml")
     db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
     db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS", schedule="hourly")
     db.add("adastra-ads", "PROVIDES", "ads-spend-collector")
@@ -50,7 +50,7 @@ def test_query_with_constant_and_string_pattern(db):
 
 
 def test_query_quoted_object():
-    db = TripLite()
+    db = TrikeDB()
     db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
     rows = db.query(['?t AFFECTED_BY "2025-04 API v3: units changed"'])
     assert rows == [{"t": "T"}]
@@ -58,7 +58,7 @@ def test_query_quoted_object():
 
 def test_save_load_roundtrip(db, tmp_path):
     path = db.save()
-    again = TripLite(path)
+    again = TrikeDB(path)
     assert len(again) == len(db)
     assert [t.to_dict() for t in again] == [t.to_dict() for t in db]
 
@@ -69,7 +69,7 @@ def test_saved_yaml_is_flat_and_readable(db):
 
 
 def test_ontology_rejects_unknown_predicate(tmp_path):
-    db = TripLite(tmp_path / "g.yaml", ontology={"PROVIDES": "vendor -> job"})
+    db = TrikeDB(tmp_path / "g.yaml", ontology={"PROVIDES": "vendor -> job"})
     db.add("a", "PROVIDES", "b")
     with pytest.raises(OntologyError):
         db.add("a", "TOTALLY_MADE_UP", "b")
@@ -81,7 +81,7 @@ def test_ontology_loaded_from_file(tmp_path):
         "ontology:\n  predicates:\n    ONLY: allowed one\n"
         "triples:\n  - {s: a, p: ONLY, o: b}\n"
     )
-    db = TripLite(path)
+    db = TrikeDB(path)
     assert db.ontology == {"ONLY": "allowed one"}
     with pytest.raises(OntologyError):
         db.add("x", "OTHER", "y")
@@ -114,12 +114,12 @@ def test_html_export(db, tmp_path):
     assert "RAW_CRM_CONTACTS" in html
     assert '"deprecated": true' in html  # drives dashed edges in the JS
     assert "oxigraph" in html  # in-browser SPARQL console
-    assert "triplite knowledge graph" in html  # default title
-    assert "urn:triplite:LEGACY_DUMP" in html  # embedded N-Triples for the engine
+    assert "trikedb knowledge graph" in html  # default title
+    assert "urn:trikedb:LEGACY_DUMP" in html  # embedded N-Triples for the engine
 
 
 def test_html_event_predicates_detected(tmp_path):
-    db = TripLite()
+    db = TrikeDB()
     db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
     db.add("a", "DEPENDS_ON", "b")
     html = db.to_html()
@@ -130,12 +130,12 @@ def test_examples_load_and_query():
     from pathlib import Path
 
     examples = Path(__file__).resolve().parent.parent / "examples"
-    acme = TripLite(examples / "acme_pipeline.yaml")
+    acme = TrikeDB(examples / "acme_pipeline.yaml")
     assert len(acme.ontology) == 5
     rows = acme.query(["?v PROVIDES ?j", "?j INGESTS_TO ?t"])
     assert {"v": "salesflow-crm", "j": "crm-sync-job", "t": "RAW_CRM_CONTACTS"} in rows
 
-    eco = TripLite(examples / "python_ecosystem.yaml")
+    eco = TrikeDB(examples / "python_ecosystem.yaml")
     assert eco.ontology == {}
     assert "numpy" in eco.objects(p="DEPENDS_ON")
 
@@ -152,7 +152,7 @@ def test_sparql_select_join(db):
 
 def test_sparql_filter(db):
     rows = db.sparql(
-        'SELECT ?t WHERE { ?j t:INGESTS_TO ?t . FILTER(STRSTARTS(STR(?t), "urn:triplite:RAW_CRM")) }'
+        'SELECT ?t WHERE { ?j t:INGESTS_TO ?t . FILTER(STRSTARTS(STR(?t), "urn:trikedb:RAW_CRM")) }'
     )
     assert rows == [{"t": "RAW_CRM_CONTACTS"}]
 
@@ -163,7 +163,7 @@ def test_sparql_ask(db):
 
 
 def test_sparql_freetext_objects_are_literals():
-    db = TripLite()
+    db = TrikeDB()
     db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
     g = db.to_rdflib()
     from rdflib import Literal
@@ -195,7 +195,7 @@ def test_update_preserves_attrs_of_surviving_triples(db):
 
 
 def test_update_respects_ontology(tmp_path):
-    db = TripLite(tmp_path / "g.yaml", ontology={"PROVIDES": ""})
+    db = TrikeDB(tmp_path / "g.yaml", ontology={"PROVIDES": ""})
     db.add("a", "PROVIDES", "b")
     with pytest.raises(OntologyError):
         db.sparql("INSERT DATA { t:a t:MADE_UP t:b }")
@@ -203,12 +203,12 @@ def test_update_respects_ontology(tmp_path):
 
 def test_autosave_roundtrip(tmp_path):
     path = tmp_path / "g.yaml"
-    db = TripLite(path, autosave=True)
+    db = TrikeDB(path, autosave=True)
     db.add("a", "P", "b")
     db.sparql("INSERT DATA { t:c t:P t:d }")
-    assert len(TripLite(path)) == 2
+    assert len(TrikeDB(path)) == 2
     db.remove(s="a")
-    assert len(TripLite(path)) == 1
+    assert len(TrikeDB(path)) == 1
 
 
 # --------------------------------------------------------------- imports
@@ -221,7 +221,7 @@ def test_import_csv(tmp_path):
         "figly-job,INGESTS_TO,RAW_FIGLY,daily,\n"
         "OLD_FIGLY,MIGRATED_TO,RAW_FIGLY,,true\n"
     )
-    db = TripLite()
+    db = TrikeDB()
     assert db.import_file(src) == 3
     t = next(db.triples(s="figly-job"))
     assert t.attrs == {"schedule": "daily"}
@@ -232,7 +232,7 @@ def test_import_csv_requires_spo_header(tmp_path):
     src = tmp_path / "bad.csv"
     src.write_text("from,to\na,b\n")
     with pytest.raises(ValueError):
-        TripLite().import_file(src)
+        TrikeDB().import_file(src)
 
 
 def test_import_markdown_tables_only_spo(tmp_path):
@@ -247,7 +247,7 @@ def test_import_markdown_tables_only_spo(tmp_path):
         "| T | AFFECTED_BY | 2025-09-01 field dropped |\n\n"
         "| step | owner |\n|------|-------|\n| a | alice |\n"
     )
-    db = TripLite()
+    db = TrikeDB()
     assert db.import_file(src) == 3
     assert ("j", "INGESTS_TO", "T") in db
     assert next(db.triples(s="j")).attrs == {"schedule": "streaming"}
@@ -257,18 +257,18 @@ def test_import_markdown_tables_only_spo(tmp_path):
 def test_import_respects_ontology(tmp_path):
     src = tmp_path / "extra.csv"
     src.write_text("s,p,o\na,NOT_ALLOWED,b\n")
-    db = TripLite(ontology={"PROVIDES": ""})
+    db = TrikeDB(ontology={"PROVIDES": ""})
     with pytest.raises(OntologyError):
         db.import_file(src)
 
 
 def test_import_yaml_merge(tmp_path):
     other = tmp_path / "other.yaml"
-    TripLite(other).add("x", "P", "y") and None
-    db_other = TripLite(other)
+    TrikeDB(other).add("x", "P", "y") and None
+    db_other = TrikeDB(other)
     db_other.add("x", "P", "y")
     db_other.save()
-    db = TripLite()
+    db = TrikeDB()
     db.add("a", "P", "b")
     assert db.import_file(other) == 1
     assert len(db) == 2
@@ -278,7 +278,7 @@ def test_import_example_files():
     from pathlib import Path
 
     examples = Path(__file__).resolve().parent.parent / "examples"
-    db = TripLite(examples / "acme_pipeline.yaml")
+    db = TrikeDB(examples / "acme_pipeline.yaml")
     added = db.import_file(examples / "acme_new_vendors.csv")
     added += db.import_file(examples / "acme_design_doc.md")
     assert added == 8  # 5 from the CSV, 3 from the two s/p/o tables in the doc
@@ -290,18 +290,18 @@ def test_import_example_files():
 
 def test_node_props_roundtrip(tmp_path):
     path = tmp_path / "g.yaml"
-    db = TripLite(path)
+    db = TrikeDB(path)
     db.add("v", "PROVIDES", "j")
     db.set_node("v", type="saas", url="https://v.example")
     db.set_node("v", plan="enterprise")  # merges
     db.save()
-    again = TripLite(path)
+    again = TrikeDB(path)
     assert again.node("v") == {"type": "saas", "url": "https://v.example", "plan": "enterprise"}
     assert again.node("j") == {}
 
 
 def test_node_props_queryable_via_sparql():
-    db = TripLite()
+    db = TrikeDB()
     db.add("v", "PROVIDES", "j")
     db.set_node("v", type="saas")
     db.set_node("j", type="job")
@@ -310,7 +310,7 @@ def test_node_props_queryable_via_sparql():
 
 
 def test_update_does_not_absorb_node_props():
-    db = TripLite()
+    db = TrikeDB()
     db.add("a", "P", "b")
     db.set_node("a", type="saas")
     db.sparql("INSERT DATA { t:c t:P t:d }")
@@ -319,13 +319,13 @@ def test_update_does_not_absorb_node_props():
 
 
 def test_meta_only_node_appears_in_nodes():
-    db = TripLite()
+    db = TrikeDB()
     db.set_node("lonely", type="table")
     assert "lonely" in db.nodes()
 
 
 def test_html_includes_node_meta_and_flow():
-    db = TripLite()
+    db = TrikeDB()
     db.add("v", "PROVIDES", "j")
     db.set_node("v", type="saas", url="https://v.example")
     html = db.to_html()
@@ -341,10 +341,10 @@ def test_mcp_server_tools_and_roundtrip(tmp_path):
     import asyncio
     import json as _json
 
-    from triplite.mcp_server import build_server
+    from trikedb.mcp_server import build_server
 
     path = tmp_path / "g.yaml"
-    TripLite(path, ontology={"PROVIDES": "vendor -> job"}).save()
+    TrikeDB(path, ontology={"PROVIDES": "vendor -> job"}).save()
     server = build_server(path)
 
     names = {t.name for t in asyncio.run(server.list_tools())}
@@ -359,7 +359,7 @@ def test_mcp_server_tools_and_roundtrip(tmp_path):
     added = asyncio.run(call("add_triple", {"s": "v", "p": "PROVIDES", "o": "j",
                                             "attrs": {"note": "from docs"}}))
     assert added == {"s": "v", "p": "PROVIDES", "o": "j", "note": "from docs"}
-    assert len(TripLite(path)) == 1  # autosaved
+    assert len(TrikeDB(path)) == 1  # autosaved
 
     node = asyncio.run(call("get_node", {"name": "v"}))
     assert node["outgoing"][0]["o"] == "j"
@@ -372,10 +372,10 @@ def test_mcp_rejects_ontology_violation_and_full_wipe(tmp_path):
     pytest.importorskip("mcp")
     import asyncio
 
-    from triplite.mcp_server import build_server
+    from trikedb.mcp_server import build_server
 
     path = tmp_path / "g.yaml"
-    TripLite(path, ontology={"PROVIDES": ""}).save()
+    TrikeDB(path, ontology={"PROVIDES": ""}).save()
     server = build_server(path)
 
     async def raw_call(name, args):

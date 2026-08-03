@@ -130,7 +130,7 @@ const NODES_META = __NODES_META__;
 const NODE_TYPES = __NODE_TYPES__;
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
-const BASE = "urn:triplite:";
+const BASE = "urn:trikedb:";
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
@@ -317,7 +317,7 @@ document.getElementById("btn-run").onclick = async () => {
 """
 
 
-def to_html(db, path: Union[str, Path, None] = None, title: str = "triplite knowledge graph") -> str:
+def to_html(db, path: Union[str, Path, None] = None, title: str = "trikedb knowledge graph") -> str:
     """Render the graph to a self-contained interactive HTML workbench."""
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}

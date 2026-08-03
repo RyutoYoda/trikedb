@@ -1,6 +1,6 @@
 # Example: the data platform of Acme Corp (a fictional company).
 #
-# This is the use case triplite was designed for: a curated map of
+# This is the use case trikedb was designed for: a curated map of
 # "which SaaS feeds which ingestion job feeds which warehouse table",
 # including change events, deprecations and migrations — so that an
 # LLM agent can Read this one file and reason about the pipeline

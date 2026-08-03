@@ -1,6 +1,6 @@
 # Example: a slice of the Python packaging ecosystem (public facts).
 #
-# Shows triplite on a different domain: free-form predicates
+# Shows trikedb on a different domain: free-form predicates
 # (no ontology section), dependency edges, and the same
 # deprecation/migration vocabulary applied to software history.
 

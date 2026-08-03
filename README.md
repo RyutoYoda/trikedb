@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.svg" width="220" alt="triplite — a triceratops whose three horns are the triple: subject, predicate, object">
+  <img src="docs/logo.svg" width="220" alt="trikedb — a triceratops whose three horns are the triple: subject, predicate, object">
 </p>
 
-# triplite
+# trikedb
 
 **The DuckDB of graph databases.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's a single YAML file. Built for LLM agents.
 
@@ -13,28 +13,28 @@ triples:
   - {s: LEGACY_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
 ```
 
-That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part triplite is actually designed around — **an LLM agent can `Read` it directly and reason over your domain without hallucinating entity names.**
+That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and reason over your domain without hallucinating entity names.**
 
 ## Why
 
 RDF graph databases are like Oracle: powerful, correct, and heavy. SPARQL endpoints, OWL reasoners, enterprise semantic layers — great at scale, overkill when what you need is a curated map of a few hundred facts that your AI agents (and teammates) can trust.
 
-DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in DuckDB's case) and shrink the *machinery* down to an embedded library over a file. triplite applies the same move to RDF graph databases — the interface is real SPARQL 1.1 (rdflib's engine, not a homegrown subset), the storage is YAML you can read, diff, and commit:
+DuckDB proved the pattern: keep the *interface* of the big system (full SQL, in DuckDB's case) and shrink the *machinery* down to an embedded library over a file. trikedb applies the same move to RDF graph databases — the interface is real SPARQL 1.1 (rdflib's engine, not a homegrown subset), the storage is YAML you can read, diff, and commit:
 
-|  | A full triple-store deployment | triplite |
+|  | A full triple-store deployment | trikedb |
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
 | Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a list of allowed predicates |
-| Agent integration | a service to operate | the agent reads the file, or `triplite mcp` (stdio, embedded) |
-| Setup time | an afternoon (or a sprint) | `pip install triplite` |
+| Agent integration | a service to operate | the agent reads the file, or `trikedb mcp` (stdio, embedded) |
+| Setup time | an afternoon (or a sprint) | `pip install trikedb` |
 
-If you need inference engines, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's triplite. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
+If you need inference engines, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's trikedb. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
 
 ### Curation-first, not extraction-first
 
-Most "AI knowledge graph" tools use an LLM to extract triples from text. That's great for bootstrapping, but extracted graphs inherit hallucinations. triplite takes the opposite stance: **the graph is curated data** (by humans, or by agents you supervise), the ontology constrains what can be said, and LLMs *consume* the graph rather than invent it. When an agent reads
+Most "AI knowledge graph" tools use an LLM to extract triples from text. That's great for bootstrapping, but extracted graphs inherit hallucinations. trikedb takes the opposite stance: **the graph is curated data** (by humans, or by agents you supervise), the ontology constrains what can be said, and LLMs *consume* the graph rather than invent it. When an agent reads
 
 ```yaml
 - {s: crm-sync-job, p: INGESTS_TO, o: RAW_CRM_CONTACTS}
@@ -45,16 +45,16 @@ there is no step where a table name can be made up.
 ## Install
 
 ```bash
-pip install triplite           # library + CLI
-pip install 'triplite[mcp]'    # + MCP server for AI agents
+pip install trikedb           # library + CLI
+pip install 'trikedb[mcp]'    # + MCP server for AI agents
 ```
 
 ## Quickstart (Python)
 
 ```python
-from triplite import TripLite
+from trikedb import TrikeDB
 
-db = TripLite("pipeline.yaml", ontology={
+db = TrikeDB("pipeline.yaml", ontology={
     "PROVIDES": "SaaS vendor -> ingestion job",
     "INGESTS_TO": "ingestion job -> warehouse table",
     "MIGRATED_TO": "deprecated table -> its replacement",
@@ -78,7 +78,7 @@ db.sparql("""
   SELECT ?vendor ?table WHERE {
     ?vendor t:PROVIDES ?job .
     ?job t:INGESTS_TO ?table .
-    FILTER(STRSTARTS(STR(?table), "urn:triplite:RAW_"))
+    FILTER(STRSTARTS(STR(?table), "urn:trikedb:RAW_"))
   }
 """)
 db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
@@ -96,24 +96,24 @@ db.to_jsonld()               # best-effort export for real RDF tooling
 ## Quickstart (CLI)
 
 ```bash
-triplite add pipeline.yaml salesflow-crm PROVIDES crm-sync-job
-triplite add pipeline.yaml crm-sync-job INGESTS_TO RAW_CRM_CONTACTS -a schedule=hourly
+trikedb add pipeline.yaml salesflow-crm PROVIDES crm-sync-job
+trikedb add pipeline.yaml crm-sync-job INGESTS_TO RAW_CRM_CONTACTS -a schedule=hourly
 
-triplite query pipeline.yaml -w "?vendor PROVIDES ?job" -w "?job INGESTS_TO ?table"
+trikedb query pipeline.yaml -w "?vendor PROVIDES ?job" -w "?job INGESTS_TO ?table"
 # vendor         job           table
 # -------------  ------------  ----------------
 # salesflow-crm  crm-sync-job  RAW_CRM_CONTACTS
 
-triplite sparql pipeline.yaml \
+trikedb sparql pipeline.yaml \
   "SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }"
 
 # updates persist straight back to the file
-triplite sparql pipeline.yaml \
+trikedb sparql pipeline.yaml \
   "INSERT DATA { t:figly t:PROVIDES t:figly-export-job }"
 
-triplite stats pipeline.yaml
-triplite html pipeline.yaml -o pipeline.html
-triplite jsonld pipeline.yaml
+trikedb stats pipeline.yaml
+trikedb html pipeline.yaml -o pipeline.html
+trikedb jsonld pipeline.yaml
 ```
 
 ## Importing from CSV and Markdown docs
@@ -122,11 +122,11 @@ The YAML file is the store, but triples can come from wherever your team already
 
 ```bash
 # CSV/TSV with an s,p,o header — extra columns become edge attributes
-triplite import pipeline.yaml new_vendors.csv
+trikedb import pipeline.yaml new_vendors.csv
 
 # Markdown: every table whose header has s/p/o columns is picked up;
 # prose and other tables are ignored. Your design docs are data.
-triplite import pipeline.yaml design_doc.md
+trikedb import pipeline.yaml design_doc.md
 ```
 
 ```markdown
@@ -141,7 +141,7 @@ Imports are deterministic — no LLM extraction, so nothing gets invented. The o
 
 ## The file format
 
-A triplite file is ordinary YAML with three top-level keys (only `triples` is required):
+A trikedb file is ordinary YAML with three top-level keys (only `triples` is required):
 
 ```yaml
 ontology:            # optional — omit it for free-form predicates
@@ -172,15 +172,15 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/a
 
 ## An ontology layer for AI agents (MCP)
 
-Like the database it takes its analogy from, triplite is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
+Like the database it takes its analogy from, trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate:
 
 ```bash
-claude mcp add kg -- uvx --from 'triplite[mcp]' triplite mcp /absolute/path/to/graph.yaml
+claude mcp add kg -- uvx --from 'trikedb[mcp]' trikedb mcp /absolute/path/to/graph.yaml
 ```
 
 The agent gets `sparql`, `match`, `get_node`, `ontology`, `stats` to read, and `add_triple`, `set_node`, `remove_triples`, `import_source` to write. Every write autosaves to the YAML — so agent contributions arrive as reviewable git diffs.
 
-This is also the answer to "just throw docs at it": **the agent is the extractor, triplite is the validated write path.** Point your agent at a pile of documents and ask it to record the facts; it reads them (any format — it's an LLM), calls `add_triple` for each fact, and the ontology rejects any predicate it tries to invent. Extraction stays flexible, the graph stays clean, and a human reviews the diff.
+This is also the answer to "just throw docs at it": **the agent is the extractor, trikedb is the validated write path.** Point your agent at a pile of documents and ask it to record the facts; it reads them (any format — it's an LLM), calls `add_triple` for each fact, and the ontology rejects any predicate it tries to invent. Extraction stays flexible, the graph stays clean, and a human reviews the diff.
 
 ## Using it with LLM agents (no MCP)
 
@@ -193,30 +193,30 @@ The zero-setup loop:
    > It is the source of truth for which jobs feed which tables.
    > Predicates are limited to the ontology declared in the file.
 
-3. Agents propose edits as diffs to the YAML — reviewable in a PR like any other change. The ontology check (`triplite.add` raises on unknown predicates) keeps generated edits inside the vocabulary you chose.
-4. Humans browse the same graph via `triplite html`.
+3. Agents propose edits as diffs to the YAML — reviewable in a PR like any other change. The ontology check (`trikedb.add` raises on unknown predicates) keeps generated edits inside the vocabulary you chose.
+4. Humans browse the same graph via `trikedb html`.
 
 One source of truth, two projections: YAML for machines, HTML for people.
 
-## What triplite is not
+## What trikedb is not
 
-- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried/updated by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:triplite:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
+- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried/updated by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:trikedb:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
 - **Not an extraction pipeline.** It won't turn your PDFs into a graph. Pair it with an extractor if you want that — then curate what comes out.
 - **Not for millions of triples.** Everything is in memory and scans are linear. The sweet spot is the hundreds-to-thousands range, where a curated graph is even possible.
 
 ## Examples
 
-- [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional company's data platform: vendors, ingestion jobs, warehouse tables, change events, migrations. The use case triplite was born from.
+- [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional company's data platform: vendors, ingestion jobs, warehouse tables, change events, migrations. The use case trikedb was born from.
 - [`examples/python_ecosystem.yaml`](examples/python_ecosystem.yaml) — dependencies and deprecations in the Python packaging world, with free-form predicates.
 
 ```bash
-triplite html examples/acme_pipeline.yaml -o acme.html && open acme.html
+trikedb html examples/acme_pipeline.yaml -o acme.html && open acme.html
 ```
 
 **Live demos (GitHub Pages):**
 
-- [acme knowledge graph](https://ryutoyoda.github.io/triplite/) — the fictional data platform
-- [python ecosystem](https://ryutoyoda.github.io/triplite/python_ecosystem.html) — dependencies and deprecations
+- [acme knowledge graph](https://ryutoyoda.github.io/trikedb/) — the fictional data platform
+- [python ecosystem](https://ryutoyoda.github.io/trikedb/python_ecosystem.html) — dependencies and deprecations
 
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom.
 

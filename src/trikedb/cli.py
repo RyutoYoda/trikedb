@@ -1,4 +1,4 @@
-"""triplite command-line interface."""
+"""trikedb command-line interface."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import argparse
 import json
 import sys
 
-from .db import TripLite
+from .db import TrikeDB
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="triplite",
+        prog="trikedb",
         description="A knowledge graph in a single YAML file.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -90,12 +90,12 @@ def _print_rows(rows, as_json: bool) -> int:
 
 
 def _cmd_query(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     return _print_rows(db.query(args.where), args.json)
 
 
 def _cmd_sparql(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     result = db.sparql(args.query)
     if isinstance(result, bool):
         print(json.dumps(result) if args.json else ("yes" if result else "no"))
@@ -115,7 +115,7 @@ def _cmd_add(args) -> int:
             return 2
         k, v = pair.split("=", 1)
         attrs[k] = v
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     db.add(args.s, args.p, args.o, **attrs)
     db.save()
     print(f"added ({args.s}, {args.p}, {args.o}) — {len(db)} triples total")
@@ -126,7 +126,7 @@ def _cmd_rm(args) -> int:
     if args.s is None and args.p is None and args.o is None:
         print("error: give at least one of -s / -p / -o", file=sys.stderr)
         return 2
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     removed = db.remove(s=args.s, p=args.p, o=args.o)
     db.save()
     print(f"removed {removed} triple(s) — {len(db)} remaining")
@@ -134,7 +134,7 @@ def _cmd_rm(args) -> int:
 
 
 def _cmd_import(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     added = 0
     for source in args.sources:
         n = db.import_file(source)
@@ -146,7 +146,7 @@ def _cmd_import(args) -> int:
 
 
 def _cmd_stats(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     print(db)
     print(f"nodes: {len(db.nodes())}")
     for p in db.predicates():
@@ -157,16 +157,16 @@ def _cmd_stats(args) -> int:
 
 
 def _cmd_html(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     out = args.out or args.file.rsplit(".", 1)[0] + ".html"
-    title = args.title or f"triplite — {args.file}"
+    title = args.title or f"trikedb — {args.file}"
     db.to_html(out, title=title)
     print(f"wrote {out}")
     return 0
 
 
 def _cmd_jsonld(args) -> int:
-    db = TripLite(args.file)
+    db = TrikeDB(args.file)
     print(json.dumps(db.to_jsonld(), ensure_ascii=False, indent=2))
     return 0
 

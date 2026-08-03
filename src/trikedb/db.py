@@ -10,7 +10,7 @@ from typing import Any, Iterator, Optional, Sequence, Union
 
 import yaml
 
-__all__ = ["Triple", "TripLite", "OntologyError"]
+__all__ = ["Triple", "TrikeDB", "OntologyError"]
 
 
 class OntologyError(ValueError):
@@ -51,10 +51,10 @@ def _term_match(pattern: Optional[str], value: str) -> bool:
     return pattern == value
 
 
-class TripLite:
+class TrikeDB:
     """A YAML-backed triple store with a graph-database interface.
 
-    >>> db = TripLite("graph.yaml")
+    >>> db = TrikeDB("graph.yaml")
     >>> db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
     >>> for t in db.triples(p="PROVIDES"):
     ...     print(t.s, "->", t.o)
@@ -104,7 +104,7 @@ class TripLite:
         """Write the graph back to YAML. Plain triples stay on one line."""
         target = Path(path) if path else self.path
         if target is None:
-            raise ValueError("no path given and TripLite was created without one")
+            raise ValueError("no path given and TrikeDB was created without one")
         doc: dict = {}
         if self.ontology:
             doc["ontology"] = {"predicates": dict(self.ontology)}
@@ -268,7 +268,7 @@ class TripLite:
         path = Path(path)
         suffix = path.suffix.lower()
         if suffix in (".yaml", ".yml"):
-            dicts = [t.to_dict() for t in TripLite(path)]
+            dicts = [t.to_dict() for t in TrikeDB(path)]
         elif suffix in (".csv", ".tsv"):
             dicts = importers.read_csv(path)
         elif suffix in (".md", ".markdown"):
@@ -285,7 +285,7 @@ class TripLite:
 
     # -------------------------------------------------------------- sparql
 
-    def to_rdflib(self, base: str = "urn:triplite:", node_props: bool = True):
+    def to_rdflib(self, base: str = "urn:trikedb:", node_props: bool = True):
         """Convert to an rdflib.Graph.
 
         Subjects and predicates become URIRefs under `base`. Objects become
@@ -316,7 +316,7 @@ class TripLite:
         {"INSERT", "DELETE", "CLEAR", "DROP", "CREATE", "LOAD", "MOVE", "COPY", "ADD", "WITH"}
     )
 
-    def sparql(self, query: str, base: str = "urn:triplite:"):
+    def sparql(self, query: str, base: str = "urn:trikedb:"):
         """Run real SPARQL 1.1 (via rdflib) against the graph — reads and writes.
 
         The prefix `t:` is bound to `base`, so predicates are written
@@ -346,7 +346,7 @@ class TripLite:
             rows.append(row)
         return rows
 
-    def update(self, query: str, base: str = "urn:triplite:") -> int:
+    def update(self, query: str, base: str = "urn:trikedb:") -> int:
         """Apply a SPARQL 1.1 Update and sync the result back to the store.
 
         Attributes of surviving triples are preserved; triples inserted via
@@ -374,7 +374,7 @@ class TripLite:
 
     # -------------------------------------------------------------- exports
 
-    def to_jsonld(self, base: str = "urn:triplite:") -> dict:
+    def to_jsonld(self, base: str = "urn:trikedb:") -> dict:
         """Best-effort JSON-LD export for interop with real RDF tooling."""
         context = {p: {"@id": base + p, "@type": "@id"} for p in self.predicates()}
         nodes: dict = {}
@@ -383,7 +383,7 @@ class TripLite:
             node.setdefault(t.p, []).append(t.o)
         return {"@context": context, "@graph": list(nodes.values())}
 
-    def to_html(self, path: Union[str, Path, None] = None, title: str = "triplite knowledge graph") -> str:
+    def to_html(self, path: Union[str, Path, None] = None, title: str = "trikedb knowledge graph") -> str:
         from .html import to_html
 
         return to_html(self, path=path, title=title)
@@ -401,7 +401,7 @@ class TripLite:
 
     def __repr__(self) -> str:
         where = str(self.path) if self.path else "in-memory"
-        return f"<TripLite {where}: {len(self)} triples, {len(self.predicates())} predicates>"
+        return f"<TrikeDB {where}: {len(self)} triples, {len(self.predicates())} predicates>"
 
 
 def _shorten(value, base: str) -> str:

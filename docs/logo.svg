@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- triplite mascot: a triceratops whose three horns are the triple (s, p, o) -->
+  <!-- trikedb mascot: a triceratops whose three horns are the triple (s, p, o) -->
 
   <!-- tail -->
   <path d="M 400 330 Q 480 300 496 250 Q 470 300 420 300 Z" fill="#3d5a80"/>
@@ -49,5 +49,5 @@
   <text x="204" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="26" font-weight="bold" fill="#2fbf71">o</text>
 
   <!-- wordmark -->
-  <text x="256" y="492" text-anchor="middle" font-family="-apple-system, 'Segoe UI', sans-serif" font-size="48" font-weight="700" fill="#3d5a80">triplite</text>
+  <text x="256" y="492" text-anchor="middle" font-family="-apple-system, 'Segoe UI', sans-serif" font-size="48" font-weight="700" fill="#3d5a80">trikedb</text>
 </svg>
