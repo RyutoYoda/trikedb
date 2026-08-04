@@ -93,6 +93,21 @@ def main(argv=None) -> int:
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
 
+    p_validate = sub.add_parser(
+        "validate", help="validate the graph against SHACL shapes (requires trikedb[shacl])"
+    )
+    p_validate.add_argument("file")
+    p_validate.add_argument("shapes", help="path to a Turtle (.ttl) shapes file")
+
+    p_infer = sub.add_parser(
+        "infer", help="materialize OWL-RL inferences (requires trikedb[owl])"
+    )
+    p_infer.add_argument("file")
+    p_infer.add_argument(
+        "--apply", action="store_true",
+        help="add the inferred triples to the graph (marked inferred: true) and save",
+    )
+
     p_mcp = sub.add_parser(
         "mcp", help="serve the graph as an MCP server (stdio) — an ontology layer for AI agents"
     )
@@ -238,6 +253,24 @@ def _cmd_jsonld(args) -> int:
     return 0
 
 
+def _cmd_validate(args) -> int:
+    db = TrikeDB(args.file)
+    conforms, report = db.validate(args.shapes)
+    print(report)
+    return 0 if conforms else 1
+
+
+def _cmd_infer(args) -> int:
+    db = TrikeDB(args.file)
+    new = db.infer(apply=args.apply)
+    for s, p, o in new:
+        print(f"+ ({s}, {p}, {o})")
+    if args.apply and new:
+        db.save()
+    print(f"{len(new)} inferred triple(s)" + (" — applied and saved" if args.apply else ""))
+    return 0
+
+
 def _cmd_mcp(args) -> int:
     from .mcp_server import serve
 
@@ -256,6 +289,8 @@ _COMMANDS = {
     "stats": _cmd_stats,
     "html": _cmd_html,
     "jsonld": _cmd_jsonld,
+    "validate": _cmd_validate,
+    "infer": _cmd_infer,
     "mcp": _cmd_mcp,
 }
 

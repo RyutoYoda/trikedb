@@ -166,6 +166,67 @@ trikedb import pipeline.yaml design_doc.md
 
 Imports are deterministic — no LLM extraction, so nothing gets invented. The ontology is enforced on the way in, and `"true"`/`"false"` cells become booleans. See [`examples/acme_design_doc.md`](examples/acme_design_doc.md) and [`examples/acme_new_vendors.csv`](examples/acme_new_vendors.csv).
 
+## Validation and inference (SHACL / OWL)
+
+The predicate whitelist is the seatbelt; when you want real schema
+validation, use SHACL (`pip install 'trikedb[shacl]'` — delegated to
+[pySHACL](https://github.com/RDFLib/pySHACL), not hand-rolled):
+
+```python
+conforms, report = db.validate("""
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix t:  <urn:trikedb:> .
+t:BotShape a sh:NodeShape ;
+  sh:targetSubjectsOf t:USES_ROLE ;
+  sh:property [ sh:path t:type ; sh:hasValue "bot" ; sh:minCount 1 ] .
+""")
+```
+
+```bash
+trikedb validate graph.yaml shapes.ttl   # exit code 1 on violations — CI-friendly
+```
+
+For inference, declare OWL characteristics on your predicates and
+materialize what follows (`pip install 'trikedb[owl]'`, OWL-RL via
+[owlrl](https://github.com/RDFLib/OWL-RL)):
+
+```python
+db.declare("INHERITS", "transitive")     # stored as a reviewable triple
+db.add("LEVEL3", "INHERITS", "LEVEL2")
+db.add("LEVEL2", "INHERITS", "LEVEL1")
+db.infer(apply=True)                     # adds (LEVEL3, INHERITS, LEVEL1) — marked inferred: true
+```
+
+Inference is **materialization, not magic**: derived facts land in the
+YAML tagged `inferred: true`, so the git diff shows exactly what the
+reasoner concluded and a human can review it like any other change.
+(For ad-hoc transitivity you often don't need OWL at all — SPARQL
+property paths like `t:INHERITS+` already walk chains at query time.)
+
+## Remote graphs (S3)
+
+The file doesn't have to be local (`pip install 'trikedb[remote]'`):
+
+```python
+db = TrikeDB("s3://team-bucket/kg/pipeline.yaml")   # read and write
+```
+
+```bash
+trikedb sparql s3://team-bucket/kg/pipeline.yaml "SELECT ?s WHERE { ?s ?p ?o } LIMIT 5"
+trikedb mcp s3://team-bucket/kg/pipeline.yaml       # whole team's agents share one graph
+```
+
+Auth is delegated to the standard AWS credential chain (env vars,
+`~/.aws/credentials` profiles, SSO, IAM roles) via fsspec/s3fs — trikedb
+stores no credentials, and your bucket policy *is* the access control:
+readers get `s3:GetObject`, writers get `s3:PutObject`, per-prefix
+policies give each team its own graph. `gs://`, `az://` and plain
+`https://` (read-only) work through the same mechanism with the
+matching fsspec backend installed.
+
+Concurrency is last-write-wins in this version — point writers through
+a single MCP process or CI job, or keep writes in git-reviewed batches.
+
 ## The file format
 
 A trikedb file is ordinary YAML with three top-level keys (only `triples` is required):

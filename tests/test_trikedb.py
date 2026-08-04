@@ -426,3 +426,102 @@ def test_cli_ontology_set(tmp_path):
 
     with _pytest.raises(OntologyError):
         again.add("x", "NOT_DECLARED", "y")
+
+
+# ---------------------------------------------------------------- remote
+
+def test_remote_memory_roundtrip():
+    pytest.importorskip("fsspec")
+    url = "memory://kg/graph.yaml"
+    db = TrikeDB(url, ontology={"P": "test predicate"})
+    db.add("a", "P", "b", note="remote!")
+    db.set_node("a", type="thing")
+    db.save()
+
+    again = TrikeDB(url)
+    assert ("a", "P", "b") in again
+    assert again.node("a") == {"type": "thing"}
+    assert again.ontology == {"P": "test predicate"}
+    assert isinstance(again.path, str)  # remote URLs stay strings
+
+
+def test_remote_autosave():
+    pytest.importorskip("fsspec")
+    url = "memory://kg/auto.yaml"
+    db = TrikeDB(url, autosave=True)
+    db.add("x", "P", "y")
+    assert ("x", "P", "y") in TrikeDB(url)
+
+
+def test_remote_missing_graph_starts_empty():
+    pytest.importorskip("fsspec")
+    db = TrikeDB("memory://kg/does-not-exist.yaml")
+    assert len(db) == 0
+
+
+# ------------------------------------------------------------ shacl / owl
+
+def test_uri_terms_pass_through_to_rdflib():
+    from rdflib import URIRef
+
+    db = TrikeDB()
+    db.add("INHERITS", "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+           "http://www.w3.org/2002/07/owl#TransitiveProperty")
+    terms = list(db.to_rdflib())[0]
+    assert terms[1] == URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+    assert terms[2] == URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")
+
+
+def test_owl_transitive_inference():
+    pytest.importorskip("owlrl")
+    db = TrikeDB(ontology={"INHERITS": "role -> role"})
+    db.declare("INHERITS", "transitive")  # URI predicate is ontology-exempt
+    db.add("LEVEL3", "INHERITS", "LEVEL2")
+    db.add("LEVEL2", "INHERITS", "LEVEL1")
+    new = db.infer()
+    assert ("LEVEL3", "INHERITS", "LEVEL1") in new
+    db.infer(apply=True)
+    t = next(db.triples(s="LEVEL3", o="LEVEL1"))
+    assert t.attrs == {"inferred": True}
+
+
+def test_owl_symmetric_inference():
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("MARRIED_TO", "symmetric")
+    db.add("alice", "MARRIED_TO", "bob")
+    assert ("bob", "MARRIED_TO", "alice") in db.infer()
+
+
+SHAPES = """
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix t:  <urn:trikedb:> .
+t:BotShape a sh:NodeShape ;
+  sh:targetSubjectsOf t:USES_ROLE ;
+  sh:property [ sh:path t:type ; sh:hasValue "bot" ; sh:minCount 1 ] .
+"""
+
+
+def test_shacl_validate(tmp_path):
+    pytest.importorskip("pyshacl")
+    db = TrikeDB()
+    db.add("svc-etl-02", "USES_ROLE", "LV2_FULL")
+    db.set_node("svc-etl-02", type="bot")
+    conforms, _ = db.validate(SHAPES)
+    assert conforms is True
+
+    db.add("rogue-user", "USES_ROLE", "LV3_FULL")  # no type: bot -> violation
+    conforms, report = db.validate(SHAPES)
+    assert conforms is False
+    assert "rogue-user" in report
+
+
+def test_shacl_validate_from_file(tmp_path):
+    pytest.importorskip("pyshacl")
+    shapes_file = tmp_path / "shapes.ttl"
+    shapes_file.write_text(SHAPES)
+    db = TrikeDB()
+    db.add("svc-etl-02", "USES_ROLE", "LV2_FULL")
+    db.set_node("svc-etl-02", type="bot")
+    conforms, _ = db.validate(str(shapes_file))
+    assert conforms is True
