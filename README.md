@@ -225,19 +225,18 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## Examples
 
-- [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional company's data platform: vendors, ingestion jobs, warehouse tables, change events, migrations. The use case trikedb was born from.
-- [`examples/python_ecosystem.yaml`](examples/python_ecosystem.yaml) — dependencies and deprecations in the Python packaging world, with free-form predicates.
+- [`examples/freebase_sample.yaml`](examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. This powers the live demo.
+- [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
+- [`examples/python_ecosystem.yaml`](examples/python_ecosystem.yaml) — free-form predicates, no ontology.
+- [`examples/trikedb_quickstart.ipynb`](examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
-```bash
-trikedb html examples/acme_pipeline.yaml -o acme.html && open acme.html
-```
+**Live demo:** https://ryutoyoda.github.io/trikedb/
 
-**Live demos (GitHub Pages):**
+The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom; the initial layout adapts to graph shape (`--layout flow|free|auto`).
 
-- [acme knowledge graph](https://ryutoyoda.github.io/trikedb/) — the fictional data platform
-- [python ecosystem](https://ryutoyoda.github.io/trikedb/python_ecosystem.html) — dependencies and deprecations
+## Benchmark
 
-The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom.
+On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same small LLM answers **60% alone vs 83% with a trikedb graph as context** — a +23-point delta under a deterministic, reproducible protocol. Scripts, method, and an honest scoring-sensitivity analysis live in [`benchmarks/`](benchmarks/).
 
 ## Development
 

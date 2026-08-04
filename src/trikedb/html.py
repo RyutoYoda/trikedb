@@ -175,8 +175,9 @@ const FREE_OPTS = {
   layout: { hierarchical: { enabled: false } },
   physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
 };
+let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
-  ...FLOW_OPTS,
+  ...(flow ? FLOW_OPTS : FREE_OPTS),
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
@@ -201,7 +202,9 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   legend.appendChild(el);
 }
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-let flow = true;
+const layoutBtn = document.getElementById("btn-layout");
+layoutBtn.textContent = flow ? "Flow" : "Free";
+layoutBtn.classList.toggle("active", flow);
 document.getElementById("btn-layout").onclick = (e) => {
   flow = !flow;
   network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
@@ -330,6 +333,7 @@ def to_html(
     path: Union[str, Path, None] = None,
     title: str = "trikedb knowledge graph",
     event_predicates=None,
+    layout: str = "auto",
 ) -> str:
     """Render the graph to a self-contained interactive HTML workbench.
 
@@ -337,6 +341,11 @@ def to_html(
     diamonds + bottom timeline bar). None uses a heuristic — predicates
     whose objects contain whitespace, i.e. look like free text rather
     than node names. Pass an explicit list (or []) to override it.
+
+    layout: initial layout — "flow" (hierarchical left-to-right, best
+    for pipeline-shaped graphs), "free" (force-directed, best for dense
+    hub-shaped graphs), or "auto" (flow up to 150 triples, free above).
+    A toggle button switches at runtime either way.
     """
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
@@ -351,6 +360,11 @@ def to_html(
         event_preds = sorted({t.p for t in db if any(c.isspace() for c in t.o)})
     else:
         event_preds = sorted({str(p) for p in event_predicates})
+
+    if layout == "auto":
+        flow_default = len(triples) <= 150
+    else:
+        flow_default = layout == "flow"
 
     n_nodes = len(db.nodes())
     subtitle = (
@@ -367,6 +381,7 @@ def to_html(
         .replace("__NODE_TYPES__", json.dumps(type_colors, ensure_ascii=False))
         .replace("__NT__", json.dumps(nt, ensure_ascii=False))
         .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
+        .replace("__FLOW_DEFAULT__", "true" if flow_default else "false")
     )
     if path is not None:
         Path(path).write_text(html, encoding="utf-8")

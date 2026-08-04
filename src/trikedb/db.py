@@ -388,10 +388,12 @@ class TrikeDB:
         path: Union[str, Path, None] = None,
         title: str = "trikedb knowledge graph",
         event_predicates=None,
+        layout: str = "auto",
     ) -> str:
         from .html import to_html
 
-        return to_html(self, path=path, title=title, event_predicates=event_predicates)
+        return to_html(self, path=path, title=title,
+                       event_predicates=event_predicates, layout=layout)
 
     # ------------------------------------------------------------- protocol
 

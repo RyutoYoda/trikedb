@@ -84,6 +84,11 @@ def main(argv=None) -> int:
         help="comma-separated predicates to treat as change events "
              "(default: auto-detect predicates whose objects look like free text)",
     )
+    p_html.add_argument(
+        "--layout", default="auto", choices=["auto", "flow", "free"],
+        help="initial layout: flow (hierarchical), free (force-directed), "
+             "auto (flow up to 150 triples)",
+    )
 
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
@@ -222,7 +227,7 @@ def _cmd_html(args) -> int:
     out = args.out or args.file.rsplit(".", 1)[0] + ".html"
     title = args.title or f"trikedb — {args.file}"
     events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
-    db.to_html(out, title=title, event_predicates=events)
+    db.to_html(out, title=title, event_predicates=events, layout=args.layout)
     print(f"wrote {out}")
     return 0
 
