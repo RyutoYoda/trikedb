@@ -82,3 +82,34 @@ both conditions equally, the graph condition wins. Absolute 90%+ scores
 on WebQSP raw labels are not honestly reachable (label noise); a
 1-hop benchmark over a self-contained KB (e.g. MetaQA 1-hop, currently
 gated on HF) is the right target for high absolute numbers.
+
+## Retrieval-depth experiment (does more context help?)
+
+Follow-up experiments on the same 30 questions:
+
+| retrieval | answer-reachable ceiling | accuracy |
+|---|---|---|
+| 1-hop + CVT, capped 250 (v1) | 20/30 | **83%** |
+| deeper CVT expansion, capped 400 (v3) | 23/30 | 80% |
+| same, **uncapped** (median 912 triples/question) | **30/30** | 80% |
+| + OWL-RL transitivity materialization (19,070 inferred facts) | 23/30 | not rerun |
+
+Two findings worth internalizing:
+
+- **Reachability is not accuracy.** Removing the context cap made every
+  gold answer reachable (30/30), yet accuracy did not improve: with
+  ~900 triples per question the model starts picking plausible-but-wrong
+  entries from the flood (a TV show instead of a film, one obscure song
+  instead of the famous ones). The bottleneck moved from retrieval to
+  attention. The fix is not a bigger dump but *iterative* retrieval —
+  letting the agent query the graph over MCP turn by turn.
+- **Inference is orthogonal.** Materializing transitive closure over the
+  location predicates added 19,070 correct facts and made zero
+  additional answers reachable: WebQSP's multi-hop questions chain
+  *different* predicates through mediator nodes, which no OWL axiom
+  shortens. OWL earns its keep on same-predicate chains (role
+  inheritance, containment hierarchies), not on this benchmark.
+
+The remaining misses at any depth are dominated by gold-label noise
+(4/30) and answer-granularity mismatches — consistent with published
+SOTA plateauing in the mid-80s.

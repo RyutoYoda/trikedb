@@ -51,11 +51,12 @@ trikedb keeps the *interface* of the big system — real SPARQL 1.1 (rdflib's en
 | Storage | server / cloud service | one YAML file |
 | Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
-| Schema | OWL + reasoners | a list of allowed predicates |
+| Schema | OWL + reasoners | a predicate whitelist, plus SHACL shapes via `[shacl]` |
+| Inference | DL reasoning engines | OWL-RL materialization via `[owl]` — inferred facts land in the YAML, reviewable |
 | Agent integration | a service to operate | the agent reads the file, or `trikedb mcp` (stdio, embedded) |
 | Setup time | an afternoon (or a sprint) | `pip install trikedb` |
 
-If you need inference engines, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's trikedb. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
+If you need full OWL-DL reasoning at scale, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's trikedb. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
 
 ### Curation-first, not extraction-first
 
