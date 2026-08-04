@@ -239,6 +239,10 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 **Live demo:** https://ryutoyoda.github.io/trikedb/
 
+<a href="https://ryutoyoda.github.io/trikedb/">
+  <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
+</a>
+
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom; the initial layout adapts to graph shape (`--layout flow|free|auto`).
 
 ## Benchmark
