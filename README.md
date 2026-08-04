@@ -19,12 +19,6 @@
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
-<p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/">
-    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
-  </a>
-</p>
-
 # trikedb
 
 **The single-file graph database.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's one YAML file. Built for LLM agents.
@@ -37,6 +31,14 @@ triples:
 ```
 
 That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and reason over your domain without hallucinating entity names.**
+
+And it renders as an interactive workbench ([live demo](https://ryutoyoda.github.io/trikedb/) — 600 real Freebase facts):
+
+<p align="center">
+  <a href="https://ryutoyoda.github.io/trikedb/">
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
+  </a>
+</p>
 
 ## Why
 
