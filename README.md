@@ -14,6 +14,11 @@
   <img src="https://img.shields.io/badge/MCP-191919?style=flat&logo=modelcontextprotocol&logoColor=white" />
 </p>
 
+<p align="center">
+  <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 Live demo</a></b> — 600 real Freebase facts, click around, run SPARQL in the browser
+  &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
+</p>
+
 # trikedb
 
 **The single-file graph database.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's one YAML file. Built for LLM agents.
@@ -55,6 +60,8 @@ Most "AI knowledge graph" tools use an LLM to extract triples from text. That's 
 there is no step where a table name can be made up.
 
 ## Install
+
+From [PyPI](https://pypi.org/project/trikedb/):
 
 ```bash
 pip install trikedb           # library + CLI
