@@ -19,6 +19,12 @@
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
+<p align="center">
+  <a href="https://ryutoyoda.github.io/trikedb/">
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
+  </a>
+</p>
+
 # trikedb
 
 **The single-file graph database.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's one YAML file. Built for LLM agents.
@@ -238,10 +244,6 @@ One source of truth, two projections: YAML for machines, HTML for people.
 - [`examples/trikedb_quickstart.ipynb`](examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
 **Live demo:** https://ryutoyoda.github.io/trikedb/
-
-<a href="https://ryutoyoda.github.io/trikedb/">
-  <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
-</a>
 
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom; the initial layout adapts to graph shape (`--layout flow|free|auto`).
 
