@@ -388,7 +388,7 @@ On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same s
 
 ## Documentation
 
-- [docs/REFERENCE.md](docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras)
+- [docs/REFERENCE.md](docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras) · [日本語版](docs/REFERENCE_jp.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layering and where new code goes
 - [benchmarks/](benchmarks/) — WebQSP methodology and findings
 

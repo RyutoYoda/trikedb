@@ -1,5 +1,7 @@
 # trikedb Reference
 
+[日本語版はこちら / Japanese version](REFERENCE_jp.md)
+
 Every feature, and how to use it. For the design rationale see
 [ARCHITECTURE.md](ARCHITECTURE.md); for benchmark methodology see
 [benchmarks/](../benchmarks/).
