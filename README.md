@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/trikedb/"><img src="https://img.shields.io/pypi/v/trikedb?style=flat&color=4a6fa5" /></a>
+  <a href="https://pypi.org/project/trikedb/"><img src="https://img.shields.io/pypi/v/trikedb?style=flat&color=4a6fa5&cacheSeconds=300" /></a>
   <img src="https://img.shields.io/pypi/pyversions/trikedb?style=flat&color=4a6fa5" />
   <img src="https://img.shields.io/badge/license-MIT-4a6fa5?style=flat" />
 </p>
