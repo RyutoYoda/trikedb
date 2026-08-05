@@ -279,7 +279,8 @@ def test_import_example_files():
     from pathlib import Path
 
     examples = Path(__file__).resolve().parent.parent / "examples"
-    db = TrikeDB(examples / "acme_pipeline.yaml")
+    # autosaveがデフォルトなので、実サンプルを汚さないよう明示的にopt-out
+    db = TrikeDB(examples / "acme_pipeline.yaml", autosave=False)
     added = db.import_file(examples / "acme_new_vendors.csv")
     added += db.import_file(examples / "acme_design_doc.md")
     assert added == 8  # 5 from the CSV, 3 from the two s/p/o tables in the doc
@@ -661,3 +662,71 @@ def test_html_fulltext_search_and_sparql_bridge():
     assert "btn-tosparql" in html     # SPARQL橋渡しボタン
     # プロパティ・属性値がクライアント側データに含まれている(=検索可能)
     assert "data-platform" in html and "hourly" in html
+
+
+def test_autosave_is_default(tmp_path):
+    # 書いたものは即ディスクにある — CLIと同じ感覚がライブラリのデフォルト
+    path = tmp_path / "auto.yaml"
+    TrikeDB(path).add("a", "REL", "b")
+    assert len(list(TrikeDB(path).triples())) == 1
+    TrikeDB(path).set_node("a", type="thing")
+    assert TrikeDB(path).node("a") == {"type": "thing"}
+    # opt-outは明示で
+    db = TrikeDB(path, autosave=False)
+    db.add("c", "REL", "d")
+    assert len(list(TrikeDB(path).triples())) == 1  # まだ書かれていない
+    db.save()
+    assert len(list(TrikeDB(path).triples())) == 2
+
+
+def test_edge_attrs_queryable_via_sparql(tmp_path):
+    # 運用の金脈(note/prov)がSPARQLで引ける — RDF reification
+    db = TrikeDB(tmp_path / "g.yaml")
+    db.add("ACME_DWH", "AFFECTED_BY", "2026-07 task suspended",
+           note="再開すると二重取り込みになる", prov="MEMORY.md")
+    db.add("a", "REL", "b")  # attrsなし → reificationされない
+    rows = db.sparql(
+        "SELECT ?s ?o ?note WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:note ?note }"
+    )
+    assert rows == [{"s": "ACME_DWH", "o": "2026-07 task suspended",
+                     "note": "再開すると二重取り込みになる"}]
+    # provで逆引き
+    assert db.sparql(
+        'ASK { ?st t:prov "MEMORY.md" ; rdf:predicate t:AFFECTED_BY }') is True
+    # updateのsync-backはreificationを取り込まない
+    db.update("INSERT DATA { t:c t:REL t:d }")
+    spos = {t.spo() for t in db.triples()}
+    assert ("ACME_DWH", "AFFECTED_BY", "2026-07 task suspended") in spos
+    assert len(spos) == 3  # stmtノードがYAMLに漏れていない
+    # 属性は生き残っている
+    t = next(db.triples(p="AFFECTED_BY"))
+    assert t.attrs["note"] == "再開すると二重取り込みになる"
+
+
+def test_semantic_sentences_shape(tmp_path):
+    from trikedb import semantic
+
+    db = TrikeDB(tmp_path / "g.yaml")
+    db.add("svc-etl-01", "USES_ROLE", "LV3_FULL", note="keypair認証")
+    db.set_node("svc-etl-01", type="bot")
+    items = semantic.sentences(db)
+    texts = [t for t, _ in items]
+    assert any("keypair認証" in t for t in texts)      # エッジ属性が検索対象
+    assert any(t.startswith("svc-etl-01 type: bot") for t in texts)  # ノードprops
+    kinds = {payload["kind"] for _, payload in items}
+    assert kinds == {"triple", "node"}
+
+
+def test_semantic_search_ranks_by_meaning(tmp_path):
+    pytest.importorskip("model2vec")
+    from trikedb import semantic
+
+    db = TrikeDB(tmp_path / "g.yaml")
+    db.add("ACME_DWH", "AFFECTED_BY", "2025-11 MFA必須化、キーペア認証へ移行")
+    db.add("mdb", "LOADS_FROM", "mysql")
+    try:
+        rows = db.search("認証まわりの注意点", k=2)
+    except Exception as exc:  # モデル未キャッシュ+オフライン
+        pytest.skip(f"model unavailable: {exc}")
+    assert rows[0]["o"].startswith("2025-11 MFA")
+    assert rows[0]["score"] > rows[1]["score"]

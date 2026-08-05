@@ -44,7 +44,7 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
 
     from .db import _shorten
 
-    g = db.to_rdflib(base, node_props=False)
+    g = db.to_rdflib(base, node_props=False, edge_attrs=False)
     before = set(g)
     DeductiveClosure(OWLRL_Semantics).expand(g)
     existing = {t.spo() for t in db}
@@ -86,6 +86,6 @@ def validate(db, shapes, base: str = "urn:trikedb:"):
     else:
         sg.parse(text, format="turtle")
     conforms, _, report = shacl_validate(
-        db.to_rdflib(base), shacl_graph=sg, inference="none"
+        db.to_rdflib(base, edge_attrs=False), shacl_graph=sg, inference="none"
     )
     return bool(conforms), str(report)

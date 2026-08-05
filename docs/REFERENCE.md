@@ -76,6 +76,24 @@ Conventions worth adopting: `prov:` (where a fact came from),
 `deprecated: true` (rendered dashed), change events as dated free-text
 objects on an `AFFECTED_BY` predicate.
 
+Edge attributes are **SPARQL-queryable**: every attributed triple is
+also exported as a standard RDF reification (a statement resource with
+`rdf:subject/predicate/object` plus the attributes), so the operational
+gold — notes, provenance, schedules — can be filtered and joined, not
+just read:
+
+```sparql
+# every fact sourced from a given doc
+SELECT ?s ?p ?o WHERE {
+  ?st rdf:subject ?s ; rdf:predicate ?p ; rdf:object ?o ;
+      t:prov "design_doc.md" }
+```
+
+This works in `db.sparql()`, `trikedb sparql`, the MCP `sparql` tool and
+the HTML console alike (`rdf:` is pre-bound everywhere). Reification is
+export-only — the YAML stays flat, and SPARQL updates never write
+statement resources back.
+
 **Workspace files** union many graphs read-only:
 
 ```yaml
@@ -132,8 +150,12 @@ just names, even a predicate can carry properties
 
 ```python
 from trikedb import TrikeDB, Triple, OntologyError
-db = TrikeDB("graph.yaml", ontology={...}, autosave=False)
+db = TrikeDB("graph.yaml", ontology={...})   # autosave=True is the default
 ```
+
+Mutations write straight back to the file — what you `add()` is what's
+on disk, same as the CLI. Pass `autosave=False` to batch changes and
+call `save()` yourself.
 
 | Method | What it does |
 |---|---|
@@ -141,7 +163,8 @@ db = TrikeDB("graph.yaml", ontology={...}, autosave=False)
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
-| `sparql(q)` | Full SPARQL 1.1 via rdflib. SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta |
+| `sparql(q)` | Full SPARQL 1.1 via rdflib. SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
+| `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
 | `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals |
@@ -166,6 +189,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb rm FILE [-s] [-p] [-o]` | Remove matching triples |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | Pattern joins (table or `--json`) |
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 read & write (writes persist) |
+| `trikedb search FILE "query" [-k N]` | Semantic search over facts and nodes (`[semantic]` extra) |
 | `trikedb import FILE SRC...` | Merge CSV/TSV/Markdown/YAML sources |
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc]` | Show / extend the predicate vocabulary |
@@ -184,11 +208,12 @@ URLs (`[remote]` extra), and workspace files.
 
 ## MCP: the ontology layer for agents
 
-Nine tools, one server definition, two transports:
+Ten tools, one server definition, two transports:
 
 | Tool | Kind | Notes |
 |---|---|---|
-| `sparql` | read/write | prefix `t:` pre-bound; updates persist |
+| `sparql` | read/write | prefixes `t:`/`rdf:` pre-bound; updates persist |
+| `search` | read | semantic search for fuzzy questions (`[semantic]` extra) |
 | `match` | read | pattern matching with attrs |
 | `get_node` | read | props + outgoing/incoming edges |
 | `ontology` / `stats` | read | vocabulary / summary |
@@ -273,3 +298,4 @@ the agent writes inside your vocabulary.
 | `[remote]` | `s3://` etc. | fsspec, s3fs |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
+| `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |

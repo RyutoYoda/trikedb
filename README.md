@@ -80,6 +80,7 @@ pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
 pip install 'trikedb[remote]'   # + s3:// gs:// graphs
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
+pip install 'trikedb[semantic]' # + semantic search (static embeddings, no torch)
 ```
 
 ## Quickstart (Python)
@@ -116,10 +117,16 @@ db.sparql("""
 """)
 db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
 
+# Edge attributes are queryable too (standard RDF reification, rdf: pre-bound):
+db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')
+
+# Semantic search — meaning, not spelling ([semantic] extra)
+db.search("what syncs the CRM?", k=5)   # scored triples + nodes
+
 # Writes go through SPARQL too — and land back in the YAML
+# (mutations autosave to the file by default; pass autosave=False to batch)
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 db.sparql("DELETE WHERE { ?job t:INGESTS_TO t:LEGACY_CONTACTS_DUMP }")
-db.save()  # or pass autosave=True and skip this
 
 db.to_rdflib()               # plain rdflib.Graph, if you want to go further
 db.to_html("pipeline.html")  # interactive graph workbench (see demos below)
@@ -143,6 +150,9 @@ trikedb sparql pipeline.yaml \
 # updates persist straight back to the file
 trikedb sparql pipeline.yaml \
   "INSERT DATA { t:figly t:PROVIDES t:figly-export-job }"
+
+# semantic search: meaning, not spelling ([semantic] extra)
+trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 trikedb stats pipeline.yaml
 trikedb html pipeline.yaml -o pipeline.html
@@ -295,7 +305,7 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
   --header "Authorization: Bearer $SECRET"
 ```
 
-Same nine MCP tools as stdio — the server definition is shared, only
+Same ten MCP tools as stdio — the server definition is shared, only
 the transport differs. v1 auth is a single static Bearer token
 (OAuth 2.1 delegation to an IdP is the planned v2). Pair it with an
 `s3://` graph and the server is stateless — run it anywhere.
@@ -392,6 +402,7 @@ On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same s
 
 - [docs/REFERENCE.md](docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras) · [日本語版](docs/REFERENCE_jp.md)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layering and where new code goes
+- [docs/SCALING.md](docs/SCALING.md) — measured limits at 1k/10k/100k triples, and when to move from whole-file reads to a served graph
 - [benchmarks/](benchmarks/) — WebQSP methodology and findings
 
 ## Development

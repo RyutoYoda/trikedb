@@ -123,7 +123,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
   <div class="row">
     <button class="btn" id="btn-run">Run</button>
-    <span class="hint">SPARQL 1.1 via Oxigraph (WASM) &middot; prefix <code>t:</code> is pre-bound &middot; matching nodes get highlighted</span>
+    <span class="hint">SPARQL 1.1 via Oxigraph (WASM) &middot; prefixes <code>t:</code> and <code>rdf:</code> are pre-bound &middot; edge attrs are reified (<code>?st rdf:subject ?s ; t:note ?n</code>) &middot; matching nodes get highlighted</span>
   </div>
   <div id="results"></div>
 </div>
@@ -465,7 +465,7 @@ document.getElementById("btn-run").onclick = async () => {
   box.innerHTML = '<span class="hint">loading engine\\u2026</span>';
   try {
     const s = await ensureStore();
-    const result = s.query("PREFIX t: <" + BASE + ">\\n" + document.getElementById("sparql-input").value);
+    const result = s.query("PREFIX t: <" + BASE + ">\\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\\n" + document.getElementById("sparql-input").value);
     if (typeof result === "boolean") {
       box.innerHTML = `<table><tr><th>ASK</th></tr><tr><td>${result ? "yes" : "no"}</td></tr></table>`;
       return;

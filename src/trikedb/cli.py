@@ -47,6 +47,15 @@ def main(argv=None) -> int:
     p_sparql.add_argument("query", help="SPARQL query or update; prefix t: is pre-bound, e.g. t:PROVIDES")
     p_sparql.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
+    p_search = sub.add_parser(
+        "search", help="semantic search — rank facts by meaning, not spelling ([semantic] extra)"
+    )
+    p_search.add_argument("file")
+    p_search.add_argument("query", help='natural-language query, e.g. "認証まわりの注意点"')
+    p_search.add_argument("-k", type=int, default=10, help="max results (default 10)")
+    p_search.add_argument("--model", default=None, help="model2vec model name override")
+    p_search.add_argument("--json", action="store_true", help="output JSON instead of a table")
+
     p_import = sub.add_parser(
         "import", help="merge triples from CSV/TSV, Markdown tables, or another YAML graph"
     )
@@ -202,6 +211,29 @@ def _cmd_rm(args) -> int:
     return 0
 
 
+def _cmd_search(args) -> int:
+    db = TrikeDB(args.file)
+    try:
+        rows = db.search(args.query, k=args.k, model=args.model)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        return _print_rows(rows, True)
+    display = []
+    for r in rows:
+        if r["kind"] == "triple":
+            attrs = {k: v for k, v in r.items() if k not in ("score", "kind", "s", "p", "o")}
+            fact = f"{r['s']} {r['p']} {r['o']}"
+            if attrs:
+                fact += "  (" + ", ".join(f"{k}: {v}" for k, v in attrs.items()) + ")"
+        else:
+            props = {k: v for k, v in r.items() if k not in ("score", "kind", "node")}
+            fact = f"{r['node']}  {{" + ", ".join(f"{k}: {v}" for k, v in props.items()) + "}"
+        display.append({"score": r["score"], "kind": r["kind"], "fact": fact})
+    return _print_rows(display, False)
+
+
 def _cmd_import(args) -> int:
     db = TrikeDB(args.file)
     added = 0
@@ -351,6 +383,7 @@ def _cmd_serve(args) -> int:
 _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
+    "search": _cmd_search,
     "import": _cmd_import,
     "add": _cmd_add,
     "rm": _cmd_rm,

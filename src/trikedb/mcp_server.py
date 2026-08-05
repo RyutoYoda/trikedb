@@ -46,6 +46,16 @@ def build_server(path: Union[str, Path]):
         return db.sparql(query)
 
     @server.tool()
+    def search(query: str, k: int = 10) -> list:
+        """Semantic search: rank facts by meaning, not spelling.
+
+        Use this for fuzzy questions ("認証まわりの注意点", "what feeds the
+        cost dashboard?") where you don't know the exact node names to
+        match or SPARQL over. Returns scored triples and nodes. Requires
+        the [semantic] extra on the server side."""
+        return db.search(query, k=k)
+
+    @server.tool()
     def match(
         s: Optional[str] = None, p: Optional[str] = None, o: Optional[str] = None
     ) -> list:

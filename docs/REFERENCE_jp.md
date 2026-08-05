@@ -72,6 +72,23 @@ triples:
 採用を勧める慣習: `prov:`(事実の出典)、`deprecated: true`(破線描画)、
 変更イベントは `AFFECTED_BY` 述語+日付入り自由文のオブジェクトで。
 
+エッジ属性は**SPARQLで引ける**: 属性付きトリプルは標準のRDF具体化
+(reification — `rdf:subject/predicate/object` を持つstatementリソース+属性)
+としてもエクスポートされるので、運用の金脈(note・prov・schedule)を
+「読む」だけでなく「絞り込んで結合」できる:
+
+```sparql
+# 特定のドキュメント由来の事実を全部
+SELECT ?s ?p ?o WHERE {
+  ?st rdf:subject ?s ; rdf:predicate ?p ; rdf:object ?o ;
+      t:prov "design_doc.md" }
+```
+
+`db.sparql()`・`trikedb sparql`・MCPの`sparql`ツール・HTMLコンソールの
+どこでも同じに動く(`rdf:` は全箇所でpre-bound)。reificationはエクスポート
+専用 — YAMLはフラットのままで、SPARQL updateがstatementリソースを
+書き戻すことはない。
+
 **workspaceファイル**は複数グラフを読み取り専用でunionする:
 
 ```yaml
@@ -126,8 +143,12 @@ db.add("tokyo", "HAS_ALIAS", "TYO")     # SELECT ?a WHERE { t:tokyo t:HAS_ALIAS 
 
 ```python
 from trikedb import TrikeDB, Triple, OntologyError
-db = TrikeDB("graph.yaml", ontology={...}, autosave=False)
+db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 ```
+
+変更は即ファイルに書き戻される — `add()` したものがそのままディスクにある
+(CLIと同じ感覚)。まとめて書きたいときは `autosave=False` で開いて
+`save()` を自分で呼ぶ。
 
 | メソッド | 説明 |
 |---|---|
@@ -135,7 +156,8 @@ db = TrikeDB("graph.yaml", ontology={...}, autosave=False)
 | `remove(s=, p=, o=)` | パターン一致を全削除。削除数を返す |
 | `triples(s=, p=, o=, **attrs)` | パターンマッチ。`None`=ワイルドカード、`*`/`?` glob、attrsは完全一致フィルタ |
 | `query([patterns])` | `?変数` の複数パターン結合(SPARQL的BGP、依存ゼロ) |
-| `sparql(q)` | rdflib経由のSPARQL 1.1フル。SELECT→行、ASK→bool、INSERT/DELETE→増減数 |
+| `sparql(q)` | rdflib経由のSPARQL 1.1フル。SELECT→行、ASK→bool、INSERT/DELETE→増減数。`t:`/`rdf:` pre-bound |
+| `search(q, k=10)` | 意味検索(`[semantic]` extra): 綴りでなく意味で事実をランク付け — 「認証まわりの注意点」がキーワード共有ゼロのkeypair/MFA事実を見つける |
 | `update(q)` | SPARQL Updateを明示実行(`sparql`が書き込み形を委譲する先) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |
 | `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可 |
@@ -160,6 +182,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb rm FILE [-s] [-p] [-o]` | パターン一致を削除 |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | パターン結合(表 or `--json`) |
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1読み書き(書き込みは永続化) |
+| `trikedb search FILE "クエリ" [-k N]` | 意味検索 — 事実とノードを意味でランク付け(`[semantic]` extra) |
 | `trikedb import FILE SRC...` | CSV/TSV/Markdown/YAMLソースをマージ |
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc]` | 語彙の表示/拡張 |
@@ -178,11 +201,12 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 
 ## MCP: エージェントのためのオントロジーレイヤー
 
-ツール9個・サーバー定義は1つ・トランスポートは2つ:
+ツール10個・サーバー定義は1つ・トランスポートは2つ:
 
 | ツール | 種別 | 備考 |
 |---|---|---|
-| `sparql` | 読み書き | prefix `t:` は事前バインド。更新は永続化 |
+| `sparql` | 読み書き | prefix `t:`/`rdf:` は事前バインド。更新は永続化 |
+| `search` | 読み | 曖昧な質問のための意味検索(`[semantic]` extra) |
 | `match` | 読み | 属性つきパターンマッチ |
 | `get_node` | 読み | プロパティ+入出エッジ |
 | `ontology` / `stats` | 読み | 語彙 / サマリ |
@@ -261,3 +285,4 @@ flowchart LR
 | `[remote]` | `s3://` 等 | fsspec, s3fs |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
+| `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |

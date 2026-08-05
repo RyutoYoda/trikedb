@@ -71,13 +71,15 @@ class TrikeDB:
         self,
         path: Union[str, Path, None] = None,
         ontology: Union[dict, Sequence[str], None] = None,
-        autosave: bool = False,
+        autosave: bool = True,
     ):
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
             path if _is_remote(path) else (Path(path) if path else None)
         )
-        #: when True, every mutation writes straight back to the file.
+        #: when True (the default), every mutation writes straight back to
+        #: the file — what you add is what's on disk, same as the CLI.
+        #: Pass autosave=False to batch mutations and call save() yourself.
         self.autosave = autosave
         #: workspace member graphs ({name: path}) when this is a union view
         self.workspace: Optional[dict] = None
@@ -290,12 +292,41 @@ class TrikeDB:
         parsed = [self._parse_pattern(pat) for pat in patterns]
         bindings: list = [{}]
         for pat in parsed:
-            step = []
-            for binding in bindings:
-                for t in self._triples:
-                    nb = _unify(pat, t, binding)
-                    if nb is not None:
-                        step.append(nb)
+            if not bindings:
+                break
+            # candidates: filter by the pattern's constant terms once
+            candidates = [
+                t for t in self._triples
+                if all(
+                    term.startswith("?") or _term_match(term, value)
+                    for term, value in zip(pat, t.spo())
+                )
+            ]
+            # hash-join on variables this pattern shares with prior bindings
+            # (all bindings at this point have the same keys)
+            shared = [
+                (term[1:], i) for i, term in enumerate(pat)
+                if term.startswith("?") and term[1:] in bindings[0]
+            ]
+            if shared:
+                index: dict = {}
+                for t in candidates:
+                    key = tuple(t.spo()[i] for _, i in shared)
+                    index.setdefault(key, []).append(t)
+                step = []
+                for binding in bindings:
+                    key = tuple(binding[name] for name, _ in shared)
+                    for t in index.get(key, ()):
+                        nb = _unify(pat, t, binding)
+                        if nb is not None:
+                            step.append(nb)
+            else:
+                step = []
+                for binding in bindings:
+                    for t in candidates:
+                        nb = _unify(pat, t, binding)
+                        if nb is not None:
+                            step.append(nb)
             bindings = step
         unique, seen = [], set()
         for b in bindings:
@@ -349,7 +380,8 @@ class TrikeDB:
 
     # -------------------------------------------------------------- sparql
 
-    def to_rdflib(self, base: str = "urn:trikedb:", node_props: bool = True):
+    def to_rdflib(self, base: str = "urn:trikedb:", node_props: bool = True,
+                  edge_attrs: bool = True):
         """Convert to an rdflib.Graph.
 
         Subjects and predicates become URIRefs under `base`. Objects become
@@ -357,10 +389,18 @@ class TrikeDB:
         descriptions), in which case they become Literals. Node properties
         are included as literal-valued statements (so SPARQL can filter on
         them, e.g. `?x t:type "table"`) unless node_props=False.
+
+        Edge attributes (note, prov, ...) are exported as standard RDF
+        reification unless edge_attrs=False: each attributed triple gains a
+        statement resource so the attributes are SPARQL-queryable::
+
+            SELECT ?s ?o ?note WHERE {
+              ?st rdf:subject ?s ; rdf:predicate t:AFFECTED_BY ;
+                  rdf:object ?o ; t:note ?note }
         """
         from urllib.parse import quote
 
-        from rdflib import Graph, Literal, URIRef
+        from rdflib import RDF, Graph, Literal, URIRef
 
         def node(name: str):
             # absolute URIs (OWL/RDF vocabulary, external resources) pass through
@@ -370,9 +410,17 @@ class TrikeDB:
 
         g = Graph()
         g.bind("t", base)
-        for t in self._triples:
+        for i, t in enumerate(self._triples):
             obj = Literal(t.o) if any(c.isspace() for c in t.o) else node(t.o)
             g.add((node(t.s), node(t.p), obj))
+            if edge_attrs and t.attrs:
+                st = URIRef(f"{base}stmt{i}")
+                g.add((st, RDF.type, RDF.Statement))
+                g.add((st, RDF.subject, node(t.s)))
+                g.add((st, RDF.predicate, node(t.p)))
+                g.add((st, RDF.object, obj))
+                for key, value in t.attrs.items():
+                    g.add((st, node(str(key)), Literal(value)))
         if node_props:
             for name, props in self.nodes_meta.items():
                 for key, value in props.items():
@@ -400,7 +448,10 @@ class TrikeDB:
             return self.update(query, base=base)
 
         g = self.to_rdflib(base)
-        result = g.query(f"PREFIX t: <{base}>\n" + query)
+        result = g.query(
+            f"PREFIX t: <{base}>\n"
+            "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query
+        )
         if result.type == "ASK":
             return result.askAnswer
 
@@ -421,7 +472,8 @@ class TrikeDB:
         on inserted predicates. Returns the net change in triple count.
         """
         self._guard_writable()
-        g = self.to_rdflib(base, node_props=False)
+        # no node_props / edge_attrs: the sync-back below must see pure facts
+        g = self.to_rdflib(base, node_props=False, edge_attrs=False)
         g.update(f"PREFIX t: <{base}>\n" + query)
 
         new_spos = {tuple(_shorten(x, base) for x in triple) for triple in g}
@@ -452,6 +504,16 @@ class TrikeDB:
         from . import semantics
 
         return semantics.declare(self, predicate, characteristic)
+
+    def search(self, query: str, k: int = 10, model: Optional[str] = None) -> list:
+        """Semantic search: rank triples/nodes by meaning, not spelling
+        (requires the [semantic] extra). "認証まわりの注意点" finds keypair
+        and MFA facts without sharing a keyword. Returns scored dicts.
+        """
+        from . import semantic
+
+        kwargs = {"model": model} if model else {}
+        return semantic.search(self, query, k=k, **kwargs)
 
     def infer(self, apply: bool = False, base: str = "urn:trikedb:") -> list:
         """Materialize OWL-RL inferences over the graph (requires [owl] extra).
