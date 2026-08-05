@@ -234,6 +234,24 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
 always current), `/sparql` (REST: `POST {"query": ...}` → JSON), `/mcp`.
 v1 auth is a single static Bearer token.
 
+## How an agent should read a graph
+
+Three access methods, chosen by the *shape of the question* — and they
+compose into a cascade rather than compete:
+
+| Method | Right question | Guarantee |
+|---|---|---|
+| **whole-file read** | "what's here?", "any conventions I should know?" — you don't yet know what to ask | sees everything (comfortable to ~1k triples) |
+| **`query` / `sparql`** | "who can access X?", "does A depend on B?" — you know the vocabulary | deterministic and complete |
+| **`search`** | "認証まわりの注意点は?" — you don't know the node or predicate names | ranked candidates, no guarantee |
+
+The cascade for a fuzzy question: **`search` finds a foothold →
+`sparql`/`match` verifies and expands it → answer**. Semantic search is
+the index, SPARQL is the proof; never assert a fact from a search hit
+without confirming the triple. For small graphs, a whole-file read
+replaces the first step. (File-size limits for each rung are measured
+in [SCALING.md](SCALING.md).)
+
 ## The HTML workbench
 
 `to_html()` / `trikedb html` produce a self-contained page:

@@ -7,8 +7,8 @@ touching the others. Dependencies point inward only:
 flowchart LR
     subgraph adapters["Interface adapters"]
         direction TB
-        CLI("cli.py<br/>16 subcommands")
-        MCP("mcp_server.py<br/>9 MCP tools")
+        CLI("cli.py<br/>17 subcommands")
+        MCP("mcp_server.py<br/>10 MCP tools")
         SERVE("serve.py<br/>UI + REST + remote MCP")
         HTML("html.py<br/>workbench export")
         IMP("importers.py<br/>CSV / Markdown")
@@ -19,6 +19,7 @@ flowchart LR
     subgraph ext["Extensions (lazy, optional deps)"]
         direction TB
         SEM("semantics.py<br/>OWL · SHACL")
+        EMB("semantic.py<br/>embedding search")
         AUD("audit.py<br/>health findings")
     end
 
@@ -32,6 +33,7 @@ flowchart LR
     IMP --> CORE
     CORE --> STORE
     CORE -.-> SEM
+    CORE -.-> EMB
     CORE -.-> AUD
 ```
 
@@ -49,10 +51,15 @@ flowchart LR
   OWL-RL materialization (owlrl) and SHACL validation (pySHACL). The
   core must stay useful without these extras installed, so they are
   imported lazily and fail with actionable install hints.
+- **`semantic.py` — optional embedding search.** Static multilingual
+  embeddings (model2vec) behind `db.search()`. Deliberately index-free:
+  the whole graph is re-embedded per query so results can never drift
+  from the YAML. The model is a parameter — heavier backends can be
+  swapped in without touching callers.
 - **Interface adapters** — each is a thin translation of the core API
   into one medium, and none of them contain graph logic:
   - `cli.py`: argparse commands, one `_cmd_*` per subcommand.
-  - `mcp_server.py`: the FastMCP server definition (9 tools). Transport
+  - `mcp_server.py`: the FastMCP server definition (10 tools). Transport
     is chosen by the caller — stdio (`trikedb mcp`) and Streamable HTTP
     (`trikedb serve`) share this single definition.
   - `serve.py`: the HTTP composition — workbench UI + `/sparql` REST +
