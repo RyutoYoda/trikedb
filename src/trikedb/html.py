@@ -38,9 +38,12 @@ _TEMPLATE = """<!DOCTYPE html>
   #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #legend { display: flex; gap: 8px; margin-left: 6px; overflow: hidden; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
+  .lg.toggle { cursor: pointer; user-select: none; }
+  .lg.off { opacity: .35; }
   .lg b { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
-  .lg i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; border: 2px solid;
-          vertical-align: middle; margin-right: 4px; background: var(--bg); }
+  .lg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 2px solid;
+          vertical-align: middle; margin-right: 4px; background: var(--bg); font-style: normal;
+          font-size: 9px; line-height: 10px; text-align: center; font-weight: 700; }
   #spacer { flex: 1; }
   #search { width: 210px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
             background: var(--bg); color: var(--text); font-size: 12px; }
@@ -48,10 +51,13 @@ _TEMPLATE = """<!DOCTYPE html>
          color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap; }
   .btn:hover { border-color: #5a83b8; }
   .btn.active { background: #2c4a6e; border-color: #5a83b8; }
+  body.light .btn.active { background: #dbe6f7; }
 
   #sparql { position: fixed; top: 52px; left: 0; right: 0; z-index: 19; display: none;
             background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 14px; }
   #sparql.open { display: block; }
+  /* never cover the detail panel (its close button stays visible and unambiguous) */
+  body.detail-open #sparql { right: 330px; }
   #sparql textarea { width: 100%; box-sizing: border-box; height: 74px; resize: vertical;
             background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px;
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px; }
@@ -90,6 +96,9 @@ _TEMPLATE = """<!DOCTYPE html>
           font-size: 11px; white-space: nowrap; cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
   .chip:hover { border-color: #f7784f; }
   .chip b { color: #f7784f; font-weight: 700; margin-right: 6px; }
+  body.light .chip { border-color: #d89b9b; color: #a33a30; }
+  body.light .chip b { color: #c73e1d; }
+  body.light .chip:hover { border-color: #c73e1d; }
 </style>
 </head>
 <body>
@@ -103,7 +112,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>
+  <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
 </div>
 
 <div id="graphbar" style="position: fixed; top: 52px; left: 0; right: 0; z-index: 18; display: none;
@@ -221,31 +230,52 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
   interaction: { hover: true },
 });
 
-// --------------------------------------------------------------- header
+// ------------------------------------- header legend (click = filter)
+const hiddenTypes = new Set();
+const hiddenPreds = new Set();
+const hiddenGraphs = new Set();
+function refreshVisibility() {
+  nodes.update(ids.map(id => {
+    const meta = NODES_META[id] || {};
+    const byType = meta.type && hiddenTypes.has(meta.type);
+    const byGraph = nodeGraphs[id] && [...nodeGraphs[id]].every(g => hiddenGraphs.has(g));
+    return { id, hidden: !!(byType || byGraph) };
+  }));
+  edges.update(TRIPLES.map((t, i) => ({
+    id: i, hidden: !!(hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))),
+  })));
+}
 const legend = document.getElementById("legend");
 for (const [ty, color] of Object.entries(NODE_TYPES)) {
   const el = document.createElement("span");
-  el.className = "lg";
-  el.innerHTML = `<i style="border-color:${color}"></i>${ty}`;
+  el.className = "lg toggle";
+  el.title = `show/hide ${ty} nodes`;
+  el.innerHTML = `<i style="border-color:${color};color:${color}">&#10003;</i>${ty}`;
+  el.onclick = () => {
+    hiddenTypes.has(ty) ? hiddenTypes.delete(ty) : hiddenTypes.add(ty);
+    const off = hiddenTypes.has(ty);
+    el.classList.toggle("off", off);
+    el.querySelector("i").innerHTML = off ? "" : "&#10003;";
+    refreshVisibility();
+  };
   legend.appendChild(el);
 }
 for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
-  el.className = "lg";
+  el.className = "lg toggle";
+  el.title = `show/hide ${p} edges`;
   el.innerHTML = `<b style="background:${color}"></b>${p}`;
+  el.onclick = () => {
+    hiddenPreds.has(p) ? hiddenPreds.delete(p) : hiddenPreds.add(p);
+    el.classList.toggle("off", hiddenPreds.has(p));
+    refreshVisibility();
+  };
   legend.appendChild(el);
 }
 // ------------------------------------------------- workspace graph filter
 if (gnames.length > 0) {
   const bar = document.getElementById("graphbar");
   bar.style.display = "flex";
-  const hiddenGraphs = new Set();
-  const refresh = () => {
-    edges.update(TRIPLES.map((t, i) => ({ id: i, hidden: !!(t.graph && hiddenGraphs.has(t.graph)) })));
-    nodes.update(ids.filter(id => nodeGraphs[id]).map(id => ({
-      id, hidden: [...nodeGraphs[id]].every(g => hiddenGraphs.has(g)),
-    })));
-  };
   const tag = document.createElement("span");
   tag.className = "lg"; tag.textContent = "graphs:";
   bar.appendChild(tag);
@@ -256,7 +286,7 @@ if (gnames.length > 0) {
     chip.onclick = () => {
       hiddenGraphs.has(g) ? hiddenGraphs.delete(g) : hiddenGraphs.add(g);
       chip.classList.toggle("active", !hiddenGraphs.has(g));
-      refresh();
+      refreshVisibility();
     };
     bar.appendChild(chip);
   }
@@ -266,25 +296,31 @@ if (gnames.length > 0) {
 // ---------------------------------------------------------- theme toggle
 const THEMES = {
   dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e",
-           evFont: "#f0a0a0", evBg: "#3a1f1f" },
+           hlBorder: "#ffffff", edgeHl: "#ffffff", evFont: "#f0a0a0", evBg: "#3a1f1f" },
   light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7",
-           evFont: "#b3261e", evBg: "#fdeaea" },
+           hlBorder: "#5a83b8", edgeHl: "#1b1e26", evFont: "#b3261e", evBg: "#fdeaea" },
 };
 function applyTheme(name) {
-  const t = THEMES[name];
+  const th = THEMES[name];
   document.body.classList.toggle("light", name === "light");
-  network.setOptions({ nodes: { font: { color: t.font } },
-                       edges: { font: { color: t.edgeFont } } });
+  // vis caches the style of selected elements: deselect, restyle, reselect
+  const sel = network.getSelection();
+  network.unselectAll();
+  network.setOptions({ nodes: { font: { color: th.font } },
+                       edges: { font: { color: th.edgeFont } } });
   nodes.update(nodes.get().map(n => {
     const ev = n.shape === "diamond";
     const c = n.color || {};
     return { id: n.id,
-             font: { ...(n.font || {}), color: ev ? t.evFont : t.font },
-             color: { ...c, background: ev ? t.evBg : t.nodeBg,
-                      highlight: { ...(c.highlight || {}), background: t.hlBg } } };
+             font: { ...(n.font || {}), color: ev ? th.evFont : th.font },
+             color: { ...c, background: ev ? th.evBg : th.nodeBg,
+                      highlight: { border: th.hlBorder, background: th.hlBg } } };
   }));
+  edges.update(TRIPLES.map((t, i) => ({
+    id: i, color: { color: PREDICATES[t.p], highlight: th.edgeHl } })));
+  network.setSelection(sel);
   try { localStorage.setItem("trikedb-theme", name); } catch (e) {}
-  document.getElementById("btn-theme").innerHTML = name === "light" ? "&#9789;" : "&#9788;";
+  document.getElementById("btn-theme").textContent = name === "light" ? "dark" : "light";
 }
 document.getElementById("btn-theme").onclick = () =>
   applyTheme(document.body.classList.contains("light") ? "dark" : "light");
@@ -374,9 +410,12 @@ function showDetail(id) {
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
   document.getElementById("detail-body").innerHTML = html;
   document.getElementById("detail").classList.add("open");
+  document.body.classList.add("detail-open");
 }
-document.getElementById("btn-close").onclick = () =>
+document.getElementById("btn-close").onclick = () => {
   document.getElementById("detail").classList.remove("open");
+  document.body.classList.remove("detail-open");
+};
 document.getElementById("detail").addEventListener("click", (e) => {
   const n = e.target.closest("a.nodelink");
   if (n) focusNode(n.dataset.node);

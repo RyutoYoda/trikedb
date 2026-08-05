@@ -217,6 +217,8 @@ v1 auth is a single static Bearer token.
   by graph shape); workspaces tile each member graph into its own cell
   with per-graph filter chips
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
+- clickable legend: check a node type on/off to filter nodes, click a
+  predicate swatch to hide/show its edges (combines with graph chips)
 - full-text search over node ids, labels, node properties, edge
   attributes and free-text facts — type for a live count,
   Enter/Shift+Enter cycles hits, and **text2sparql** turns the search into
