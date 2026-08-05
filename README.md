@@ -53,7 +53,7 @@ trikedb keeps the *interface* of the big system — real SPARQL 1.1 (rdflib's en
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a predicate whitelist, plus SHACL shapes via `[shacl]` |
 | Inference | DL reasoning engines | OWL-RL materialization via `[owl]` — inferred facts land in the YAML, reviewable |
-| Agent integration | a service to operate | the agent reads the file, or `trikedb mcp` (stdio, embedded) |
+| Agent integration | a service to operate | the agent reads the file, `trikedb mcp` (stdio), or `trikedb serve` (remote MCP + UI + REST) |
 | Setup time | an afternoon (or a sprint) | `pip install trikedb` |
 
 If you need full OWL-DL reasoning at scale, named graphs, and multi-tenant governance, you want a full enterprise semantic platform. If you want a knowledge graph **today, in a file, in git** — that's trikedb. And because the storage maps cleanly onto RDF, graduating to a bigger system later is an export, not a rewrite: each team keeps its own YAML graph, and stitching them together (or migrating them wholesale) is just merging triples.
@@ -73,8 +73,12 @@ there is no step where a table name can be made up.
 From [PyPI](https://pypi.org/project/trikedb/):
 
 ```bash
-pip install trikedb           # library + CLI
-pip install 'trikedb[mcp]'    # + MCP server for AI agents
+pip install trikedb             # library + CLI (PyYAML + rdflib only)
+pip install 'trikedb[mcp]'      # + MCP server for AI agents (stdio)
+pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
+pip install 'trikedb[remote]'   # + s3:// gs:// graphs
+pip install 'trikedb[shacl]'    # + SHACL validation
+pip install 'trikedb[owl]'      # + OWL-RL inference
 ```
 
 ## Quickstart (Python)
