@@ -113,6 +113,18 @@ def main(argv=None) -> int:
     )
     p_mcp.add_argument("file")
 
+    p_serve = sub.add_parser(
+        "serve",
+        help="serve UI + REST + remote MCP over HTTP (requires trikedb[serve])",
+    )
+    p_serve.add_argument("file", help="graph YAML, s3:// URL, or workspace file")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument(
+        "--token", default=None,
+        help="require 'Authorization: Bearer <token>' on every request",
+    )
+
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
 
@@ -278,6 +290,13 @@ def _cmd_mcp(args) -> int:
     return 0
 
 
+def _cmd_serve(args) -> int:
+    from .serve import serve
+
+    serve(args.file, host=args.host, port=args.port, token=args.token)
+    return 0
+
+
 _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
@@ -292,6 +311,7 @@ _COMMANDS = {
     "validate": _cmd_validate,
     "infer": _cmd_infer,
     "mcp": _cmd_mcp,
+    "serve": _cmd_serve,
 }
 
 

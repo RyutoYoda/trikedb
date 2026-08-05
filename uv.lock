@@ -1794,7 +1794,7 @@ wheels = [
 
 [[package]]
 name = "trikedb"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -1804,10 +1804,13 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "fsspec" },
+    { name = "httpx" },
     { name = "mcp" },
     { name = "owlrl" },
     { name = "pyshacl" },
     { name = "pytest" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 mcp = [
     { name = "mcp" },
@@ -1819,6 +1822,11 @@ remote = [
     { name = "fsspec" },
     { name = "s3fs" },
 ]
+serve = [
+    { name = "mcp" },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
 shacl = [
     { name = "pyshacl" },
 ]
@@ -1827,8 +1835,10 @@ shacl = [
 requires-dist = [
     { name = "fsspec", marker = "extra == 'dev'", specifier = ">=2024.2" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2024.2" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.2,<2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.2,<2" },
+    { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.2,<2" },
     { name = "owlrl", marker = "extra == 'dev'", specifier = ">=6.0.2" },
     { name = "owlrl", marker = "extra == 'owl'", specifier = ">=6.0.2" },
     { name = "pyshacl", marker = "extra == 'dev'", specifier = ">=0.25" },
@@ -1837,8 +1847,12 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rdflib", specifier = ">=7" },
     { name = "s3fs", marker = "extra == 'remote'", specifier = ">=2024.2" },
+    { name = "starlette", marker = "extra == 'dev'", specifier = ">=0.37" },
+    { name = "starlette", marker = "extra == 'serve'", specifier = ">=0.37" },
+    { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "remote", "shacl", "owl", "dev"]
+provides-extras = ["mcp", "remote", "shacl", "owl", "serve", "dev"]
 
 [[package]]
 name = "typing-extensions"

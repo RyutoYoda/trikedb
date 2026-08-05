@@ -17,47 +17,10 @@ class OntologyError(ValueError):
     """Raised when a triple uses a predicate not declared in the ontology."""
 
 
-_REMOTE_PREFIXES = (
-    "s3://", "gs://", "gcs://", "http://", "https://",
-    "az://", "abfs://", "memory://",
-)
-
-
-def _is_remote(path) -> bool:
-    return isinstance(path, str) and path.startswith(_REMOTE_PREFIXES)
-
-
-def _fsspec():
-    try:
-        import fsspec
-    except ImportError:  # pragma: no cover
-        raise ImportError(
-            "remote graph URLs require fsspec — pip install 'trikedb[remote]' "
-            "(installs fsspec + s3fs; other backends: gcsfs, adlfs)"
-        ) from None
-    return fsspec
-
-
-def _exists(path) -> bool:
-    if _is_remote(path):
-        fs, p = _fsspec().core.url_to_fs(path)
-        return fs.exists(p)
-    return Path(path).exists()
-
-
-def _read_text(path) -> str:
-    if _is_remote(path):
-        with _fsspec().open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return Path(path).read_text(encoding="utf-8")
-
-
-def _write_text(path, text: str) -> None:
-    if _is_remote(path):
-        with _fsspec().open(path, "w", encoding="utf-8") as f:
-            f.write(text)
-    else:
-        Path(path).write_text(text, encoding="utf-8")
+from .storage import exists as _exists
+from .storage import is_remote as _is_remote
+from .storage import read_text as _read_text
+from .storage import write_text as _write_text
 
 
 @dataclass
@@ -116,6 +79,10 @@ class TrikeDB:
         )
         #: when True, every mutation writes straight back to the file.
         self.autosave = autosave
+        #: workspace member graphs ({name: path}) when this is a union view
+        self.workspace: Optional[dict] = None
+        #: True for workspace unions — mutations are refused
+        self.read_only = False
         #: node name -> free-form properties (type, label, url, description, ...)
         self.nodes_meta: dict = {}
         #: predicate -> human description. Empty dict means free-form predicates.
@@ -133,6 +100,10 @@ class TrikeDB:
 
     def _load(self) -> None:
         data = yaml.safe_load(_read_text(self.path)) or {}
+        graphs = data.get("graphs")
+        if isinstance(graphs, dict) and not data.get("triples"):
+            self._load_workspace(graphs)
+            return
         onto = data.get("ontology") or {}
         preds = onto.get("predicates", onto) if isinstance(onto, dict) else onto
         if isinstance(preds, dict):
@@ -146,6 +117,33 @@ class TrikeDB:
         for item in data.get("triples") or []:
             self._triples.append(Triple.from_dict(item))
 
+    def _load_workspace(self, graphs: dict) -> None:
+        """Union view over member graphs. Each triple gains a `graph` attr
+        naming its source; ontologies and node properties merge (first
+        wins). The union is read-only — write to a member graph instead."""
+        self.workspace = {str(k): str(v) for k, v in graphs.items()}
+        self.read_only = True
+        base_dir = None if _is_remote(self.path) else Path(self.path).parent
+        for name, gpath in self.workspace.items():
+            if not _is_remote(gpath) and base_dir is not None and not Path(gpath).is_absolute():
+                gpath = str(base_dir / gpath)
+            sub = TrikeDB(gpath)
+            for k, v in sub.ontology.items():
+                self.ontology.setdefault(k, v)
+            for n, props in sub.nodes_meta.items():
+                merged = self.nodes_meta.setdefault(n, {})
+                for k, v in props.items():
+                    merged.setdefault(k, v)
+            for t in sub:
+                self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}))
+
+    def _guard_writable(self) -> None:
+        if self.read_only:
+            raise ValueError(
+                "this is a read-only workspace union — write to one of its "
+                f"member graphs instead: {self.workspace}"
+            )
+
     def save(self, path: Union[str, Path, None] = None):
         """Write the graph back to YAML. Plain triples stay on one line.
 
@@ -153,6 +151,7 @@ class TrikeDB:
         writes are last-write-wins — keep team graphs behind review, or
         serve them through a single MCP process.
         """
+        self._guard_writable()
         if path is None:
             target = self.path
         else:
@@ -184,6 +183,7 @@ class TrikeDB:
         Absolute-URI predicates (http://...) are exempt from the ontology
         check — they are meta-level statements (OWL declarations, interop).
         """
+        self._guard_writable()
         if (
             self.ontology
             and p not in self.ontology
@@ -209,6 +209,7 @@ class TrikeDB:
         o: Optional[str] = None,
     ) -> int:
         """Remove all triples matching the pattern. Returns how many."""
+        self._guard_writable()
         keep = [t for t in self._triples if not self._matches(t, s, p, o)]
         removed = len(self._triples) - len(keep)
         self._triples = keep
@@ -227,6 +228,7 @@ class TrikeDB:
         grouping + legend), `label` (display name), `level` (column in
         the flow layout). Everything else shows up in the detail panel.
         """
+        self._guard_writable()
         merged = self.nodes_meta.setdefault(str(name), {})
         merged.update(props)
         self._autosave()
@@ -418,6 +420,7 @@ class TrikeDB:
         SPARQL start with no attributes. The ontology (if any) is enforced
         on inserted predicates. Returns the net change in triple count.
         """
+        self._guard_writable()
         g = self.to_rdflib(base, node_props=False)
         g.update(f"PREFIX t: <{base}>\n" + query)
 
@@ -439,102 +442,38 @@ class TrikeDB:
 
     # ---------------------------------------------------- validation / owl
 
-    _RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-    _OWL_CHARACTERISTICS = {
-        "transitive": "http://www.w3.org/2002/07/owl#TransitiveProperty",
-        "symmetric": "http://www.w3.org/2002/07/owl#SymmetricProperty",
-        "functional": "http://www.w3.org/2002/07/owl#FunctionalProperty",
-    }
-
     def declare(self, predicate: str, characteristic: str) -> Triple:
         """Give a predicate OWL semantics for infer().
 
         characteristic: 'transitive', 'symmetric', 'functional', or
         'inverse_of:<OTHER_PREDICATE>'. Stored as an ordinary triple in
         the YAML (subject = the predicate itself), so it is reviewable.
-
-        >>> db.declare("INHERITS", "transitive")
-        >>> db.declare("MANAGES", "inverse_of:REPORTS_TO")
         """
-        if characteristic.startswith("inverse_of:"):
-            other = characteristic.split(":", 1)[1]
-            return self.add(predicate, "http://www.w3.org/2002/07/owl#inverseOf", other)
-        try:
-            uri = self._OWL_CHARACTERISTICS[characteristic]
-        except KeyError:
-            raise ValueError(
-                f"unknown characteristic {characteristic!r} "
-                f"(known: {sorted(self._OWL_CHARACTERISTICS)} or 'inverse_of:<PRED>')"
-            ) from None
-        return self.add(predicate, self._RDF_TYPE, uri)
+        from . import semantics
+
+        return semantics.declare(self, predicate, characteristic)
 
     def infer(self, apply: bool = False, base: str = "urn:trikedb:") -> list:
         """Materialize OWL-RL inferences over the graph (requires [owl] extra).
 
-        Uses declared characteristics (see declare()) to derive new facts —
-        e.g. a transitive INHERITS yields the full chain. Returns the new
-        (s, p, o) tuples; with apply=True they are added to the store with
-        an `inferred: true` attribute, so the YAML diff shows exactly what
-        the reasoner concluded.
+        Uses declared characteristics (see declare()) to derive new facts.
+        Returns the new (s, p, o) tuples; with apply=True they are added
+        to the store with an `inferred: true` attribute, so the YAML diff
+        shows exactly what the reasoner concluded.
         """
-        try:
-            from owlrl import DeductiveClosure, OWLRL_Semantics
-        except ImportError:  # pragma: no cover
-            raise ImportError(
-                "OWL inference requires owlrl — pip install 'trikedb[owl]'"
-            ) from None
-        from rdflib import Literal
+        from . import semantics
 
-        g = self.to_rdflib(base, node_props=False)
-        before = set(g)
-        DeductiveClosure(OWLRL_Semantics).expand(g)
-        existing = {t.spo() for t in self._triples}
-        new = []
-        for s, p, o in set(g) - before:
-            row = []
-            for term in (s, p, o):
-                if isinstance(term, Literal):
-                    row.append(str(term))
-                    continue
-                text = str(term)
-                if not text.startswith(base):
-                    row = None  # axiomatic rdf/owl vocabulary noise or bnode
-                    break
-                row.append(_shorten(term, base))
-            if row and tuple(row) not in existing:
-                new.append(tuple(row))
-        new.sort()
-        if apply:
-            for s, p, o in new:
-                self.add(s, p, o, inferred=True)
-        return new
+        return semantics.infer(self, apply=apply, base=base)
 
     def validate(self, shapes, base: str = "urn:trikedb:"):
         """Validate the graph against SHACL shapes (requires [shacl] extra).
 
-        shapes: a Turtle string, or a path/URL to a .ttl file. Shapes refer
-        to graph terms via the urn:trikedb: namespace, e.g.
-        `@prefix t: <urn:trikedb:> .` then `sh:targetSubjectsOf t:USES_ROLE`.
-        Returns (conforms: bool, report: str).
+        shapes: a Turtle string, or a path/URL to a .ttl file, using the
+        urn:trikedb: namespace. Returns (conforms: bool, report: str).
         """
-        try:
-            from pyshacl import validate as shacl_validate
-        except ImportError:  # pragma: no cover
-            raise ImportError(
-                "SHACL validation requires pyshacl — pip install 'trikedb[shacl]'"
-            ) from None
-        from rdflib import Graph
+        from . import semantics
 
-        sg = Graph()
-        text = str(shapes)
-        if "\n" in text or text.lstrip().startswith("@prefix"):
-            sg.parse(data=text, format="turtle")
-        else:
-            sg.parse(text, format="turtle")
-        conforms, _, report = shacl_validate(
-            self.to_rdflib(base), shacl_graph=sg, inference="none"
-        )
-        return bool(conforms), str(report)
+        return semantics.validate(self, shapes, base=base)
 
     # -------------------------------------------------------------- exports
 

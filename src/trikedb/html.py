@@ -27,6 +27,7 @@ _TEMPLATE = """<!DOCTYPE html>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
   :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa; }
+  body.light { --bg: #f4f5f8; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
   #graph { position: fixed; inset: 52px 0 46px 0; }
 
@@ -101,7 +102,12 @@ _TEMPLATE = """<!DOCTYPE html>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn active" id="btn-layout">Flow</button>
+  <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>
 </div>
+
+<div id="graphbar" style="position: fixed; top: 52px; left: 0; right: 0; z-index: 18; display: none;
+     gap: 8px; align-items: center; padding: 7px 14px; background: var(--panel);
+     border-bottom: 1px solid var(--border); overflow-x: auto;"></div>
 
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
@@ -130,7 +136,29 @@ const NODES_META = __NODES_META__;
 const NODE_TYPES = __NODE_TYPES__;
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
+const GRAPHS = __GRAPHS__;   // workspace: {graph name: color}; {} otherwise
 const BASE = "urn:trikedb:";
+
+// which member graph(s) each node belongs to (workspace unions only)
+const nodeGraphs = {};
+TRIPLES.forEach(t => {
+  if (t.graph) {
+    (nodeGraphs[t.s] ??= new Set()).add(t.graph);
+    (nodeGraphs[t.o] ??= new Set()).add(t.graph);
+  }
+});
+// grid anchors: each member graph gets a cell so projects tile side by side
+const gnames = Object.keys(GRAPHS);
+const anchors = {};
+if (gnames.length > 1) {
+  const cols = Math.ceil(Math.sqrt(gnames.length)), CELL = 1900;
+  gnames.forEach((g, i) => { anchors[g] = { x: (i % cols) * CELL, y: Math.floor(i / cols) * CELL }; });
+}
+const jitter = (id, salt) => {
+  let h = salt;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return h - 498;
+};
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
@@ -156,6 +184,11 @@ const nodes = new vis.DataSet(ids.map(id => {
   if (tc) n.color = { border: tc, background: "#1e2129",
                       highlight: { border: "#ffffff", background: "#2c4a6e" } };
   if (useLevels) n.level = meta.level;
+  const g0 = nodeGraphs[id] ? [...nodeGraphs[id]][0] : null;
+  if (g0 && anchors[g0]) {   // seed each project into its grid cell
+    n.x = anchors[g0].x + jitter(id, 7) * 1.4;
+    n.y = anchors[g0].y + jitter(id, 13) * 1.4;
+  }
   return n;
 }));
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
@@ -201,6 +234,63 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   el.innerHTML = `<b style="background:${color}"></b>${p}`;
   legend.appendChild(el);
 }
+// ------------------------------------------------- workspace graph filter
+if (gnames.length > 0) {
+  const bar = document.getElementById("graphbar");
+  bar.style.display = "flex";
+  const hiddenGraphs = new Set();
+  const refresh = () => {
+    edges.update(TRIPLES.map((t, i) => ({ id: i, hidden: !!(t.graph && hiddenGraphs.has(t.graph)) })));
+    nodes.update(ids.filter(id => nodeGraphs[id]).map(id => ({
+      id, hidden: [...nodeGraphs[id]].every(g => hiddenGraphs.has(g)),
+    })));
+  };
+  const tag = document.createElement("span");
+  tag.className = "lg"; tag.textContent = "graphs:";
+  bar.appendChild(tag);
+  for (const g of gnames) {
+    const chip = document.createElement("button");
+    chip.className = "btn active";
+    chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${g}`;
+    chip.onclick = () => {
+      hiddenGraphs.has(g) ? hiddenGraphs.delete(g) : hiddenGraphs.add(g);
+      chip.classList.toggle("active", !hiddenGraphs.has(g));
+      refresh();
+    };
+    bar.appendChild(chip);
+  }
+  document.getElementById("sparql").style.top = "94px";
+}
+
+// ---------------------------------------------------------- theme toggle
+const THEMES = {
+  dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e",
+           evFont: "#f0a0a0", evBg: "#3a1f1f" },
+  light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7",
+           evFont: "#b3261e", evBg: "#fdeaea" },
+};
+function applyTheme(name) {
+  const t = THEMES[name];
+  document.body.classList.toggle("light", name === "light");
+  network.setOptions({ nodes: { font: { color: t.font } },
+                       edges: { font: { color: t.edgeFont } } });
+  nodes.update(nodes.get().map(n => {
+    const ev = n.shape === "diamond";
+    const c = n.color || {};
+    return { id: n.id,
+             font: { ...(n.font || {}), color: ev ? t.evFont : t.font },
+             color: { ...c, background: ev ? t.evBg : t.nodeBg,
+                      highlight: { ...(c.highlight || {}), background: t.hlBg } } };
+  }));
+  try { localStorage.setItem("trikedb-theme", name); } catch (e) {}
+  document.getElementById("btn-theme").innerHTML = name === "light" ? "&#9789;" : "&#9788;";
+}
+document.getElementById("btn-theme").onclick = () =>
+  applyTheme(document.body.classList.contains("light") ? "dark" : "light");
+try {
+  if (localStorage.getItem("trikedb-theme") === "light") applyTheme("light");
+} catch (e) {}
+
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
 const layoutBtn = document.getElementById("btn-layout");
 layoutBtn.textContent = flow ? "Flow" : "Free";
@@ -361,8 +451,12 @@ def to_html(
     else:
         event_preds = sorted({str(p) for p in event_predicates})
 
+    graph_names = sorted({t.attrs.get("graph") for t in db if t.attrs.get("graph")})
+    graph_colors = {g: PALETTE[(i + 3) % len(PALETTE)] for i, g in enumerate(graph_names)}
+
     if layout == "auto":
-        flow_default = len(triples) <= 150
+        # workspaces tile projects on a grid, which needs the force layout
+        flow_default = len(triples) <= 150 and not graph_names
     else:
         flow_default = layout == "flow"
 
@@ -381,6 +475,7 @@ def to_html(
         .replace("__NODE_TYPES__", json.dumps(type_colors, ensure_ascii=False))
         .replace("__NT__", json.dumps(nt, ensure_ascii=False))
         .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
+        .replace("__GRAPHS__", json.dumps(graph_colors, ensure_ascii=False))
         .replace("__FLOW_DEFAULT__", "true" if flow_default else "false")
     )
     if path is not None:

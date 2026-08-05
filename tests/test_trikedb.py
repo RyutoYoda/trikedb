@@ -525,3 +525,86 @@ def test_shacl_validate_from_file(tmp_path):
     db.set_node("svc-etl-02", type="bot")
     conforms, _ = db.validate(str(shapes_file))
     assert conforms is True
+
+
+# ------------------------------------------------------------- workspace
+
+def _make_workspace(tmp_path):
+    fin = TrikeDB(tmp_path / "finance.yaml", ontology={"OWNS_BUDGET": ""})
+    fin.add("tanaka", "OWNS_BUDGET", "project-atlas")
+    fin.set_node("tanaka", type="person")
+    fin.save()
+    plat = TrikeDB(tmp_path / "platform.yaml", ontology={"USES": ""})
+    plat.add("project-atlas", "USES", "ACME_DWH")
+    plat.save()
+    ws = tmp_path / "workspace.yaml"
+    ws.write_text("graphs:\n  finance: finance.yaml\n  platform: platform.yaml\n")
+    return ws
+
+
+def test_workspace_union(tmp_path):
+    db = TrikeDB(_make_workspace(tmp_path))
+    assert db.workspace == {"finance": "finance.yaml", "platform": "platform.yaml"}
+    assert len(db) == 2
+    assert {t.attrs["graph"] for t in db} == {"finance", "platform"}
+    assert set(db.ontology) == {"OWNS_BUDGET", "USES"}
+    assert db.node("tanaka") == {"type": "person"}
+    # 自動ジョイン: 財務→基盤を跨ぐパスがSPARQLで引ける
+    rows = db.sparql("SELECT ?env WHERE { t:tanaka t:OWNS_BUDGET ?pj . ?pj t:USES ?env }")
+    assert rows == [{"env": "ACME_DWH"}]
+
+
+def test_workspace_is_read_only(tmp_path):
+    db = TrikeDB(_make_workspace(tmp_path))
+    for fn in (lambda: db.add("a", "OWNS_BUDGET", "b"),
+               lambda: db.remove(s="tanaka"),
+               lambda: db.set_node("x", type="y"),
+               lambda: db.save(),
+               lambda: db.sparql("INSERT DATA { t:a t:OWNS_BUDGET t:b }")):
+        with pytest.raises(ValueError, match="read-only workspace"):
+            fn()
+
+
+def test_workspace_html_has_graph_filter_and_theme(tmp_path):
+    db = TrikeDB(_make_workspace(tmp_path))
+    html = db.to_html()
+    block = html.split("GRAPHS = ")[1].split(";")[0]
+    assert '"finance"' in block and '"platform"' in block
+    assert "btn-theme" in html and "body.light" in html  # light mode present
+
+
+# ----------------------------------------------------------------- serve
+
+def test_serve_ui_and_rest(tmp_path):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g)
+    db.add("a", "P", "b")
+    db.save()
+
+    client = TestClient(build_app(str(g), with_mcp=False))
+    page = client.get("/")
+    assert page.status_code == 200 and "vis-network" in page.text
+    r = client.post("/sparql", json={"query": "SELECT ?o WHERE { t:a t:P ?o }"})
+    assert r.json() == {"rows": [{"o": "b"}]}
+    w = client.post("/sparql", json={"query": "INSERT DATA { t:c t:P t:d }"})
+    assert w.json()["delta"] == 1
+    assert ("c", "P", "d") in TrikeDB(g)  # RESTの書き込みが永続化される
+
+
+def test_serve_token_gate(tmp_path):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    client = TestClient(build_app(str(g), token="sekrit", with_mcp=False))
+    assert client.get("/").status_code == 401
+    ok = client.get("/", headers={"Authorization": "Bearer sekrit"})
+    assert ok.status_code == 200

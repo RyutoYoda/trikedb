@@ -228,6 +228,53 @@ matching fsspec backend installed.
 Concurrency is last-write-wins in this version — point writers through
 a single MCP process or CI job, or keep writes in git-reviewed batches.
 
+## Workspaces: many graphs, one view
+
+Real teams have more than one graph — finance, data platform, HR. A
+workspace file unions them:
+
+```yaml
+# workspace.yaml
+graphs:
+  finance:  finance.yaml
+  platform: s3://team-bucket/kg/platform.yaml   # local and remote mix freely
+  snowflake: ../infra/ontology/snowflake.yaml
+```
+
+Every command accepts it (`trikedb sparql workspace.yaml ...`,
+`trikedb html workspace.yaml`, `trikedb serve workspace.yaml`). In the
+HTML view each project tiles into its own cluster with a per-graph
+filter bar; every triple carries a `graph:` attribute naming its source.
+
+The payoff is **automatic joins**: because RDF triples merge on shared
+names, `(tanaka, OWNS_BUDGET, project-atlas)` in finance and
+`(project-atlas, USES, ACME_DWH)` in platform become one SPARQL-walkable path —
+no foreign keys, no schema negotiation. Unions are **read-only views**;
+each member graph stays owned (and permissioned) by its team, and
+writes go to the member file.
+
+## Serving a graph (UI + REST + remote MCP)
+
+One process, three doors (`pip install 'trikedb[serve]'`):
+
+```bash
+trikedb serve workspace.yaml --port 8080 --token $SECRET
+```
+
+- `/` — the workbench UI, always showing the current graph
+- `/sparql` — minimal REST: `POST {"query": "..."}` → JSON, for apps
+- `/mcp` — MCP over Streamable HTTP, for agents anywhere:
+
+```bash
+claude mcp add kg https://kg.internal:8080/mcp --transport http \
+  --header "Authorization: Bearer $SECRET"
+```
+
+Same nine MCP tools as stdio — the server definition is shared, only
+the transport differs. v1 auth is a single static Bearer token
+(OAuth 2.1 delegation to an IdP is the planned v2). Pair it with an
+`s3://` graph and the server is stateless — run it anywhere.
+
 ## The file format
 
 A trikedb file is ordinary YAML with three top-level keys (only `triples` is required):
