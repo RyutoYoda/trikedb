@@ -386,6 +386,12 @@ The exported HTML is a small workbench, not just a picture: click a node for a r
 
 On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same small LLM answers **60% alone vs 83% with a trikedb graph as context** — a +23-point delta under a deterministic, reproducible protocol. Scripts, method, and an honest scoring-sensitivity analysis live in [`benchmarks/`](benchmarks/).
 
+## Documentation
+
+- [docs/REFERENCE.md](docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layering and where new code goes
+- [benchmarks/](benchmarks/) — WebQSP methodology and findings
+
 ## Development
 
 Uses [uv](https://docs.astral.sh/uv/):

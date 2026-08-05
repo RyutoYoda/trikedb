@@ -3,16 +3,34 @@
 trikedb is layered so each concern can be replaced or extended without
 touching the others. Dependencies point inward only:
 
-```
-            interface adapters                 (how the world talks to the graph)
-  cli.py   mcp_server.py   serve.py   html.py   importers.py
-      \         |             |          |          /
-       +--------+------+------+----------+---------+
-                       |
-                     db.py                          (core: Triple + TrikeDB)
-                    /      \
-           storage.py    semantics.py
-      (where bytes live)  (optional OWL / SHACL layers)
+```mermaid
+graph TD
+    subgraph adapters["Interface adapters — how the world talks to the graph"]
+        CLI["cli.py<br/>16 subcommands"]
+        MCP["mcp_server.py<br/>9 MCP tools"]
+        SERVE["serve.py<br/>UI + REST + remote MCP"]
+        HTML["html.py<br/>workbench export"]
+        IMP["importers.py<br/>CSV / Markdown"]
+    end
+
+    CORE["db.py — core<br/>Triple + TrikeDB"]
+
+    subgraph ext["Extension modules (lazy, optional deps)"]
+        SEM["semantics.py<br/>OWL declare/infer · SHACL validate"]
+        AUD["audit.py<br/>health findings"]
+    end
+
+    STORE["storage.py — storage backends<br/>local paths · s3:// gs:// https:// (fsspec)"]
+
+    CLI --> CORE
+    MCP --> CORE
+    SERVE --> MCP
+    SERVE --> CORE
+    HTML --> CORE
+    IMP --> CORE
+    CORE --> STORE
+    CORE -.-> SEM
+    CORE -.-> AUD
 ```
 
 ## Layers
