@@ -116,6 +116,7 @@ def test_html_export(db, tmp_path):
     assert "oxigraph" in html  # in-browser SPARQL console
     assert "trikedb knowledge graph" in html  # default title
     assert "urn:trikedb:LEGACY_DUMP" in html  # embedded N-Triples for the engine
+    assert "search-count" in html  # Cmd+F-style match cycling
 
 
 def test_html_event_predicates_detected(tmp_path):

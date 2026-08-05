@@ -99,6 +99,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="legend"></div>
   <div id="spacer"></div>
   <input id="search" placeholder="search nodes...">
+  <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>
@@ -291,11 +292,27 @@ try {
 } catch (e) {}
 
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-document.getElementById("search").addEventListener("keydown", (e) => {
-  if (e.key !== "Enter") return;
+// search: Enter cycles through matches (Shift+Enter goes back), like Cmd+F
+const searchBox = document.getElementById("search");
+const searchCount = document.getElementById("search-count");
+let searchState = { q: "", hits: [], i: -1 };
+searchBox.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
-  const hit = ids.filter(id => q && id.toLowerCase().includes(q));
-  if (hit.length) focusNode(hit[0]);
+  searchState = { q, hits: q ? ids.filter(id => id.toLowerCase().includes(q)) : [], i: -1 };
+  searchCount.textContent = q ? `${searchState.hits.length}件` : "";
+});
+searchBox.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !searchState.hits.length) {
+    if (e.key === "Enter") searchCount.textContent = "0/0";
+    return;
+  }
+  const n = searchState.hits.length;
+  searchState.i = (searchState.i + (e.shiftKey ? -1 : 1) + n) % n;
+  searchCount.textContent = `${searchState.i + 1}/${n}`;
+  network.selectNodes(searchState.hits);       // 全ヒットをハイライト
+  const id = searchState.hits[searchState.i];  // 現在のヒットへズーム
+  network.focus(id, { scale: 1.1, animation: true });
+  showDetail(id);
 });
 
 // --------------------------------------------------------- detail panel
