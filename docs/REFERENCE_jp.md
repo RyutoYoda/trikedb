@@ -84,6 +84,44 @@ union内の各トリプルには出典グラフ名が `graph:` 属性として�
 同名ノードはグラフ間で自動的にジョインされる。書き込みは拒否され、
 メンバーグラフへの案内が返る。
 
+## プロパティとラベルの付け方
+
+情報を付けられる場所は3つあり、使い分けるとグラフが綺麗に保てる:
+
+| 場所 | 個数 | 付け方 | 向いているもの |
+|---|---|---|---|
+| **ノードプロパティ** | ノードごとにキー無制限 | `set_node()` / `trikedb node -a` | そのエンティティ自身の事実: `url`・`owner`・`schema`・`pii` など |
+| **エッジ属性** | トリプルごとにキー無制限 | `add(..., **attrs)` / `-a k=v` | **関係についての**事実: `schedule`・`prov`・`deprecated`・`since` など |
+| **トリプル追加** | 無制限 | `add()` | 他のエンティティと共有される値・クエリしたい値 |
+
+ノードプロパティのうち3つのキーはUI上の意味を持つ(各1個):
+
+```python
+db.set_node("svc-etl-01",
+    label="etl-bot",    # ワークベンチでの表示名(ノードIDはキーのまま — IDは改名しない。エッジが指しているため)
+    type="bot",         # 色分けグループ+凡例
+    level=2)            # フローレイアウトの列(全ノードに揃っているときだけ有効)
+db.set_node("svc-etl-01", owner="data-platform", pii=False)   # set_nodeはマージ — キーは後からいつでも追加できる
+```
+
+```bash
+trikedb node graph.yaml svc-etl-01 -a label=etl-bot -a type=bot -a pii=false   # true/falseは自動でbool化
+trikedb node graph.yaml svc-etl-01          # そのノードの全情報(プロパティ+入出エッジ)を表示
+```
+
+**複数値はリストよりトリプルで。** ノードにリスト(`aliases: [Tokyo, TYO]`)
+も持てるが、値を1本ずつトリプルにするとSPARQLで個別に引けて、グラフ間の
+自動ジョインにも乗る:
+
+```python
+db.add("tokyo", "HAS_ALIAS", "TYO")     # SELECT ?a WHERE { t:tokyo t:HAS_ALIAS ?a } が効く
+```
+
+目安: **「ノード自身のメタ情報→プロパティ、共有される・数える・クエリする値→トリプル」**。
+ノードプロパティはSPARQLからもリテラルとして見える(`?x t:type \"bot\"`)。
+さらに述語もただの名前なので、述語自体にプロパティを付けることもできる
+(`db.set_node("PROVIDES", since="2024")`)— これはRDF本来の流儀。
+
 ## Python API
 
 ```python

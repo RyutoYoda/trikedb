@@ -88,6 +88,46 @@ Every triple in a union carries a `graph:` attribute naming its source;
 shared node names auto-join across members; writes are refused with a
 pointer to the member files.
 
+## Properties and labels
+
+There are three places to attach information, and knowing which to use
+keeps a graph clean:
+
+| Where | How many | Set with | Good for |
+|---|---|---|---|
+| **Node properties** | unlimited keys per node | `set_node()` / `trikedb node -a` | facts about the entity itself: `url`, `owner`, `schema`, `pii`... |
+| **Edge attributes** | unlimited keys per triple | `add(..., **attrs)` / `-a k=v` | facts about the *relationship*: `schedule`, `prov`, `deprecated`, `since`... |
+| **More triples** | unlimited | `add()` | anything another entity shares, or that you want to query |
+
+Three node-property keys have UI meaning (one value each):
+
+```python
+db.set_node("svc-etl-01",
+    label="etl-bot",    # display name in the workbench (the node ID stays the key — never rename IDs, edges point at them)
+    type="bot",         # color group + legend entry
+    level=2)            # column in the flow layout (only honored when every node has one)
+db.set_node("svc-etl-01", owner="data-platform", pii=False)   # set_node merges — add keys any time
+```
+
+```bash
+trikedb node graph.yaml svc-etl-01 -a label=etl-bot -a type=bot -a pii=false   # true/false become booleans
+trikedb node graph.yaml svc-etl-01          # show everything known about the node
+```
+
+**Multi-valued facts: prefer triples over list properties.** A node can
+hold a list (`aliases: [Tokyo, TYO]`), but each value as its own triple
+is queryable in SPARQL and joins across graphs:
+
+```python
+db.add("tokyo", "HAS_ALIAS", "TYO")     # SELECT ?a WHERE { t:tokyo t:HAS_ALIAS ?a } works
+```
+
+Rule of thumb: *metadata about the node itself → property; anything
+shared, counted, or queried → triple.* Node properties are exposed to
+SPARQL too (as literals: `?x t:type \"bot\"`), and since predicates are
+just names, even a predicate can carry properties
+(`db.set_node("PROVIDES", since="2024")`) — the RDF way.
+
 ## Python API
 
 ```python
