@@ -609,3 +609,44 @@ def test_serve_token_gate(tmp_path):
     assert client.get("/").status_code == 401
     ok = client.get("/", headers={"Authorization": "Bearer sekrit"})
     assert ok.status_code == 200
+
+
+# ------------------------------------------------------------ check/audit
+
+def test_content_hash_and_check(tmp_path, capsys):
+    from trikedb.cli import main
+
+    g = str(tmp_path / "g.yaml")
+    h = str(tmp_path / "g.html")
+    db = TrikeDB(g)
+    db.add("a", "P", "b")
+    db.save()
+    db.to_html(h)
+    assert main(["check", g, "--html", h]) == 0
+    # グラフを変更 → HTMLが古い扱いになる
+    db.add("c", "P", "d")
+    db.save()
+    assert main(["check", g, "--html", h]) == 1
+    db.to_html(h)  # 再生成で復帰
+    assert main(["check", g, "--html", h]) == 0
+
+
+def test_audit_findings(tmp_path):
+    ws_dir = tmp_path
+    g1 = TrikeDB(ws_dir / "a.yaml"); g1.add("x", "P", "y"); g1.save()
+    g2 = TrikeDB(ws_dir / "b.yaml"); g2.add("x", "P", "y"); g2.add("Tokyo", "P", "tokyo"); g2.save()
+    (ws_dir / "ws.yaml").write_text("graphs:\n  a: a.yaml\n  b: b.yaml\n")
+    db = TrikeDB(ws_dir / "ws.yaml")
+    kinds = {f["kind"] for f in db.audit()}
+    assert "duplicate-triple" in kinds      # 同一(s,p,o)が2グラフに
+    assert "name-collision" in kinds        # Tokyo vs tokyo
+
+    solo = TrikeDB(ws_dir / "c.yaml", ontology={"USED": "", "UNUSED": ""})
+    solo.add("s", "USED", "o")
+    solo.add("T", "USED", "2025-01 first event happened here today")
+    solo.add("T", "USED", "2025-01 first event happened here again")
+    solo.set_node("lonely", type="x")
+    f = solo.audit()
+    kinds = {x["kind"] for x in f}
+    assert {"unused-predicate", "orphan-node", "similar-facts"} <= kinds
+    assert all(x["severity"] == "warning" for x in f)  # errorなし

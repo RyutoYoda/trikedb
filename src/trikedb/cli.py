@@ -108,6 +108,19 @@ def main(argv=None) -> int:
         help="add the inferred triples to the graph (marked inferred: true) and save",
     )
 
+    p_check = sub.add_parser(
+        "check", help="CI check: graph parses and a generated HTML is up to date"
+    )
+    p_check.add_argument("file")
+    p_check.add_argument("--html", default=None, help="generated HTML to verify against the graph")
+
+    p_audit = sub.add_parser(
+        "audit", help="health findings for a growing graph (dupes, name collisions, orphans)"
+    )
+    p_audit.add_argument("file")
+    p_audit.add_argument("--json", action="store_true")
+    p_audit.add_argument("--strict", action="store_true", help="warnings also fail (exit 1)")
+
     p_mcp = sub.add_parser(
         "mcp", help="serve the graph as an MCP server (stdio) — an ontology layer for AI agents"
     )
@@ -283,6 +296,44 @@ def _cmd_infer(args) -> int:
     return 0
 
 
+def _cmd_check(args) -> int:
+    import re
+    from pathlib import Path
+
+    db = TrikeDB(args.file)
+    print(f"parse OK: {db}")
+    if args.html:
+        path = Path(args.html)
+        if not path.exists():
+            print(f"stale: {args.html} does not exist — generate it", file=sys.stderr)
+            return 1
+        m = re.search(r"trikedb:hash:([0-9a-f]+)", path.read_text(encoding="utf-8"))
+        if not m:
+            print(f"stale: {args.html} has no content hash (older trikedb?) — regenerate", file=sys.stderr)
+            return 1
+        if m.group(1) != db.content_hash():
+            print(f"stale: {args.html} does not match the graph — regenerate", file=sys.stderr)
+            return 1
+        print(f"HTML up to date: {args.html}")
+    return 0
+
+
+def _cmd_audit(args) -> int:
+    db = TrikeDB(args.file)
+    findings = db.audit()
+    if args.json:
+        print(json.dumps(findings, ensure_ascii=False, indent=2))
+    else:
+        if not findings:
+            print("clean: no findings")
+        for f in findings:
+            print(f"[{f['severity']}] {f['kind']}: {f['detail']}")
+    errors = [f for f in findings if f["severity"] == "error"]
+    if errors or (args.strict and findings):
+        return 1
+    return 0
+
+
 def _cmd_mcp(args) -> int:
     from .mcp_server import serve
 
@@ -308,6 +359,8 @@ _COMMANDS = {
     "stats": _cmd_stats,
     "html": _cmd_html,
     "jsonld": _cmd_jsonld,
+    "check": _cmd_check,
+    "audit": _cmd_audit,
     "validate": _cmd_validate,
     "infer": _cmd_infer,
     "mcp": _cmd_mcp,

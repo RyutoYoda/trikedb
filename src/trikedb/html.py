@@ -419,6 +419,7 @@ document.getElementById("btn-run").onclick = async () => {
   }
 };
 </script>
+<!-- trikedb:hash:__CONTENT_HASH__ -->
 </body>
 </html>
 """
@@ -483,6 +484,7 @@ def to_html(
         .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
         .replace("__GRAPHS__", json.dumps(graph_colors, ensure_ascii=False))
         .replace("__FLOW_DEFAULT__", "true" if flow_default else "false")
+        .replace("__CONTENT_HASH__", db.content_hash())
     )
     if path is not None:
         Path(path).write_text(html, encoding="utf-8")

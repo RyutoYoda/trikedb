@@ -477,6 +477,33 @@ class TrikeDB:
 
     # -------------------------------------------------------------- exports
 
+    def content_hash(self) -> str:
+        """Stable fingerprint of the graph content (triples + nodes + ontology).
+
+        Embedded into generated HTML so `trikedb check` can detect a stale
+        export without knowing the generation parameters.
+        """
+        import hashlib
+        import json as _json
+
+        doc = {
+            "ontology": self.ontology,
+            "nodes": self.nodes_meta,
+            "triples": sorted(
+                (t.to_dict() for t in self._triples),
+                key=lambda d: _json.dumps(d, sort_keys=True, ensure_ascii=False),
+            ),
+        }
+        return hashlib.sha256(
+            _json.dumps(doc, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()[:16]
+
+    def audit(self) -> list:
+        """Health findings for a growing graph; see trikedb.audit.audit()."""
+        from . import audit
+
+        return audit.audit(self)
+
     def to_jsonld(self, base: str = "urn:trikedb:") -> dict:
         """Best-effort JSON-LD export for interop with real RDF tooling."""
         context = {p: {"@id": base + p, "@type": "@id"} for p in self.predicates()}

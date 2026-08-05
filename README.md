@@ -257,6 +257,26 @@ no foreign keys, no schema negotiation. Unions are **read-only views**;
 each member graph stays owned (and permissioned) by its team, and
 writes go to the member file.
 
+## Keeping a growing graph healthy
+
+Ontologies accumulate facts from many hands (and agents). Two commands
+keep that sustainable:
+
+```bash
+# CI / pre-commit: does the graph parse, and is the exported HTML current?
+# Generated HTML embeds a content hash of the graph, so staleness is detectable.
+trikedb check graph.yaml --html docs/index.html   # exit 1 if stale
+
+# health findings: duplicate triples across workspace members, Tokyo-vs-tokyo
+# name collisions, near-duplicate free-text facts, orphan node props,
+# declared-but-unused predicates
+trikedb audit workspace.yaml            # exit 1 on errors; --strict fails on warnings too
+```
+
+`audit` is deterministic by design — for semantic dedup beyond these
+heuristics, hand the `--json` report to an LLM agent and let it propose
+merges as a reviewable PR.
+
 ## Serving a graph (UI + REST + remote MCP)
 
 One process, three doors (`pip install 'trikedb[serve]'`):
