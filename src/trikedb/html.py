@@ -100,7 +100,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="spacer"></div>
   <input id="search" placeholder="search nodes...">
   <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
-  <button class="btn" id="btn-tosparql" title="turn this search into a SPARQL query">&#8594;SPARQL</button>
+  <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>

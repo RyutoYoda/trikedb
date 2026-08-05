@@ -219,7 +219,7 @@ v1 auth is a single static Bearer token.
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
 - full-text search over node ids, labels, node properties, edge
   attributes and free-text facts — type for a live count,
-  Enter/Shift+Enter cycles hits, and **→SPARQL** turns the search into
+  Enter/Shift+Enter cycles hits, and **text2sparql** turns the search into
   an editable CONTAINS query in the console
 - in-browser SPARQL console (Oxigraph WASM, loaded from CDN on demand)
 - change events as red diamonds + a bottom timeline bar
