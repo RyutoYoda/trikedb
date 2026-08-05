@@ -8,34 +8,44 @@ Every feature, and how to use it. For the design rationale see
 
 ```mermaid
 flowchart LR
-    subgraph write["Write paths — every one ontology-guarded"]
-        W1["CLI: add · rm · node · ontology --set"]
-        W2["MCP: add_triple · set_node · remove_triples"]
-        W3["SPARQL: INSERT DATA · DELETE WHERE"]
-        W4["import: CSV · TSV · Markdown tables · YAML"]
-        W5["Python API"]
-        W6["infer --apply (OWL-RL, marked inferred: true)"]
+    subgraph ingest["Ingest — every path ontology-guarded"]
+        direction TB
+        I1("CSV / TSV / Markdown tables<br/>trikedb import")
+        I2("agents via MCP<br/>add_triple · set_node")
+        I3("CLI add / Python API")
+        I4("SPARQL INSERT / DELETE")
+        I5("OWL inference<br/>materialized as inferred: true")
     end
 
-    Y[("graph.yaml<br/>local file · s3:// · workspace union")]
-
-    subgraph read["Read paths"]
-        R1["agents Read the file directly"]
-        R2["patterns: triples() · query()"]
-        R3["SPARQL 1.1 (rdflib engine)"]
-        R4["MCP tools (stdio or remote)"]
-        R5["HTML workbench / GitHub Pages"]
-        R6["REST: POST /sparql"]
+    subgraph store["Store"]
+        Y[("graph.yaml<br/>local · s3:// · workspace union")]
+        H("health: check · audit · SHACL")
     end
 
-    subgraph health["Health"]
-        H1["trikedb check — stale-HTML detection"]
-        H2["trikedb audit — dupes · collisions · orphans"]
-        H3["trikedb validate — SHACL shapes"]
+    subgraph serve["Serve"]
+        direction TB
+        S1("SPARQL 1.1 / pattern queries")
+        S2("MCP — stdio or Streamable HTTP")
+        S3("HTML workbench / GitHub Pages")
+        S4("REST: POST /sparql")
     end
 
-    write --> Y --> read
-    Y --> health
+    C("AI agents (MCP)<br/>apps (REST)<br/>humans (Web UI)")
+
+    I1 --> Y
+    I2 --> Y
+    I3 --> Y
+    I4 --> Y
+    I5 --> Y
+    Y --- H
+    Y --> S1
+    Y --> S2
+    Y --> S3
+    Y --> S4
+    S1 --> C
+    S2 --> C
+    S3 --> C
+    S4 --> C
 ```
 
 ## The file format
@@ -195,11 +205,11 @@ process or git-reviewed batches.
 
 ```mermaid
 flowchart LR
-    E["edit YAML<br/>(any write path)"] --> G["trikedb html<br/>regenerate view"]
-    G --> C["trikedb check<br/>parse + freshness"]
-    C --> A["trikedb audit<br/>dupes · collisions · orphans"]
-    A -->|clean| PR["commit / PR"]
-    A -->|findings --json| LLM["hand the report to an agent<br/>→ merge proposals as a PR"]
+    E("edit YAML<br/>any write path") --> G("trikedb html<br/>regenerate view")
+    G --> C("trikedb check<br/>parse + freshness")
+    C --> A("trikedb audit<br/>dupes · collisions · orphans")
+    A -->|clean| PR("commit / PR")
+    A -->|"findings (--json)"| LLM("hand the report to an agent<br/>merge proposals as a PR")
 ```
 
 `audit` is deterministic on purpose; semantic near-duplicates beyond its

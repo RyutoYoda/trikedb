@@ -4,27 +4,29 @@ trikedb is layered so each concern can be replaced or extended without
 touching the others. Dependencies point inward only:
 
 ```mermaid
-graph TD
-    subgraph adapters["Interface adapters — how the world talks to the graph"]
-        CLI["cli.py<br/>16 subcommands"]
-        MCP["mcp_server.py<br/>9 MCP tools"]
-        SERVE["serve.py<br/>UI + REST + remote MCP"]
-        HTML["html.py<br/>workbench export"]
-        IMP["importers.py<br/>CSV / Markdown"]
+flowchart LR
+    subgraph adapters["Interface adapters"]
+        direction TB
+        CLI("cli.py<br/>16 subcommands")
+        MCP("mcp_server.py<br/>9 MCP tools")
+        SERVE("serve.py<br/>UI + REST + remote MCP")
+        HTML("html.py<br/>workbench export")
+        IMP("importers.py<br/>CSV / Markdown")
     end
 
-    CORE["db.py — core<br/>Triple + TrikeDB"]
+    CORE("db.py — core<br/>Triple + TrikeDB")
 
-    subgraph ext["Extension modules (lazy, optional deps)"]
-        SEM["semantics.py<br/>OWL declare/infer · SHACL validate"]
-        AUD["audit.py<br/>health findings"]
+    subgraph ext["Extensions (lazy, optional deps)"]
+        direction TB
+        SEM("semantics.py<br/>OWL · SHACL")
+        AUD("audit.py<br/>health findings")
     end
 
-    STORE["storage.py — storage backends<br/>local paths · s3:// gs:// https:// (fsspec)"]
+    STORE("storage.py<br/>local · s3:// gs:// https://")
 
+    SERVE --> MCP
     CLI --> CORE
     MCP --> CORE
-    SERVE --> MCP
     SERVE --> CORE
     HTML --> CORE
     IMP --> CORE
