@@ -277,11 +277,13 @@ if (gnames.length > 0) {
   const bar = document.getElementById("graphbar");
   bar.style.display = "flex";
   const tag = document.createElement("span");
-  tag.className = "lg"; tag.textContent = "graphs:";
+  tag.className = "lg"; tag.textContent = "workspace:";
+  tag.title = "this view is a workspace: a read-only union of member graphs — click a chip to show/hide one";
   bar.appendChild(tag);
   for (const g of gnames) {
     const chip = document.createElement("button");
     chip.className = "btn active";
+    chip.title = `show/hide member graph "${g}"`;
     chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${g}`;
     chip.onclick = () => {
       hiddenGraphs.has(g) ? hiddenGraphs.delete(g) : hiddenGraphs.add(g);
@@ -343,7 +345,7 @@ TRIPLES.forEach(t => {
   for (const [k, v] of Object.entries(t)) {
     if (k !== "s" && k !== "p" && k !== "o") extra.push(String(v));
   }
-  if (/\s/.test(t.o)) extra.push(t.o);   // 自由文オブジェクトは主語からも引けるように
+  if (/\\s/.test(t.o)) extra.push(t.o);   // 自由文オブジェクトは主語からも引けるように
   if (extra.length) {
     const blob = " " + extra.join(" ").toLowerCase();
     searchIndex[t.s] += blob;

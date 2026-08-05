@@ -1,0 +1,669 @@
+nodes:
+  Voltaire: {type: influence}
+  G. K. Chesterton: {type: influence}
+  United Kingdom: {type: people}
+  Mechanical Engineer: {type: people}
+  Playwright: {type: people}
+  United States of America: {type: people}
+  Nikola Tesla: {type: book}
+  Stieg Larsson: {type: influence}
+  Brody Jenner: {type: people}
+  Torquay: {type: people}
+  Scientist: {type: people}
+  Clarissa Margaret Boehmer: {type: people}
+  Rosalind Hicks: {type: people}
+  Austria-Hungary: {type: people}
+  Inventor: {type: people}
+  Electrical engineer: {type: people}
+  Cardiac arrest: {type: people}
+  Caitlyn Jenner: {type: people}
+  James E. Sullivan Award: {type: award}
+  Poet: {type: people}
+  Writer: {type: people}
+  Sports commentator: {type: people}
+  Mount Kisco: {type: people}
+  Brandon Jenner: {type: people}
+  Male: {type: people}
+  English Language: {type: people}
+  Burt Jenner: {type: people}
+  Respiratory failure: {type: people}
+  Johann Wolfgang von Goethe: {type: influence}
+  Austrian Empire: {type: people}
+  Mark Twain: {type: influence}
+  Physicist: {type: people}
+  Coronary thrombosis: {type: people}
+  Screenwriter: {type: people}
+  Casey Jenner: {type: people}
+  Esther Jenner: {type: people}
+  Croatian American: {type: people}
+  Jānis Dūklavs: {type: location}
+  Public speaker: {type: people}
+  Raimo Aas: {type: location}
+  Serbian American: {type: people}
+  William Jenner: {type: people}
+  Manhattan: {type: people}
+  Christopher Pike: {type: influence}
+  Ryukishi07: {type: influence}
+  Serbs: {type: people}
+  Edward Gorey: {type: influence}
+  Athlete: {type: people}
+  Agatha Christie: {type: film}
+  Baltic states: {type: location}
+  Milutin Tesla: {type: people}
+  Ibn-e-Safi: {type: influence}
+  Businessperson: {type: people}
+  Gano Dunn: {type: influence}
+  Socialite: {type: people}
+  Female: {type: people}
+  P. D. James: {type: influence}
+  Actor: {type: people}
+  Kendall: {type: people}
+  East Harlem: {type: people}
+  Serbs of Croatia: {type: people}
+  Edgar Allan Poe: {type: influence}
+  Arthur Conan Doyle: {type: influence}
+  Ruth Rendell: {type: influence}
+  Wallingford, Oxfordshire: {type: people}
+  South Slavs: {type: people}
+  Kylie Jenner: {type: people}
+  Ernst Mach: {type: influence}
+  Billy Garland: {type: people}
+  Natural causes: {type: people}
+  Tupac Shakur: {type: music}
+  Đuka Tesla: {type: people}
+  Frederick Alvah Miller: {type: people}
+  Futurist: {type: people}
+  Novelist: {type: people}
+triples:
+- s: Raimo Aas
+  p: people.person.place_of_birth
+  o: Baltic states
+  attrs: {}
+- s: Jānis Dūklavs
+  p: people.person.place_of_birth
+  o: Baltic states
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.nationality
+  o: Austrian Empire
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.08cq9yv
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.education
+  o: m.0bfsj0d
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.ethnicity
+  o: Serbs of Croatia
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Inventor
+  attrs: {}
+- s: Nikola Tesla
+  p: influence.influence_node.influenced_by
+  o: Ernst Mach
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.nationality
+  o: Austria-Hungary
+  attrs: {}
+- s: Nikola Tesla
+  p: influence.influence_node.influenced_by
+  o: Mark Twain
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0775hkn
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0hhzz4h
+  attrs: {}
+- s: Nikola Tesla
+  p: award.award_winner.awards_won
+  o: m.0gmlj4l
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0775hl1
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Electrical engineer
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.ethnicity
+  o: South Slavs
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0mzqkqq
+  attrs: {}
+- s: Nikola Tesla
+  p: influence.influence_node.influenced_by
+  o: Johann Wolfgang von Goethe
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.parents
+  o: Đuka Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.04hddqs
+  attrs: {}
+- s: Nikola Tesla
+  p: award.award_winner.awards_won
+  o: m.0zbg4pj
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.gender
+  o: Male
+  attrs: {}
+- s: Nikola Tesla
+  p: award.award_winner.awards_won
+  o: m.0gwgl5g
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.sibling_s
+  o: m.0n9g0gx
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.ethnicity
+  o: Serbs
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Scientist
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.education
+  o: m.0n7w6dz
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Mechanical Engineer
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.sibling_s
+  o: m.0n9g0g8
+  attrs: {}
+- s: Nikola Tesla
+  p: influence.influence_node.influenced
+  o: Gano Dunn
+  attrs: {}
+- s: Nikola Tesla
+  p: people.deceased_person.cause_of_death
+  o: Coronary thrombosis
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0chbd83
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0775hlh
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.ethnicity
+  o: Serbian American
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0775hkv
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0kn1c5p
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0775hl8
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.parents
+  o: Milutin Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.ethnicity
+  o: Croatian American
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.sibling_s
+  o: m.0n9g0h6
+  attrs: {}
+- s: Nikola Tesla
+  p: influence.influence_node.influenced_by
+  o: Voltaire
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.nationality
+  o: United States of America
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Futurist
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0hnhtsy
+  attrs: {}
+- s: Nikola Tesla
+  p: people.deceased_person.place_of_death
+  o: Manhattan
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.profession
+  o: Physicist
+  attrs: {}
+- s: Nikola Tesla
+  p: people.person.places_lived
+  o: m.0hgv0vq
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Christopher Pike
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_winner.awards_won
+  o: m.0b7lccc
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_winner.awards_won
+  o: m.0y899v2
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.profession
+  o: Poet
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.parents
+  o: Clarissa Margaret Boehmer
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.parents
+  o: Frederick Alvah Miller
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.gender
+  o: Female
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced_by
+  o: Arthur Conan Doyle
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_winner.awards_won
+  o: m.0b7lccm
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.place_of_birth
+  o: Torquay
+  attrs: {}
+- s: Agatha Christie
+  p: people.deceased_person.place_of_death
+  o: Wallingford, Oxfordshire
+  attrs: {}
+- s: Agatha Christie
+  p: people.deceased_person.cause_of_death
+  o: Natural causes
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.sibling_s
+  o: m.0hmx7nq
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_nominee.award_nominations
+  o: m.0g4nqgg
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.profession
+  o: Playwright
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_nominee.award_nominations
+  o: m.0y899xk
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.sibling_s
+  o: m.0hmx7p0
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Ruth Rendell
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Edward Gorey
+  attrs: {}
+- s: Agatha Christie
+  p: award.award_winner.awards_won
+  o: m.0436clq
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Stieg Larsson
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Ibn-e-Safi
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.children
+  o: Rosalind Hicks
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.nationality
+  o: United Kingdom
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.languages
+  o: English Language
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: Ryukishi07
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.profession
+  o: Screenwriter
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced_by
+  o: G. K. Chesterton
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.spouse_s
+  o: m.0hmx7b8
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced_by
+  o: Edgar Allan Poe
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.profession
+  o: Writer
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.places_lived
+  o: m.03ptxtx
+  attrs: {}
+- s: Agatha Christie
+  p: influence.influence_node.influenced
+  o: P. D. James
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.profession
+  o: Novelist
+  attrs: {}
+- s: Agatha Christie
+  p: people.person.spouse_s
+  o: m.062t79j
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.education
+  o: m.0h35g8b
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.profession
+  o: Actor
+  attrs: {}
+- s: Tupac Shakur
+  p: people.deceased_person.cause_of_death
+  o: Cardiac arrest
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_winner.awards_won
+  o: m.0z86sy6
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_nominee.award_nominations
+  o: m.0z40pgn
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_nominee.award_nominations
+  o: m.0z3jy75
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.gender
+  o: Male
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.spouse_s
+  o: m.0l0rb58
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_nominee.award_nominations
+  o: m.0j_l784
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_nominee.award_nominations
+  o: m.0lyw79d
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_winner.awards_won
+  o: m.0nf_zvy
+  attrs: {}
+- s: Tupac Shakur
+  p: people.deceased_person.cause_of_death
+  o: Respiratory failure
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_nominee.award_nominations
+  o: m.0j_l7hc
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.nationality
+  o: United States of America
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.parents
+  o: Billy Garland
+  attrs: {}
+- s: Tupac Shakur
+  p: award.award_winner.awards_won
+  o: m.0z8n228
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.profession
+  o: Poet
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.education
+  o: m.0h35g85
+  attrs: {}
+- s: Tupac Shakur
+  p: people.person.place_of_birth
+  o: East Harlem
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Casey Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.education
+  o: m.0n11mw9
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Brandon Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.parents
+  o: Esther Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Kylie Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.gender
+  o: Male
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.parents
+  o: William Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.education
+  o: m.0n0m72r
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Kendall
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Socialite
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Athlete
+  attrs: {}
+- s: Caitlyn Jenner
+  p: award.award_winner.awards_won
+  o: m.0b784v_
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.sibling_s
+  o: m.0w3l34g
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Actor
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Businessperson
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.nationality
+  o: United States of America
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Sports commentator
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.profession
+  o: Public speaker
+  attrs: {}
+- s: Caitlyn Jenner
+  p: award.award_nominee.award_nominations
+  o: m.0z8pzkz
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.place_of_birth
+  o: Mount Kisco
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.spouse_s
+  o: m.040zfwq
+  attrs: {}
+- s: Caitlyn Jenner
+  p: award.award_nominee.award_nominations
+  o: m.09tmk4j
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.spouse_s
+  o: m.0hygv7g
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.sibling_s
+  o: m.0w3l1v5
+  attrs: {}
+- s: Caitlyn Jenner
+  p: award.award_winner.awards_won
+  o: m.0b67c32
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.spouse_s
+  o: m.0hyd8n8
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Burt Jenner
+  attrs: {}
+- s: Caitlyn Jenner
+  p: people.person.children
+  o: Brody Jenner
+  attrs: {}
+- s: Burt Jenner
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0w3l34g
+  p: people.sibling_relationship.sibling
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0z8pzkz
+  p: award.award_nomination.award_nominee
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Casey Jenner
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.09tmk4j
+  p: award.award_nomination.award_nominee
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0hyd8n8
+  p: people.marriage.spouse
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Esther Jenner
+  p: people.person.children
+  o: Caitlyn Jenner
+  attrs: {}
+- s: William Jenner
+  p: people.person.children
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Brody Jenner
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0b784v_
+  p: award.award_honor.award_winner
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Kylie Jenner
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0w3l1v5
+  p: people.sibling_relationship.sibling
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.040zfwq
+  p: people.marriage.spouse
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0hygv7g
+  p: people.marriage.spouse
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0b67c32
+  p: award.award_honor.award_winner
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Kendall
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Brandon Jenner
+  p: people.person.parents
+  o: Caitlyn Jenner
+  attrs: {}
+- s: m.0b784v_
+  p: award.award_honor.award
+  o: James E. Sullivan Award
+  attrs: {}
+- s: m.0w3l34g
+  p: people.sibling_relationship.sibling
+  o: Burt Jenner
+  attrs: {}

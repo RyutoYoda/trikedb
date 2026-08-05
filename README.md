@@ -16,6 +16,7 @@
 
 <p align="center">
   <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 Live demo</a></b> — 600 real Freebase facts, click around, run SPARQL in the browser
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">workspace demo</a> — the same facts as 5 domain graphs, tiled and filterable
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -374,11 +375,12 @@ One source of truth, two projections: YAML for machines, HTML for people.
 ## Examples
 
 - [`examples/freebase_sample.yaml`](examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. This powers the live demo.
+- [`examples/freebase_workspace.yaml`](examples/freebase_workspace.yaml) — the same facts split into 5 domain graphs (film / music / books / people / misc) and unioned back as a **workspace**: each member renders as its own island with a filter chip. This powers the workspace demo.
 - [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
 - [`examples/python_ecosystem.yaml`](examples/python_ecosystem.yaml) — free-form predicates, no ontology.
 - [`examples/trikedb_quickstart.ipynb`](examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
-**Live demo:** https://ryutoyoda.github.io/trikedb/
+**Live demo:** https://ryutoyoda.github.io/trikedb/ · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
 
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom; the initial layout adapts to graph shape (`--layout flow|free|auto`).
 

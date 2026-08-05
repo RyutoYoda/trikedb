@@ -1,0 +1,491 @@
+nodes:
+  Whoniverse: {type: fictional_universe}
+  Recurring Characters in the Hercule Poirot stories: {type: fictional_universe}
+  Ariadne Oliver: {type: fictional_universe}
+  Christine Redfern: {type: fictional_universe}
+  Bruce Jenner's Guide to the Olympics: {type: book}
+  Finding the Champion Within: {type: book}
+  Nikola Tesla: {type: book}
+  '''Death Ray'' for Planes': {type: book}
+  The Tupac Shakur Collection: {type: book}
+  Caitlyn Jenner: {type: people}
+  'My Inventions: The Autobiography of Nikola TeslaMy Inventions: The Autobiography of Nikola Tesla': {type: book}
+  'My Inventions: The Autobiography of Nikola Tesla': {type: book}
+  Superintendent Battle: {type: fictional_universe}
+  The Getaway Guide to Agatha Christie's England: {type: book}
+  Inspector Japp: {type: fictional_universe}
+  Agatha Christie and the Eleven Missing Days: {type: book}
+  The Fantastic Inventions of Nikola Tesla: {type: book}
+  The New Art of Projecting Concentrated Non-dispersive Energy Through Natural Media: {type: book}
+  Rapper: {type: fictional_universe}
+  The rose that grew from concrete: {type: book}
+  The Soviet Sacrifice of Spain: {type: book}
+  Male: {type: people}
+  Tesla said: {type: book}
+  Collected Articles and Lectures: {type: book}
+  The Wonder World To Be Created By Electricity: {type: book}
+  Tesla's New Device Like Bolts of Thor: {type: book}
+  Tupac: {type: book}
+  Tesla Predicts Ships Powered by Shore Beam: {type: book}
+  Tesla on Power Development and Future Marvels: {type: book}
+  Miss Marple: {type: fictional_universe}
+  Inventions, Researches and Writings of Nikola Tesla: {type: book}
+  A Machine to End War: {type: book}
+  Patenti: {type: book}
+  Lectures, Patents, Articles, 1856-1943: {type: book}
+  Correspondence with relatives: {type: book}
+  The Illustrated Tesla: {type: book}
+  Mrs. Castle: {type: fictional_universe}
+  'Wizard: the Life and Times of Nikola Tesla': {type: book}
+  Nikola Tesla Sees a Wireless Vision: {type: book}
+  Emily Brewster: {type: fictional_universe}
+  The True Wireless: {type: book}
+  Wonders of the Future: {type: book}
+  Selected Patent Wrappers from the National Archives: {type: book}
+  Our Future Motive Power: {type: book}
+  On Electricity: {type: book}
+  The Tesla Papers: {type: book}
+  Proposing the 'Death Ray' for Defense: {type: book}
+  Electrical Oscillators: {type: book}
+  AIDS the Last Great Plague: {type: book}
+  The Eternal Source of Energy of the Universe, Origin and Intensity of Cosmic Rays: {type: book}
+  Colorado Springs Notes, 1899–1900: {type: book}
+  Agatha Christie: {type: film}
+  Major Barry: {type: fictional_universe}
+  Gladys Narracott: {type: fictional_universe}
+  Rosamund Darnley: {type: fictional_universe}
+  The Problem of Increasing Human Energy: {type: book}
+  Very Truly Yours, Nikola Tesla: {type: book}
+  Some Personal Recollections: {type: book}
+  World System of Wireless Transmission of Energy: {type: book}
+  Aerial Defense 'Death-Beam' Offered to U. S. By Tesla: {type: book}
+  Horace Blatt: {type: fictional_universe}
+  Female: {type: people}
+  Arlena Stuart: {type: fictional_universe}
+  Kenneth Marshall: {type: fictional_universe}
+  Electric Drive for Battle Ships: {type: book}
+  Story of Youth Told by Age: {type: book}
+  Moji pronalasci =: {type: book}
+  Makoto: {type: fictional_universe}
+  Chief Constable Weston: {type: fictional_universe}
+  Light and other high frequency phenomena: {type: book}
+  How Cosmic Forces Shape Our Destinies: {type: book}
+  Hastings: {type: fictional_universe}
+  Parker Pyne: {type: fictional_universe}
+  The Inventions, Researches, and Writings of Nikola Tesla: {type: book}
+  Patrick Redfern: {type: fictional_universe}
+  'Empires of Light: Edison, Tesla, Westinghouse, and the Race to Electrify the World': {type: book}
+  Decathlon challenge: {type: book}
+  Transmission of power: {type: book}
+  'The Complete Christie: An Agatha Christie Encyclopedia': {type: book}
+  William: {type: fictional_universe}
+  Stephen Lane: {type: fictional_universe}
+  The Disturbing Influence of Solar Radiation On the Wireless Transmission of Energy: {type: book}
+  Raymond West: {type: fictional_universe}
+  Lionel Marshall: {type: fictional_universe}
+  Hercule Poirot: {type: fictional_universe}
+  Japan: {type: location}
+  The Rose That Grew from Concrete: {type: book}
+  Pioneer Radio Engineer Gives Views On Power: {type: book}
+  Tupac Shakur: {type: music}
+  Mr. Harley Quin: {type: fictional_universe}
+  The Wireless Tesla: {type: book}
+  The Complete Patents of Nikola Tesla: {type: book}
+  Famous Scientific Illusions: {type: book}
+triples:
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Famous Scientific Illusions
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: On Electricity
+  attrs: {}
+- s: Nikola Tesla
+  p: book.book_subject.works
+  o: 'Wizard: the Life and Times of Nikola Tesla'
+  attrs: {}
+- s: Nikola Tesla
+  p: fictional_universe.person_in_fiction.representations_in_fiction
+  o: Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: A Machine to End War
+  attrs: {}
+- s: Nikola Tesla
+  p: fictional_universe.fictional_character.based_on
+  o: Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Very Truly Yours, Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: fictional_universe.fictional_character.gender
+  o: Male
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.book_editions_published
+  o: 'My Inventions: The Autobiography of Nikola TeslaMy Inventions: The Autobiography of Nikola Tesla'
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Eternal Source of Energy of the Universe, Origin and Intensity of Cosmic Rays
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Pioneer Radio Engineer Gives Views On Power
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Electric Drive for Battle Ships
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Collected Articles and Lectures
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: AIDS the Last Great Plague
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Wireless Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The New Art of Projecting Concentrated Non-dispersive Energy Through Natural Media
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Proposing the 'Death Ray' for Defense
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Aerial Defense 'Death-Beam' Offered to U. S. By Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Story of Youth Told by Age
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Colorado Springs Notes, 1899–1900
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Tesla Predicts Ships Powered by Shore Beam
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Inventions, Researches, and Writings of Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Our Future Motive Power
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Patenti
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Nikola Tesla Sees a Wireless Vision
+  attrs: {}
+- s: Nikola Tesla
+  p: book.book_subject.works
+  o: 'Empires of Light: Edison, Tesla, Westinghouse, and the Race to Electrify the World'
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Wonder World To Be Created By Electricity
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Some Personal Recollections
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Problem of Increasing Human Energy
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Tesla's New Device Like Bolts of Thor
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Selected Patent Wrappers from the National Archives
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Electrical Oscillators
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Soviet Sacrifice of Spain
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Moji pronalasci =
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Tesla said
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: World System of Wireless Transmission of Energy
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The True Wireless
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Illustrated Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Tesla Papers
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: 'My Inventions: The Autobiography of Nikola Tesla'
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Lectures, Patents, Articles, 1856-1943
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: '''Death Ray'' for Planes'
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Wonders of the Future
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Correspondence with relatives
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Fantastic Inventions of Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: How Cosmic Forces Shape Our Destinies
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Light and other high frequency phenomena
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Disturbing Influence of Solar Radiation On the Wireless Transmission of Energy
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Transmission of power
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: Tesla on Power Development and Future Marvels
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.works_written
+  o: The Complete Patents of Nikola Tesla
+  attrs: {}
+- s: Nikola Tesla
+  p: book.author.book_editions_published
+  o: Inventions, Researches and Writings of Nikola Tesla
+  attrs: {}
+- s: Japan
+  p: fictional_universe.fictional_setting.fictional_characters_born_here
+  o: Makoto
+  attrs: {}
+- s: Agatha Christie
+  p: book.book_subject.works
+  o: 'The Complete Christie: An Agatha Christie Encyclopedia'
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: g.121hfh9v
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Chief Constable Weston
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Superintendent Battle
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Mr. Harley Quin
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character.appears_in_these_fictional_universes
+  o: Whoniverse
+  attrs: {}
+- s: Agatha Christie
+  p: book.book_subject.works
+  o: The Getaway Guide to Agatha Christie's England
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: g.121hrcx1
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Arlena Stuart
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Gladys Narracott
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Ariadne Oliver
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character.gender
+  o: Female
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Horace Blatt
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: William
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Emily Brewster
+  attrs: {}
+- s: Agatha Christie
+  p: book.book_subject.works
+  o: Agatha Christie and the Eleven Missing Days
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Hastings
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.person_in_fiction.representations_in_fiction
+  o: Agatha Christie
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Mrs. Castle
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Inspector Japp
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Hercule Poirot
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Raymond West
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Patrick Redfern
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Lionel Marshall
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Miss Marple
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Christine Redfern
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Recurring Characters in the Hercule Poirot stories
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Kenneth Marshall
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Rosamund Darnley
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Major Barry
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Stephen Lane
+  attrs: {}
+- s: Agatha Christie
+  p: fictional_universe.fictional_character_creator.fictional_characters_created
+  o: Parker Pyne
+  attrs: {}
+- s: Tupac Shakur
+  p: book.author.book_editions_published
+  o: The rose that grew from concrete
+  attrs: {}
+- s: Tupac Shakur
+  p: fictional_universe.fictional_character.gender
+  o: Male
+  attrs: {}
+- s: Tupac Shakur
+  p: book.author.book_editions_published
+  o: Tupac
+  attrs: {}
+- s: Tupac Shakur
+  p: fictional_universe.fictional_character.based_on
+  o: Tupac Shakur
+  attrs: {}
+- s: Tupac Shakur
+  p: fictional_universe.person_in_fiction.representations_in_fiction
+  o: Tupac Shakur
+  attrs: {}
+- s: Tupac Shakur
+  p: book.author.book_editions_published
+  o: The Rose That Grew from Concrete
+  attrs: {}
+- s: Tupac Shakur
+  p: book.author.works_written
+  o: The Tupac Shakur Collection
+  attrs: {}
+- s: Tupac Shakur
+  p: fictional_universe.fictional_character.occupation
+  o: Rapper
+  attrs: {}
+- s: Caitlyn Jenner
+  p: book.author.works_written
+  o: Finding the Champion Within
+  attrs: {}
+- s: Caitlyn Jenner
+  p: book.author.works_written
+  o: Decathlon challenge
+  attrs: {}
+- s: Caitlyn Jenner
+  p: book.author.works_written
+  o: Bruce Jenner's Guide to the Olympics
+  attrs: {}
+- s: Bruce Jenner's Guide to the Olympics
+  p: book.written_work.author
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Decathlon challenge
+  p: book.written_work.author
+  o: Caitlyn Jenner
+  attrs: {}
+- s: Finding the Champion Within
+  p: book.written_work.author
+  o: Caitlyn Jenner
+  attrs: {}
