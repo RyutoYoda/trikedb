@@ -1,763 +1,127 @@
 nodes:
+  Mysophobia: {type: medicine}
+  Soviet occupation of the Baltic states: {type: location}
+  Tesla turbine: {type: symbols}
+  Noma pony: {type: biology}
+  Electricity: {type: education}
+  Wardenclyffe Tower: {type: symbols}
+  Typhoon Mireille: {type: meteorology}
+  Typhoon Vera: {type: meteorology}
+  MTV2: {type: broadcast}
   Dyslexia: {type: medicine}
   KZON: {type: broadcast}
-  Eidetic memory: {type: medicine}
-  Tesla Motors: {type: symbols}
-  Wireless telegraphy: {type: law}
-  Northern Europe: {type: location}
-  Tesla turbine: {type: symbols}
-  Wardenclyffe Tower: {type: symbols}
-  American Institute of Electrical Engineers: {type: organization}
-  Tesla coil: {type: law}
-  Big R Radio - 108.1 JAMZ: {type: broadcast}
-  Three-phase electric power: {type: law}
-  Belgrade Nikola Tesla Airport: {type: symbols}
-  Mysophobia: {type: medicine}
-  Tesla: {type: symbols}
-  Jānis Dūklavs: {type: location}
-  Russian Civil War: {type: location}
-  '1Club.FM: Tha Flava (Uncensored)': {type: broadcast}
-  Tropical Storm Linfa: {type: meteorology}
-  IEEE Nikola Tesla Award: {type: symbols}
-  Asahi Super Dry: {type: food}
-  Okayama Prefecture: {type: location}
-  Tesla Boy: {type: symbols}
-  Soviet occupation of the Baltic states: {type: location}
-  MTV2: {type: broadcast}
-  Latvia: {type: location}
-  Typhoon Mireille: {type: meteorology}
-  Japanese bantam: {type: biology}
-  Nikola Tesla: {type: book}
-  Caitlyn Jenner: {type: people}
-  Túpac Amaru: {type: symbols}
-  Typhoon Vera: {type: meteorology}
-  Lithuania: {type: location}
-  Fukui Prefecture: {type: location}
-  Mount Kisco: {type: people}
-  MTV: {type: broadcast}
-  Noma pony: {type: biology}
-  Raimo Aas: {type: location}
-  Estonia: {type: location}
-  Ibaraki Prefecture: {type: location}
-  Operation Bagration: {type: location}
-  Tesla Roadster: {type: symbols}
-  Alternating current: {type: law}
-  Agatha Christie: {type: film}
-  Baltic states: {type: location}
-  Typhoon Phanfone: {type: meteorology}
-  Stars and Stripes: {type: periodicals}
-  Electricity: {type: education}
-  Graceland University: {type: education}
-  Neon lamp: {type: law}
-  Baltic Offensive: {type: location}
-  JellyRadio.com: {type: broadcast}
-  Newtown High School: {type: education}
-  Northern Crusades: {type: location}
-  Túpac Amaru II: {type: symbols}
-  Shimbun Akahata: {type: periodicals}
-  National Institute of Radiological Sciences: {type: government}
-  Occupation of the Baltic states: {type: location}
-  Japanese Ministry of Finance: {type: government}
-  Agatha Award: {type: symbols}
-  Japan: {type: location}
-  Tupac Shakur: {type: music}
-  Typhoon Oliwa: {type: meteorology}
   Suntory: {type: distilled_spirits}
+  Túpac Amaru: {type: symbols}
+  Belgrade Nikola Tesla Airport: {type: symbols}
+  Japanese Ministry of Finance: {type: government}
+  Big R Radio - 108.1 JAMZ: {type: broadcast}
+  National Institute of Radiological Sciences: {type: government}
+  Tesla coil: {type: law}
+  Tesla Motors: {type: symbols}
+  Japanese bantam: {type: biology}
+  JellyRadio.com: {type: broadcast}
+  Shimbun Akahata: {type: periodicals}
+  Russian Civil War: {type: location}
+  Tesla Boy: {type: symbols}
+  Tesla Roadster: {type: symbols}
+  Caitlyn Jenner: {type: people}
+  Tupac Shakur: {type: music}
+  MTV: {type: broadcast}
+  Neon lamp: {type: law}
+  '1Club.FM: Tha Flava (Uncensored)': {type: broadcast}
+  Baltic Offensive: {type: location}
+  Operation Bagration: {type: location}
+  Stars and Stripes: {type: periodicals}
+  Wireless telegraphy: {type: law}
+  Nikola Tesla: {type: book}
+  Eidetic memory: {type: medicine}
+  Alternating current: {type: law}
+  IEEE Nikola Tesla Award: {type: symbols}
+  Japan: {type: location}
+  Baltic states: {type: location}
+  Typhoon Oliwa: {type: meteorology}
+  Agatha Award: {type: symbols}
+  Graceland University: {type: education}
+  Newtown High School: {type: education}
+  Agatha Christie: {type: film}
+  Tesla: {type: symbols}
+  Three-phase electric power: {type: law}
+  Tropical Storm Linfa: {type: meteorology}
+  Asahi Super Dry: {type: food}
+  Typhoon Phanfone: {type: meteorology}
   Attention deficit hyperactivity disorder: {type: medicine}
+  American Institute of Electrical Engineers: {type: organization}
+  Northern Crusades: {type: location}
+  Occupation of the Baltic states: {type: location}
+  Túpac Amaru II: {type: symbols}
 triples:
-- s: Baltic states
-  p: location.location.events
-  o: Occupation of the Baltic states
-  attrs: {}
-- s: Baltic states
-  p: location.location.events
-  o: Russian Civil War
-  attrs: {}
-- s: Baltic states
-  p: location.statistical_region.population
-  o: g.11bc87rwmc
-  attrs: {}
-- s: Baltic states
-  p: location.location.people_born_here
-  o: Raimo Aas
-  attrs: {}
-- s: Baltic states
-  p: location.location.contains
-  o: Estonia
-  attrs: {}
-- s: Baltic states
-  p: location.location.events
-  o: Baltic Offensive
-  attrs: {}
-- s: Baltic states
-  p: location.location.events
-  o: Soviet occupation of the Baltic states
-  attrs: {}
-- s: Baltic states
-  p: location.location.containedby
-  o: Northern Europe
-  attrs: {}
-- s: Baltic states
-  p: location.location.contains
-  o: Lithuania
-  attrs: {}
-- s: Baltic states
-  p: location.location.people_born_here
-  o: Jānis Dūklavs
-  attrs: {}
-- s: Baltic states
-  p: location.location.contains
-  o: Latvia
-  attrs: {}
-- s: Baltic states
-  p: location.location.geolocation
-  o: m.0wm__d9
-  attrs: {}
-- s: Baltic states
-  p: location.location.events
-  o: Northern Crusades
-  attrs: {}
-- s: Baltic states
-  p: location.location.events
-  o: Operation Bagration
-  attrs: {}
-- s: Estonia
-  p: location.location.containedby
-  o: Baltic states
-  attrs: {}
-- s: Latvia
-  p: location.location.containedby
-  o: Baltic states
-  attrs: {}
-- s: Operation Bagration
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Baltic Offensive
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Northern Europe
-  p: location.location.contains
-  o: Baltic states
-  attrs: {}
-- s: Russian Civil War
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Soviet occupation of the Baltic states
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Northern Crusades
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Lithuania
-  p: location.location.containedby
-  o: Baltic states
-  attrs: {}
-- s: Occupation of the Baltic states
-  p: time.event.locations
-  o: Baltic states
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: IEEE Nikola Tesla Award
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Belgrade Nikola Tesla Airport
-  attrs: {}
-- s: Nikola Tesla
-  p: organization.organization_founder.organizations_founded
-  o: American Institute of Electrical Engineers
-  attrs: {}
-- s: Nikola Tesla
-  p: royalty.chivalric_order_member.belongs_to_order
-  o: m.0zbg51c
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Tesla Motors
-  attrs: {}
-- s: Nikola Tesla
-  p: law.inventor.inventions
-  o: Tesla coil
-  attrs: {}
-- s: Nikola Tesla
-  p: medicine.notable_person_with_medical_condition.condition
-  o: Mysophobia
-  attrs: {}
-- s: Nikola Tesla
-  p: law.inventor.inventions
-  o: Three-phase electric power
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Tesla turbine
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Tesla
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Tesla Boy
-  attrs: {}
-- s: Nikola Tesla
-  p: royalty.chivalric_order_member.belongs_to_order
-  o: m.0zbg4_p
-  attrs: {}
-- s: Nikola Tesla
-  p: medicine.notable_person_with_medical_condition.condition
-  o: Eidetic memory
-  attrs: {}
-- s: Nikola Tesla
-  p: law.inventor.inventions
-  o: Neon lamp
-  attrs: {}
-- s: Nikola Tesla
-  p: law.inventor.inventions
-  o: Alternating current
-  attrs: {}
-- s: Nikola Tesla
-  p: education.academic.research_areas
-  o: Electricity
-  attrs: {}
-- s: Nikola Tesla
-  p: law.inventor.inventions
-  o: Wireless telegraphy
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Wardenclyffe Tower
-  attrs: {}
-- s: Nikola Tesla
-  p: opera.opera_character.operas_appears_in
-  o: m.0hzjtlk
-  attrs: {}
-- s: Nikola Tesla
-  p: symbols.name_source.namesakes
-  o: Tesla Roadster
-  attrs: {}
-- s: Nikola Tesla
-  p: royalty.chivalric_order_member.belongs_to_order
-  o: m.08ssbfd
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: m.0nf76py
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc3b5vm
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp
-  o: g.1hhc45thj
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_in_ppp_dollars
-  o: g.1245zmkw1
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.part_time_employment_percent
-  o: g.1hhc55152
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.trade_balance_as_percent_of_gdp
-  o: g.1hhc4_jz4
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: g.1245z4ghf
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.merchandise_trade_percent_of_gdp
-  o: g.1hhc53x8g
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc489h5
-  attrs: {}
-- s: Japan
-  p: military.military_combatant.military_conflicts
-  o: m.09j37lx
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_per_capita_in_ppp_dollars
-  o: g.1245zfvnd
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: m.0nf76js
-  attrs: {}
-- s: Japan
-  p: meteorology.cyclone_affected_area.cyclones
-  o: Tropical Storm Linfa
-  attrs: {}
-- s: Japan
-  p: organization.organization_member.member_of
-  o: m.04ddtry
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.12cp_jcjg
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc3gt7h
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc4rrcp
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc3_40d
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: m.0nf76mq
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: m.0nfb4zh
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gross_savings_as_percent_of_gdp
-  o: g.1q5k0psnb
-  attrs: {}
-- s: Japan
-  p: organization.organization_member.member_of
-  o: m.05kyq97
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc3yv7d
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.labor_participation_rate
-  o: g.1hhc4jpwc
-  attrs: {}
-- s: Japan
-  p: periodicals.newspaper_circulation_area.newspapers
-  o: Shimbun Akahata
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc4_w6z
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc46r80
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.high_tech_as_percent_of_manufactured_exports
-  o: g.1hhc4h7xy
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.11b71r82sc
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.trade_balance_as_percent_of_gdp
-  o: g.1hhc4ppfj
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.merchandise_trade_percent_of_gdp
-  o: g.1hhc49ncc
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_in_ppp_dollars
-  o: g.12460l429
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc4_7pr
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc3rxgq
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: g.1245zql1k
-  attrs: {}
-- s: Japan
-  p: military.military_combatant.military_conflicts
-  o: m.04yyxwj
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gender_balance_members_of_parliament
-  o: g.1hhc38m7t
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc53c9j
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.foreign_direct_investment_net_inflows
-  o: g.1hhc4x38b
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc3h32z
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc4ns63
-  attrs: {}
-- s: Japan
-  p: government.governmental_jurisdiction.agencies
-  o: Japanese Ministry of Finance
-  attrs: {}
-- s: Japan
-  p: meteorology.cyclone_affected_area.cyclones
-  o: Typhoon Vera
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gender_balance_members_of_parliament
-  o: g.1hhc449t8
-  attrs: {}
-- s: Japan
-  p: location.country.administrative_divisions
-  o: Ibaraki Prefecture
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc3bn0f
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: g.1245z72tq
-  attrs: {}
-- s: Japan
-  p: meteorology.cyclone_affected_area.cyclones
-  o: Typhoon Mireille
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp
-  o: g.1hhc3pmz9
-  attrs: {}
-- s: Japan
-  p: biology.breed_origin.breeds_originating_here
-  o: Noma pony
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.size_of_armed_forces
-  o: g.1hhc44p1x
-  attrs: {}
-- s: Japan
-  p: military.military_combatant.military_conflicts
-  o: m.04yys71
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.11b60tlftr
-  attrs: {}
-- s: Japan
-  p: food.beer_country_region.beers_from_here
-  o: Asahi Super Dry
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gross_savings_as_percent_of_gdp
-  o: g.1hhc38qpv
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.agriculture_as_percent_of_gdp
-  o: g.1hhc4yw_d
-  attrs: {}
-- s: Japan
-  p: meteorology.cyclone_affected_area.cyclones
-  o: Typhoon Oliwa
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_in_ppp_dollars
-  o: m.0nfb_6d
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: g.12460z260
-  attrs: {}
-- s: Japan
-  p: military.military_combatant.military_conflicts
-  o: m.0h_h0_4
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.size_of_armed_forces
-  o: g.1hhc4s4xm
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: g.1245yry_3
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.labor_participation_rate
-  o: g.1hhc4l4k2
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gross_savings_as_percent_of_gdp
-  o: g.1hhc53l2p
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc45mgh
-  attrs: {}
-- s: Japan
-  p: periodicals.newspaper_circulation_area.newspapers
-  o: Stars and Stripes
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.labor_participation_rate
-  o: g.1hhc3tsjp
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.net_migration
-  o: g.1q5jlcsk6
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp
-  o: g.1hhc3c17w
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc4lnt9
-  attrs: {}
-- s: Japan
-  p: distilled_spirits.spirit_producing_region.distilleries
-  o: Suntory
-  attrs: {}
-- s: Japan
-  p: government.governmental_jurisdiction.governing_officials
-  o: m.0rypt2m
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: m.0nf8dbm
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: m.0nfb4zy
-  attrs: {}
-- s: Japan
-  p: government.governmental_jurisdiction.governing_officials
-  o: m.0hc8n1r
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: m.0nf76kx
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc4hyzf
-  attrs: {}
-- s: Japan
-  p: location.country.administrative_divisions
-  o: Okayama Prefecture
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.merchandise_trade_percent_of_gdp
-  o: g.1hhc4ns76
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: m.0nfb4_4
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc3qwsd
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc3r2nc
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: m.0nf8d9q
-  attrs: {}
-- s: Japan
-  p: location.country.administrative_divisions
-  o: Fukui Prefecture
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.agriculture_as_percent_of_gdp
-  o: g.1hhc4wxk_
-  attrs: {}
-- s: Japan
-  p: biology.breed_origin.breeds_originating_here
-  o: Japanese bantam
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: g.12tb6gb36
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_in_ppp_dollars
-  o: m.0nfb_4c
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gender_balance_members_of_parliament
-  o: g.1hhc3rtcx
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.size_of_armed_forces
-  o: g.1hhc53x76
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gni_per_capita_in_ppp_dollars
-  o: g.1245_m685
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc388mn
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc4jxq9
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.cpi_inflation_rate
-  o: g.1hhc4f_1d
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc4004r
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.internet_users_percent_population
-  o: m.0nf8d6w
-  attrs: {}
-- s: Japan
-  p: military.military_combatant.military_conflicts
-  o: m.047_3yr
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.gdp_nominal_per_capita
-  o: g.1hhc45_xw
-  attrs: {}
-- s: Japan
-  p: government.governmental_jurisdiction.agencies
-  o: National Institute of Radiological Sciences
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.agriculture_as_percent_of_gdp
-  o: g.1hhc40jvs
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.consumer_price_index
-  o: g.1hhc39n_f
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.co2_emissions_per_capita
-  o: g.12460h78y
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.size_of_armed_forces
-  o: g.12cp_jhfy
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.military_expenditure_percent_gdp
-  o: m.0nfb522
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.deposit_interest_rate
-  o: g.1hhc4nnh2
-  attrs: {}
-- s: Japan
-  p: meteorology.cyclone_affected_area.cyclones
-  o: Typhoon Phanfone
-  attrs: {}
-- s: Japan
-  p: location.statistical_region.diesel_price_liter
-  o: g.12cp_jcg8
-  attrs: {}
-- s: Japan
-  p: government.governmental_jurisdiction.governing_officials
-  o: m.0nf_wp2
-  attrs: {}
-- s: Agatha Christie
-  p: royalty.chivalric_order_member.belongs_to_order
-  o: m.07j9c3r
-  attrs: {}
-- s: Agatha Christie
-  p: symbols.name_source.namesakes
-  o: Agatha Award
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: Big R Radio - 108.1 JAMZ
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: MTV2
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: MTV
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: KZON
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: '1Club.FM: Tha Flava (Uncensored)'
-  attrs: {}
-- s: Tupac Shakur
-  p: symbols.namesake.named_after
-  o: Túpac Amaru
-  attrs: {}
-- s: Tupac Shakur
-  p: broadcast.artist.content
-  o: JellyRadio.com
-  attrs: {}
-- s: Tupac Shakur
-  p: symbols.namesake.named_after
-  o: Túpac Amaru II
-  attrs: {}
-- s: Caitlyn Jenner
-  p: medicine.notable_person_with_medical_condition.condition
-  o: Attention deficit hyperactivity disorder
-  attrs: {}
-- s: Caitlyn Jenner
-  p: medicine.notable_person_with_medical_condition.condition
-  o: Dyslexia
-  attrs: {}
-- s: Caitlyn Jenner
-  p: olympics.olympic_athlete.medals_won
-  o: m.07ygz5n
-  attrs: {}
-- s: m.0n0m72r
-  p: education.education.student
-  o: Caitlyn Jenner
-  attrs: {}
-- s: Attention deficit hyperactivity disorder
-  p: medicine.disease.notable_people_with_this_condition
-  o: Caitlyn Jenner
-  attrs: {}
-- s: m.07ygz5n
-  p: olympics.olympic_medal_honor.medalist
-  o: Caitlyn Jenner
-  attrs: {}
-- s: Mount Kisco
-  p: location.location.people_born_here
-  o: Caitlyn Jenner
-  attrs: {}
-- s: Dyslexia
-  p: medicine.disease.notable_people_with_this_condition
-  o: Caitlyn Jenner
-  attrs: {}
-- s: m.0n11mw9
-  p: education.education.student
-  o: Caitlyn Jenner
-  attrs: {}
-- s: m.0n11mw9
-  p: education.education.institution
-  o: Graceland University
-  attrs: {}
-- s: m.0n0m72r
-  p: education.education.institution
-  o: Newtown High School
-  attrs: {}
+- {s: Operation Bagration, p: time.event.locations, o: Baltic states}
+- {s: Baltic Offensive, p: time.event.locations, o: Baltic states}
+- {s: Russian Civil War, p: time.event.locations, o: Baltic states}
+- {s: Soviet occupation of the Baltic states, p: time.event.locations, o: Baltic states}
+- {s: Northern Crusades, p: time.event.locations, o: Baltic states}
+- {s: Occupation of the Baltic states, p: time.event.locations, o: Baltic states}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: IEEE Nikola Tesla Award}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Belgrade Nikola Tesla Airport}
+- {s: Nikola Tesla, p: organization.organization_founder.organizations_founded, o: American Institute of Electrical Engineers}
+- {s: Nikola Tesla, p: royalty.chivalric_order_member.belongs_to_order, o: m.0zbg51c}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Tesla Motors}
+- {s: Nikola Tesla, p: law.inventor.inventions, o: Tesla coil}
+- {s: Nikola Tesla, p: medicine.notable_person_with_medical_condition.condition, o: Mysophobia}
+- {s: Nikola Tesla, p: law.inventor.inventions, o: Three-phase electric power}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Tesla turbine}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Tesla}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Tesla Boy}
+- {s: Nikola Tesla, p: royalty.chivalric_order_member.belongs_to_order, o: m.0zbg4_p}
+- {s: Nikola Tesla, p: medicine.notable_person_with_medical_condition.condition, o: Eidetic memory}
+- {s: Nikola Tesla, p: law.inventor.inventions, o: Neon lamp}
+- {s: Nikola Tesla, p: law.inventor.inventions, o: Alternating current}
+- {s: Nikola Tesla, p: education.academic.research_areas, o: Electricity}
+- {s: Nikola Tesla, p: law.inventor.inventions, o: Wireless telegraphy}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Wardenclyffe Tower}
+- {s: Nikola Tesla, p: opera.opera_character.operas_appears_in, o: m.0hzjtlk}
+- {s: Nikola Tesla, p: symbols.name_source.namesakes, o: Tesla Roadster}
+- {s: Nikola Tesla, p: royalty.chivalric_order_member.belongs_to_order, o: m.08ssbfd}
+- {s: Japan, p: military.military_combatant.military_conflicts, o: m.09j37lx}
+- {s: Japan, p: meteorology.cyclone_affected_area.cyclones, o: Tropical Storm Linfa}
+- {s: Japan, p: organization.organization_member.member_of, o: m.04ddtry}
+- {s: Japan, p: organization.organization_member.member_of, o: m.05kyq97}
+- {s: Japan, p: periodicals.newspaper_circulation_area.newspapers, o: Shimbun Akahata}
+- {s: Japan, p: military.military_combatant.military_conflicts, o: m.04yyxwj}
+- {s: Japan, p: government.governmental_jurisdiction.agencies, o: Japanese Ministry of Finance}
+- {s: Japan, p: meteorology.cyclone_affected_area.cyclones, o: Typhoon Vera}
+- {s: Japan, p: meteorology.cyclone_affected_area.cyclones, o: Typhoon Mireille}
+- {s: Japan, p: biology.breed_origin.breeds_originating_here, o: Noma pony}
+- {s: Japan, p: military.military_combatant.military_conflicts, o: m.04yys71}
+- {s: Japan, p: food.beer_country_region.beers_from_here, o: Asahi Super Dry}
+- {s: Japan, p: meteorology.cyclone_affected_area.cyclones, o: Typhoon Oliwa}
+- {s: Japan, p: military.military_combatant.military_conflicts, o: m.0h_h0_4}
+- {s: Japan, p: periodicals.newspaper_circulation_area.newspapers, o: Stars and Stripes}
+- {s: Japan, p: distilled_spirits.spirit_producing_region.distilleries, o: Suntory}
+- {s: Japan, p: government.governmental_jurisdiction.governing_officials, o: m.0rypt2m}
+- {s: Japan, p: government.governmental_jurisdiction.governing_officials, o: m.0hc8n1r}
+- {s: Japan, p: biology.breed_origin.breeds_originating_here, o: Japanese bantam}
+- {s: Japan, p: military.military_combatant.military_conflicts, o: m.047_3yr}
+- {s: Japan, p: government.governmental_jurisdiction.agencies, o: National Institute of Radiological Sciences}
+- {s: Japan, p: meteorology.cyclone_affected_area.cyclones, o: Typhoon Phanfone}
+- {s: Japan, p: government.governmental_jurisdiction.governing_officials, o: m.0nf_wp2}
+- {s: Agatha Christie, p: royalty.chivalric_order_member.belongs_to_order, o: m.07j9c3r}
+- {s: Agatha Christie, p: symbols.name_source.namesakes, o: Agatha Award}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: Big R Radio - 108.1 JAMZ}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: MTV2}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: MTV}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: KZON}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: '1Club.FM: Tha Flava (Uncensored)'}
+- {s: Tupac Shakur, p: symbols.namesake.named_after, o: Túpac Amaru}
+- {s: Tupac Shakur, p: broadcast.artist.content, o: JellyRadio.com}
+- {s: Tupac Shakur, p: symbols.namesake.named_after, o: Túpac Amaru II}
+- {s: Caitlyn Jenner, p: medicine.notable_person_with_medical_condition.condition, o: Attention deficit hyperactivity disorder}
+- {s: Caitlyn Jenner, p: medicine.notable_person_with_medical_condition.condition, o: Dyslexia}
+- {s: Caitlyn Jenner, p: olympics.olympic_athlete.medals_won, o: m.07ygz5n}
+- {s: m.0n0m72r, p: education.education.student, o: Caitlyn Jenner}
+- {s: Attention deficit hyperactivity disorder, p: medicine.disease.notable_people_with_this_condition, o: Caitlyn Jenner}
+- {s: m.07ygz5n, p: olympics.olympic_medal_honor.medalist, o: Caitlyn Jenner}
+- {s: Dyslexia, p: medicine.disease.notable_people_with_this_condition, o: Caitlyn Jenner}
+- {s: m.0n11mw9, p: education.education.student, o: Caitlyn Jenner}
+- {s: m.0n11mw9, p: education.education.institution, o: Graceland University}
+- {s: m.0n0m72r, p: education.education.institution, o: Newtown High School}

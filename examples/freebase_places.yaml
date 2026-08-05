@@ -1,0 +1,125 @@
+nodes:
+  Mount Kisco: {type: people}
+  Russian Civil War: {type: location}
+  Okayama Prefecture: {type: location}
+  Caitlyn Jenner: {type: people}
+  Operation Bagration: {type: location}
+  Latvia: {type: location}
+  Japan: {type: location}
+  Baltic states: {type: location}
+  Fukui Prefecture: {type: location}
+  Occupation of the Baltic states: {type: location}
+  Estonia: {type: location}
+  Jānis Dūklavs: {type: location}
+  Soviet occupation of the Baltic states: {type: location}
+  Northern Europe: {type: location}
+  Ibaraki Prefecture: {type: location}
+  Lithuania: {type: location}
+  Baltic Offensive: {type: location}
+  Northern Crusades: {type: location}
+  Raimo Aas: {type: location}
+triples:
+- {s: Baltic states, p: location.location.events, o: Occupation of the Baltic states}
+- {s: Baltic states, p: location.location.events, o: Russian Civil War}
+- {s: Baltic states, p: location.statistical_region.population, o: g.11bc87rwmc}
+- {s: Baltic states, p: location.location.people_born_here, o: Raimo Aas}
+- {s: Baltic states, p: location.location.contains, o: Estonia}
+- {s: Baltic states, p: location.location.events, o: Baltic Offensive}
+- {s: Baltic states, p: location.location.events, o: Soviet occupation of the Baltic states}
+- {s: Baltic states, p: location.location.containedby, o: Northern Europe}
+- {s: Baltic states, p: location.location.contains, o: Lithuania}
+- {s: Baltic states, p: location.location.people_born_here, o: Jānis Dūklavs}
+- {s: Baltic states, p: location.location.contains, o: Latvia}
+- {s: Baltic states, p: location.location.geolocation, o: m.0wm__d9}
+- {s: Baltic states, p: location.location.events, o: Northern Crusades}
+- {s: Baltic states, p: location.location.events, o: Operation Bagration}
+- {s: Estonia, p: location.location.containedby, o: Baltic states}
+- {s: Latvia, p: location.location.containedby, o: Baltic states}
+- {s: Northern Europe, p: location.location.contains, o: Baltic states}
+- {s: Lithuania, p: location.location.containedby, o: Baltic states}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: m.0nf76py}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc3b5vm}
+- {s: Japan, p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp, o: g.1hhc45thj}
+- {s: Japan, p: location.statistical_region.gni_in_ppp_dollars, o: g.1245zmkw1}
+- {s: Japan, p: location.statistical_region.part_time_employment_percent, o: g.1hhc55152}
+- {s: Japan, p: location.statistical_region.trade_balance_as_percent_of_gdp, o: g.1hhc4_jz4}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: g.1245z4ghf}
+- {s: Japan, p: location.statistical_region.merchandise_trade_percent_of_gdp, o: g.1hhc53x8g}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc489h5}
+- {s: Japan, p: location.statistical_region.gni_per_capita_in_ppp_dollars, o: g.1245zfvnd}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: m.0nf76js}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.12cp_jcjg}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc3gt7h}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc4rrcp}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc3_40d}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: m.0nf76mq}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: m.0nfb4zh}
+- {s: Japan, p: location.statistical_region.gross_savings_as_percent_of_gdp, o: g.1q5k0psnb}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc3yv7d}
+- {s: Japan, p: location.statistical_region.labor_participation_rate, o: g.1hhc4jpwc}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc4_w6z}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc46r80}
+- {s: Japan, p: location.statistical_region.high_tech_as_percent_of_manufactured_exports, o: g.1hhc4h7xy}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.11b71r82sc}
+- {s: Japan, p: location.statistical_region.trade_balance_as_percent_of_gdp, o: g.1hhc4ppfj}
+- {s: Japan, p: location.statistical_region.merchandise_trade_percent_of_gdp, o: g.1hhc49ncc}
+- {s: Japan, p: location.statistical_region.gni_in_ppp_dollars, o: g.12460l429}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc4_7pr}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc3rxgq}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: g.1245zql1k}
+- {s: Japan, p: location.statistical_region.gender_balance_members_of_parliament, o: g.1hhc38m7t}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc53c9j}
+- {s: Japan, p: location.statistical_region.foreign_direct_investment_net_inflows, o: g.1hhc4x38b}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc3h32z}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc4ns63}
+- {s: Japan, p: location.statistical_region.gender_balance_members_of_parliament, o: g.1hhc449t8}
+- {s: Japan, p: location.country.administrative_divisions, o: Ibaraki Prefecture}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc3bn0f}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: g.1245z72tq}
+- {s: Japan, p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp, o: g.1hhc3pmz9}
+- {s: Japan, p: location.statistical_region.size_of_armed_forces, o: g.1hhc44p1x}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.11b60tlftr}
+- {s: Japan, p: location.statistical_region.gross_savings_as_percent_of_gdp, o: g.1hhc38qpv}
+- {s: Japan, p: location.statistical_region.agriculture_as_percent_of_gdp, o: g.1hhc4yw_d}
+- {s: Japan, p: location.statistical_region.gni_in_ppp_dollars, o: m.0nfb_6d}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: g.12460z260}
+- {s: Japan, p: location.statistical_region.size_of_armed_forces, o: g.1hhc4s4xm}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: g.1245yry_3}
+- {s: Japan, p: location.statistical_region.labor_participation_rate, o: g.1hhc4l4k2}
+- {s: Japan, p: location.statistical_region.gross_savings_as_percent_of_gdp, o: g.1hhc53l2p}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc45mgh}
+- {s: Japan, p: location.statistical_region.labor_participation_rate, o: g.1hhc3tsjp}
+- {s: Japan, p: location.statistical_region.net_migration, o: g.1q5jlcsk6}
+- {s: Japan, p: location.statistical_region.market_cap_of_listed_companies_as_percent_of_gdp, o: g.1hhc3c17w}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc4lnt9}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: m.0nf8dbm}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: m.0nfb4zy}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: m.0nf76kx}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc4hyzf}
+- {s: Japan, p: location.country.administrative_divisions, o: Okayama Prefecture}
+- {s: Japan, p: location.statistical_region.merchandise_trade_percent_of_gdp, o: g.1hhc4ns76}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: m.0nfb4_4}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc3qwsd}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc3r2nc}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: m.0nf8d9q}
+- {s: Japan, p: location.country.administrative_divisions, o: Fukui Prefecture}
+- {s: Japan, p: location.statistical_region.agriculture_as_percent_of_gdp, o: g.1hhc4wxk_}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: g.12tb6gb36}
+- {s: Japan, p: location.statistical_region.gni_in_ppp_dollars, o: m.0nfb_4c}
+- {s: Japan, p: location.statistical_region.gender_balance_members_of_parliament, o: g.1hhc3rtcx}
+- {s: Japan, p: location.statistical_region.size_of_armed_forces, o: g.1hhc53x76}
+- {s: Japan, p: location.statistical_region.gni_per_capita_in_ppp_dollars, o: g.1245_m685}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc388mn}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc4jxq9}
+- {s: Japan, p: location.statistical_region.cpi_inflation_rate, o: g.1hhc4f_1d}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc4004r}
+- {s: Japan, p: location.statistical_region.internet_users_percent_population, o: m.0nf8d6w}
+- {s: Japan, p: location.statistical_region.gdp_nominal_per_capita, o: g.1hhc45_xw}
+- {s: Japan, p: location.statistical_region.agriculture_as_percent_of_gdp, o: g.1hhc40jvs}
+- {s: Japan, p: location.statistical_region.consumer_price_index, o: g.1hhc39n_f}
+- {s: Japan, p: location.statistical_region.co2_emissions_per_capita, o: g.12460h78y}
+- {s: Japan, p: location.statistical_region.size_of_armed_forces, o: g.12cp_jhfy}
+- {s: Japan, p: location.statistical_region.military_expenditure_percent_gdp, o: m.0nfb522}
+- {s: Japan, p: location.statistical_region.deposit_interest_rate, o: g.1hhc4nnh2}
+- {s: Japan, p: location.statistical_region.diesel_price_liter, o: g.12cp_jcg8}
+- {s: Mount Kisco, p: location.location.people_born_here, o: Caitlyn Jenner}

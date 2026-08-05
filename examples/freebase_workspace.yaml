@@ -5,4 +5,5 @@ graphs:
   music: freebase_music.yaml
   books: freebase_books.yaml
   people: freebase_people.yaml
+  places: freebase_places.yaml
   misc: freebase_misc.yaml
