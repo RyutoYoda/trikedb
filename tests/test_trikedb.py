@@ -650,3 +650,14 @@ def test_audit_findings(tmp_path):
     kinds = {x["kind"] for x in f}
     assert {"unused-predicate", "orphan-node", "similar-facts"} <= kinds
     assert all(x["severity"] == "warning" for x in f)  # errorなし
+
+
+def test_html_fulltext_search_and_sparql_bridge():
+    db = TrikeDB()
+    db.add("svc-etl-01", "USES_ROLE", "LV3_FULL", schedule="hourly")
+    db.set_node("svc-etl-01", label="etl-bot", owner="data-platform")
+    html = db.to_html()
+    assert "searchIndex" in html      # 全文インデックス
+    assert "btn-tosparql" in html     # SPARQL橋渡しボタン
+    # プロパティ・属性値がクライアント側データに含まれている(=検索可能)
+    assert "data-platform" in html and "hourly" in html

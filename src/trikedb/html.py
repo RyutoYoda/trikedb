@@ -100,6 +100,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="spacer"></div>
   <input id="search" placeholder="search nodes...">
   <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
+  <button class="btn" id="btn-tosparql" title="turn this search into a SPARQL query">&#8594;SPARQL</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>
@@ -292,15 +293,45 @@ try {
 } catch (e) {}
 
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-// search: Enter cycles through matches (Shift+Enter goes back), like Cmd+F
+// full-text search: node ids + labels + node properties + edge attributes
+// + free-text objects (attached to their subjects). Enter cycles matches.
+const searchIndex = {};
+ids.forEach(id => {
+  const parts = [id];
+  const meta = NODES_META[id];
+  if (meta) for (const v of Object.values(meta)) parts.push(String(v));
+  searchIndex[id] = parts.join(" ").toLowerCase();
+});
+TRIPLES.forEach(t => {
+  const extra = [];
+  for (const [k, v] of Object.entries(t)) {
+    if (k !== "s" && k !== "p" && k !== "o") extra.push(String(v));
+  }
+  if (/\s/.test(t.o)) extra.push(t.o);   // 自由文オブジェクトは主語からも引けるように
+  if (extra.length) {
+    const blob = " " + extra.join(" ").toLowerCase();
+    searchIndex[t.s] += blob;
+    searchIndex[t.o] += blob;
+  }
+});
 const searchBox = document.getElementById("search");
 const searchCount = document.getElementById("search-count");
 let searchState = { q: "", hits: [], i: -1 };
 searchBox.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
-  searchState = { q, hits: q ? ids.filter(id => id.toLowerCase().includes(q)) : [], i: -1 };
-  searchCount.textContent = q ? `${searchState.hits.length}件` : "";
+  searchState = { q, hits: q ? ids.filter(id => searchIndex[id].includes(q)) : [], i: -1 };
+  searchCount.textContent = q ? `${searchState.hits.length}` : "";
 });
+// bridge: turn the current search into an editable SPARQL query
+document.getElementById("btn-tosparql").onclick = () => {
+  const q = searchBox.value.trim().toLowerCase().replace(/"/g, '\\"');
+  if (!q) return;
+  document.getElementById("sparql-input").value =
+    `SELECT ?s ?p ?o WHERE { ?s ?p ?o .\n  FILTER(CONTAINS(LCASE(STR(?s)), "${q}")\n      || CONTAINS(LCASE(STR(?p)), "${q}")\n      || CONTAINS(LCASE(STR(?o)), "${q}")) }`;
+  document.getElementById("sparql").classList.add("open");
+  document.getElementById("btn-sparql").classList.add("active");
+  document.getElementById("btn-run").click();
+};
 searchBox.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || !searchState.hits.length) {
     if (e.key === "Enter") searchCount.textContent = "0/0";
