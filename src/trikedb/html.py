@@ -101,7 +101,6 @@ _TEMPLATE = """<!DOCTYPE html>
   <input id="search" placeholder="search nodes...">
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn active" id="btn-layout">Flow</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">&#9788;</button>
 </div>
 
@@ -292,16 +291,6 @@ try {
 } catch (e) {}
 
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
-const layoutBtn = document.getElementById("btn-layout");
-layoutBtn.textContent = flow ? "Flow" : "Free";
-layoutBtn.classList.toggle("active", flow);
-document.getElementById("btn-layout").onclick = (e) => {
-  flow = !flow;
-  network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
-  e.target.textContent = flow ? "Flow" : "Free";
-  e.target.classList.toggle("active", flow);
-  network.fit({ animation: true });
-};
 document.getElementById("search").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const q = e.target.value.toLowerCase();
