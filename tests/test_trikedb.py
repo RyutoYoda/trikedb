@@ -406,7 +406,7 @@ def test_cli_node_set_and_show(tmp_path, capsys):
     from trikedb.cli import main
 
     g = str(tmp_path / "g.yaml")
-    assert main(["add", g, "svc-etl-01", "USES_ROLE", "LV3_FULL"]) == 0
+    assert main(["add", g, "svc-etl-01", "USES_ROLE", "ROLE_ADMIN"]) == 0
     capsys.readouterr()  # discard the add command's output
     assert main(["node", g, "svc-etl-01", "-a", "label=etl-bot", "-a", "type=bot", "-a", "pii=false"]) == 0
     shown = _json.loads(capsys.readouterr().out)
@@ -478,12 +478,12 @@ def test_owl_transitive_inference():
     pytest.importorskip("owlrl")
     db = TrikeDB(ontology={"INHERITS": "role -> role"})
     db.declare("INHERITS", "transitive")  # URI predicate is ontology-exempt
-    db.add("LEVEL3", "INHERITS", "LEVEL2")
-    db.add("LEVEL2", "INHERITS", "LEVEL1")
+    db.add("admin", "INHERITS", "editor")
+    db.add("editor", "INHERITS", "viewer")
     new = db.infer()
-    assert ("LEVEL3", "INHERITS", "LEVEL1") in new
+    assert ("admin", "INHERITS", "viewer") in new
     db.infer(apply=True)
-    t = next(db.triples(s="LEVEL3", o="LEVEL1"))
+    t = next(db.triples(s="admin", o="viewer"))
     assert t.attrs == {"inferred": True}
 
 
@@ -507,12 +507,12 @@ t:BotShape a sh:NodeShape ;
 def test_shacl_validate(tmp_path):
     pytest.importorskip("pyshacl")
     db = TrikeDB()
-    db.add("svc-etl-02", "USES_ROLE", "LV2_FULL")
+    db.add("svc-etl-02", "USES_ROLE", "ROLE_EDITOR")
     db.set_node("svc-etl-02", type="bot")
     conforms, _ = db.validate(SHAPES)
     assert conforms is True
 
-    db.add("rogue-user", "USES_ROLE", "LV3_FULL")  # no type: bot -> violation
+    db.add("rogue-user", "USES_ROLE", "ROLE_ADMIN")  # no type: bot -> violation
     conforms, report = db.validate(SHAPES)
     assert conforms is False
     assert "rogue-user" in report
@@ -523,7 +523,7 @@ def test_shacl_validate_from_file(tmp_path):
     shapes_file = tmp_path / "shapes.ttl"
     shapes_file.write_text(SHAPES)
     db = TrikeDB()
-    db.add("svc-etl-02", "USES_ROLE", "LV2_FULL")
+    db.add("svc-etl-02", "USES_ROLE", "ROLE_EDITOR")
     db.set_node("svc-etl-02", type="bot")
     conforms, _ = db.validate(str(shapes_file))
     assert conforms is True
@@ -655,7 +655,7 @@ def test_audit_findings(tmp_path):
 
 def test_html_fulltext_search_and_sparql_bridge():
     db = TrikeDB()
-    db.add("svc-etl-01", "USES_ROLE", "LV3_FULL", schedule="hourly")
+    db.add("svc-etl-01", "USES_ROLE", "ROLE_ADMIN", schedule="hourly")
     db.set_node("svc-etl-01", label="etl-bot", owner="data-platform")
     html = db.to_html()
     assert "searchIndex" in html      # 全文インデックス
@@ -707,7 +707,7 @@ def test_semantic_sentences_shape(tmp_path):
     from trikedb import semantic
 
     db = TrikeDB(tmp_path / "g.yaml")
-    db.add("svc-etl-01", "USES_ROLE", "LV3_FULL", note="keypair認証")
+    db.add("svc-etl-01", "USES_ROLE", "ROLE_ADMIN", note="keypair認証")
     db.set_node("svc-etl-01", type="bot")
     items = semantic.sentences(db)
     texts = [t for t, _ in items]

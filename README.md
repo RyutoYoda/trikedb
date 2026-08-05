@@ -208,9 +208,9 @@ materialize what follows (`pip install 'trikedb[owl]'`, OWL-RL via
 
 ```python
 db.declare("INHERITS", "transitive")     # stored as a reviewable triple
-db.add("LEVEL3", "INHERITS", "LEVEL2")
-db.add("LEVEL2", "INHERITS", "LEVEL1")
-db.infer(apply=True)                     # adds (LEVEL3, INHERITS, LEVEL1) — marked inferred: true
+db.add("admin", "INHERITS", "editor")
+db.add("editor", "INHERITS", "viewer")
+db.infer(apply=True)                     # adds (admin, INHERITS, viewer) — marked inferred: true
 ```
 
 Inference is **materialization, not magic**: derived facts land in the
@@ -253,7 +253,7 @@ workspace file unions them:
 graphs:
   finance:  finance.yaml
   platform: s3://team-bucket/kg/platform.yaml   # local and remote mix freely
-  snowflake: ../infra/ontology/snowflake.yaml
+  warehouse: ../infra/ontology/warehouse.yaml
 ```
 
 Every command accepts it (`trikedb sparql workspace.yaml ...`,
