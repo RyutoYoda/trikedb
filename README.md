@@ -75,12 +75,14 @@ From [PyPI](https://pypi.org/project/trikedb/):
 
 ```bash
 pip install trikedb             # library + CLI (PyYAML + rdflib only)
+pip install 'trikedb[all]'      # everything below in one shot
+
 pip install 'trikedb[mcp]'      # + MCP server for AI agents (stdio)
 pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
 pip install 'trikedb[remote]'   # + s3:// gs:// graphs
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
-pip install 'trikedb[semantic]' # + semantic search (static embeddings, no torch)
+pip install 'trikedb[semantic]' # + semantic search (numpy + model2vec, no torch)
 ```
 
 ## Quickstart (Python)

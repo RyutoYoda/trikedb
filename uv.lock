@@ -2241,7 +2241,7 @@ wheels = [
 
 [[package]]
 name = "trikedb"
-version = "0.13.2"
+version = "0.13.3"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -2249,6 +2249,19 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "fsspec" },
+    { name = "mcp" },
+    { name = "model2vec" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "owlrl" },
+    { name = "pyshacl" },
+    { name = "s3fs" },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "fsspec" },
     { name = "httpx" },
@@ -2290,30 +2303,39 @@ shacl = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fsspec", marker = "extra == 'all'", specifier = ">=2024.2" },
     { name = "fsspec", marker = "extra == 'dev'", specifier = ">=2024.2" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2024.2" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "mcp", marker = "extra == 'all'", specifier = ">=1.2,<2" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.2,<2" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.2,<2" },
     { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.2,<2" },
+    { name = "model2vec", marker = "extra == 'all'", specifier = ">=0.3" },
     { name = "model2vec", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "model2vec", marker = "extra == 'semantic'", specifier = ">=0.3" },
+    { name = "numpy", marker = "extra == 'all'", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'semantic'", specifier = ">=1.24" },
+    { name = "owlrl", marker = "extra == 'all'", specifier = ">=6.0.2" },
     { name = "owlrl", marker = "extra == 'dev'", specifier = ">=6.0.2" },
     { name = "owlrl", marker = "extra == 'owl'", specifier = ">=6.0.2" },
+    { name = "pyshacl", marker = "extra == 'all'", specifier = ">=0.25" },
     { name = "pyshacl", marker = "extra == 'dev'", specifier = ">=0.25" },
     { name = "pyshacl", marker = "extra == 'shacl'", specifier = ">=0.25" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rdflib", specifier = ">=7" },
+    { name = "s3fs", marker = "extra == 'all'", specifier = ">=2024.2" },
     { name = "s3fs", marker = "extra == 'remote'", specifier = ">=2024.2" },
+    { name = "starlette", marker = "extra == 'all'", specifier = ">=0.37" },
     { name = "starlette", marker = "extra == 'dev'", specifier = ">=0.37" },
     { name = "starlette", marker = "extra == 'serve'", specifier = ">=0.37" },
+    { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.27" },
     { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.27" },
 ]
-provides-extras = ["mcp", "remote", "shacl", "owl", "semantic", "serve", "dev"]
+provides-extras = ["mcp", "remote", "shacl", "owl", "semantic", "serve", "all", "dev"]
 
 [[package]]
 name = "typing-extensions"
