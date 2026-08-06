@@ -198,6 +198,7 @@ class TrikeDB:
         for t in self._triples:
             if t.spo() == (s, p, o):
                 t.attrs.update(attrs)
+                self._autosave()
                 return t
         triple = Triple(str(s), str(p), str(o), dict(attrs))
         self._triples.append(triple)
@@ -478,6 +479,7 @@ class TrikeDB:
 
         new_spos = {tuple(_shorten(x, base) for x in triple) for triple in g}
         before = len(self._triples)
+        old_by_spo = {t.spo(): t for t in self._triples}
         kept = [t for t in self._triples if t.spo() in new_spos]
         existing = {t.spo() for t in kept}
         for s, p, o in sorted(new_spos - existing):
@@ -486,7 +488,8 @@ class TrikeDB:
                     f"update inserts predicate {p!r} not in the ontology "
                     f"(allowed: {sorted(self.ontology)})"
                 )
-            kept.append(Triple(s, p, o))
+            old = old_by_spo.get((s, p, o))
+            kept.append(Triple(s, p, o, old.attrs if old else {}))
         self._triples = kept
         if len(self._triples) != before or new_spos - existing:
             self._autosave()
