@@ -96,6 +96,7 @@ db = TrikeDB("pipeline.yaml", ontology={
 
 db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
 db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS", schedule="hourly")
+db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 
 try:
     db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
@@ -118,7 +119,7 @@ db.sparql("""
     ?job t:INGESTS_TO ?table .
   }
 """)
-db.sparql("ASK { ?x t:PROVIDES ?y }")  # True
+db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
 
 # Edge attributes are queryable too (standard RDF reification, rdf: pre-bound):
 db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')
