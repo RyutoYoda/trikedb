@@ -96,7 +96,11 @@ db = TrikeDB("pipeline.yaml", ontology={
 
 db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
 db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS", schedule="hourly")
-db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
+
+try:
+    db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
+except Exception as e:
+    print(e)  # predicate 'OWNS' is not in the ontology
 
 # Pattern matching — None is a wildcard, '*' globs
 for t in db.triples(p="INGESTS_TO", o="RAW_*"):
@@ -112,15 +116,14 @@ db.sparql("""
   SELECT ?vendor ?table WHERE {
     ?vendor t:PROVIDES ?job .
     ?job t:INGESTS_TO ?table .
-    FILTER(STRSTARTS(STR(?table), "urn:trikedb:RAW_"))
   }
 """)
-db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
+db.sparql("ASK { ?x t:PROVIDES ?y }")  # True
 
 # Edge attributes are queryable too (standard RDF reification, rdf: pre-bound):
 db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')
 
-# Semantic search — meaning, not spelling ([semantic] extra)
+# Semantic search — meaning, not spelling (requires: pip install 'trikedb[semantic]')
 db.search("what syncs the CRM?", k=5)   # scored triples + nodes
 
 # Writes go through SPARQL too — and land back in the YAML
