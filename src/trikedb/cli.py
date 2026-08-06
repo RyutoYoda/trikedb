@@ -201,7 +201,7 @@ def _cmd_add(args) -> int:
 
 
 def _cmd_rm(args) -> int:
-    if args.s is None and args.p is None and args.o is None:
+    if not args.s and not args.p and not args.o:
         print("error: give at least one of -s / -p / -o", file=sys.stderr)
         return 2
     db = TrikeDB(args.file)

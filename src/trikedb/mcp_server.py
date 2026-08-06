@@ -24,6 +24,9 @@ def build_server(path: Union[str, Path]):
             "MCP support requires the mcp package — pip install 'trikedb[mcp]'"
         ) from None
 
+    p = Path(path)
+    if p.exists() and not p.stat().st_mode & 0o200:
+        raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = TrikeDB(path, autosave=True)
     server = FastMCP(
         "trikedb",

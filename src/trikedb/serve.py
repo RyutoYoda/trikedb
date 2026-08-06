@@ -35,8 +35,11 @@ def build_app(path, token=None, with_mcp: bool = True):
     async def home(request):
         if not authorized(request):
             return denied()
-        db = TrikeDB(path)
-        return HTMLResponse(db.to_html(title=f"trikedb — {path}"))
+        try:
+            db = TrikeDB(path)
+            return HTMLResponse(db.to_html(title=f"trikedb — {path}"))
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
 
     async def sparql(request):
         if not authorized(request):

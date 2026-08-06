@@ -61,7 +61,7 @@ def search(db, query: str, k: int = 10, model: str = DEFAULT_MODEL) -> list:
     embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9)
     q = q / (np.linalg.norm(q) + 1e-9)
     scores = embs @ q
-    order = scores.argsort()[::-1][: int(k)]
+    order = scores.argsort()[::-1][: max(1, int(k))]
     return [
         {"score": round(float(scores[i]), 4), **items[i][1]} for i in order
     ]

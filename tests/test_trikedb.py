@@ -730,3 +730,44 @@ def test_semantic_search_ranks_by_meaning(tmp_path):
         pytest.skip(f"model unavailable: {exc}")
     assert rows[0]["o"].startswith("2025-11 MFA")
     assert rows[0]["score"] > rows[1]["score"]
+
+
+def test_add_upsert_autosaves(tmp_path):
+    # add() で既存 spo の attrs を更新したとき autosave が走ること
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path)
+    db.add("svc-etl-01", "USES_ROLE", "ROLE_ADMIN", status="active")
+    db.add("svc-etl-01", "USES_ROLE", "ROLE_ADMIN", status="retired")  # upsert
+    reloaded = TrikeDB(path)
+    t = next(reloaded.triples(s="svc-etl-01", p="USES_ROLE"))
+    assert t.attrs["status"] == "retired"  # ディスクに反映されていること
+
+
+def test_sparql_update_preserves_attrs(tmp_path):
+    # SPARQL update で DELETE+INSERT した spo の attrs が消えないこと
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path)
+    db.add("ACME_DWH", "AFFECTED_BY", "ev-2025", note="important", prov="doc.md")
+    db.update("DELETE { t:ACME_DWH t:AFFECTED_BY t:ev-2025 } "
+              "INSERT { t:ACME_DWH t:AFFECTED_BY t:ev-2025 } WHERE {}")
+    t = next(db.triples(s="ACME_DWH", p="AFFECTED_BY"))
+    assert t.attrs.get("note") == "important"
+    assert t.attrs.get("prov") == "doc.md"
+
+
+def test_search_k_clamps_to_positive(tmp_path):
+    # k=0 や k=-1 でもクラッシュせず最低1件返すこと
+    from trikedb import semantic
+    db = TrikeDB(tmp_path / "g.yaml")
+    db.add("a", "REL", "b")
+    items = semantic.sentences(db)
+    # sentences があれば k<=0 でも 1 件返る
+    from unittest.mock import MagicMock, patch
+    import numpy as np
+    fake_model = MagicMock()
+    fake_model.encode = lambda texts: [[0.1, 0.2]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=fake_model):
+        rows = semantic.search(db, "test", k=0)
+        assert len(rows) >= 1
+        rows = semantic.search(db, "test", k=-5)
+        assert len(rows) >= 1
