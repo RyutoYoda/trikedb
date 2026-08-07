@@ -36,7 +36,11 @@ _TEMPLATE = """<!DOCTYPE html>
             background: var(--panel); border-bottom: 1px solid var(--border); }
   #header h1 { font-size: 15px; margin: 0; white-space: nowrap; }
   #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #legend { display: flex; gap: 8px; margin-left: 6px; overflow: hidden; }
+  /* labels slide horizontally when they outgrow the bar instead of vanishing */
+  #legend { display: flex; gap: 8px; margin-left: 6px; overflow-x: auto; overflow-y: hidden;
+            flex-shrink: 1; min-width: 40px; max-width: 46vw; scrollbar-width: thin; }
+  #legend::-webkit-scrollbar { height: 6px; }
+  #legend::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
   .lg.toggle { cursor: pointer; user-select: none; }
   .lg.off { opacity: .35; }
@@ -52,6 +56,11 @@ _TEMPLATE = """<!DOCTYPE html>
   .btn:hover { border-color: #5a83b8; }
   .btn.active { background: #2c4a6e; border-color: #5a83b8; }
   body.light .btn.active { background: #dbe6f7; }
+  /* compact select-all / clear controls next to a group of toggles */
+  .selbtn { font-size: 10px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .selbtn:hover { border-color: #5a83b8; color: var(--text); }
+  #legend-ctl { display: none; gap: 6px; flex-shrink: 0; align-items: center; }
 
   #sparql { position: fixed; top: 52px; left: 0; right: 0; z-index: 19; display: none;
             background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 14px; }
@@ -106,6 +115,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <h1>&#x1F996; __TITLE__</h1>
   <div id="subtitle">__SUBTITLE__</div>
   <div id="legend"></div>
+  <span id="legend-ctl"></span>
   <div id="spacer"></div>
   <input id="search" placeholder="search nodes...">
   <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
@@ -246,18 +256,20 @@ function refreshVisibility() {
   })));
 }
 const legend = document.getElementById("legend");
+const typeEls = {};
+function setTypeHidden(ty, off) {   // reused by per-label clicks and the all/none controls
+  off ? hiddenTypes.add(ty) : hiddenTypes.delete(ty);
+  const el = typeEls[ty];
+  el.classList.toggle("off", off);
+  el.querySelector("i").innerHTML = off ? "" : "&#10003;";
+}
 for (const [ty, color] of Object.entries(NODE_TYPES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
   el.title = `show/hide ${ty} nodes`;
   el.innerHTML = `<i style="border-color:${color};color:${color}">&#10003;</i>${ty}`;
-  el.onclick = () => {
-    hiddenTypes.has(ty) ? hiddenTypes.delete(ty) : hiddenTypes.add(ty);
-    const off = hiddenTypes.has(ty);
-    el.classList.toggle("off", off);
-    el.querySelector("i").innerHTML = off ? "" : "&#10003;";
-    refreshVisibility();
-  };
+  el.onclick = () => { setTypeHidden(ty, !hiddenTypes.has(ty)); refreshVisibility(); };
+  typeEls[ty] = el;
   legend.appendChild(el);
 }
 for (const [p, color] of Object.entries(PREDICATES)) {
@@ -272,7 +284,26 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   };
   legend.appendChild(el);
 }
+// select-all / clear for the node-type checkboxes above (predicate bars are left alone)
+const typeNames = Object.keys(NODE_TYPES);
+if (typeNames.length) {
+  const ctl = document.getElementById("legend-ctl");
+  ctl.style.display = "flex";
+  const mk = (label, off, title) => {
+    const b = document.createElement("button");
+    b.className = "selbtn"; b.textContent = label; b.title = title;
+    b.onclick = () => { typeNames.forEach(ty => setTypeHidden(ty, off)); refreshVisibility(); };
+    ctl.appendChild(b);
+  };
+  mk("all", false, "show all node types");
+  mk("none", true, "hide all node types");
+}
 // ------------------------------------------------- workspace graph filter
+const graphChips = {};
+function setGraphHidden(g, hidden) {   // reused by per-chip clicks and the all/none controls
+  hidden ? hiddenGraphs.add(g) : hiddenGraphs.delete(g);
+  graphChips[g].classList.toggle("active", !hidden);
+}
 if (gnames.length > 0) {
   const bar = document.getElementById("graphbar");
   bar.style.display = "flex";
@@ -285,13 +316,19 @@ if (gnames.length > 0) {
     chip.className = "btn active";
     chip.title = `show/hide member graph "${g}"`;
     chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${g}`;
-    chip.onclick = () => {
-      hiddenGraphs.has(g) ? hiddenGraphs.delete(g) : hiddenGraphs.add(g);
-      chip.classList.toggle("active", !hiddenGraphs.has(g));
-      refreshVisibility();
-    };
+    chip.onclick = () => { setGraphHidden(g, !hiddenGraphs.has(g)); refreshVisibility(); };
+    graphChips[g] = chip;
     bar.appendChild(chip);
   }
+  const mk = (label, hidden, title) => {
+    const b = document.createElement("button");
+    b.className = "selbtn"; b.textContent = label; b.title = title;
+    b.style.marginLeft = label === "all" ? "6px" : "0";
+    b.onclick = () => { gnames.forEach(g => setGraphHidden(g, hidden)); refreshVisibility(); };
+    bar.appendChild(b);
+  };
+  mk("all", false, "show all member graphs");
+  mk("none", true, "hide all member graphs");
   document.getElementById("sparql").style.top = "94px";
 }
 

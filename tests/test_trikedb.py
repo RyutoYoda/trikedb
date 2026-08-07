@@ -117,6 +117,9 @@ def test_html_export(db, tmp_path):
     assert "trikedb knowledge graph" in html  # default title
     assert "urn:trikedb:LEGACY_DUMP" in html  # embedded N-Triples for the engine
     assert "search-count" in html  # Cmd+F-style match cycling
+    assert "overflow-x: auto" in html  # legend slides instead of clipping when crowded
+    assert "function setTypeHidden" in html  # select-all/clear reuse per-label toggle
+    assert 'id="legend-ctl"' in html  # all/none controls for the node-type checkboxes
 
 
 def test_html_event_predicates_detected(tmp_path):
