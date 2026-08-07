@@ -97,13 +97,12 @@ db = TrikeDB("pipeline.yaml", ontology={
 })
 
 db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
-db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS", schedule="hourly")
-db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
-
 # `prov` is just another edge attribute — but the recommended one: cite where each
 # fact came from (a URL, doc, or command output) so the graph stays verifiable.
 db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS",
+       schedule="hourly",
        prov="https://runbook.example/crm#sync")   # any URL/doc/section works
+db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 
 try:
     db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
@@ -148,9 +147,8 @@ db.to_jsonld()               # best-effort export for real RDF tooling
 
 ```bash
 trikedb add pipeline.yaml salesflow-crm PROVIDES crm-sync-job
-trikedb add pipeline.yaml crm-sync-job INGESTS_TO RAW_CRM_CONTACTS -a schedule=hourly
 # `prov` is just an edge attribute, but the one to standardize on: cite each fact's source.
-trikedb add pipeline.yaml crm-sync-job INGESTS_TO RAW_CRM_CONTACTS -a prov=https://runbook.example/crm#sync
+trikedb add pipeline.yaml crm-sync-job INGESTS_TO RAW_CRM_CONTACTS -a schedule=hourly -a prov=https://runbook.example/crm#sync
 
 trikedb query pipeline.yaml -w "?vendor PROVIDES ?job" -w "?job INGESTS_TO ?table"
 # vendor         job           table
