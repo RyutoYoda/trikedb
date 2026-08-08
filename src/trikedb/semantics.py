@@ -9,6 +9,7 @@ thin delegating methods on TrikeDB.
 from __future__ import annotations
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 OWL_CHARACTERISTICS = {
     "transitive": "http://www.w3.org/2002/07/owl#TransitiveProperty",
     "symmetric": "http://www.w3.org/2002/07/owl#SymmetricProperty",
@@ -16,18 +17,45 @@ OWL_CHARACTERISTICS = {
 }
 OWL_INVERSE_OF = "http://www.w3.org/2002/07/owl#inverseOf"
 
+# RDFS relations declared as `declare(x, "<kind>:<other>")`. subclass_of and
+# subproperty_of relate two of the same kind; domain/range relate a predicate
+# to a class. All stored as ordinary, reviewable triples with an rdfs: predicate.
+RDFS_RELATIONS = {
+    "subclass_of": RDFS + "subClassOf",
+    "subproperty_of": RDFS + "subPropertyOf",
+    "domain": RDFS + "domain",
+    "range": RDFS + "range",
+}
+# rdf/rdfs predicates whose inferences are meaningful user facts (classification
+# and hierarchy) rather than rdf/owl bookkeeping — surfaced by infer().
+SURFACEABLE_PREDICATES = {RDF_TYPE, RDFS + "subClassOf", RDFS + "subPropertyOf"}
+
 
 def declare(db, predicate: str, characteristic: str):
-    """Store an OWL characteristic for a predicate as a reviewable triple."""
-    if characteristic.startswith("inverse_of:"):
-        other = characteristic.split(":", 1)[1]
-        return db.add(predicate, OWL_INVERSE_OF, other)
+    """Store an RDFS/OWL semantic for a predicate (or class) as a reviewable triple.
+
+    characteristic is one of:
+      * an OWL property characteristic: 'transitive', 'symmetric', 'functional'
+      * 'inverse_of:<PREDICATE>'
+      * an RDFS relation: 'subclass_of:<CLASS>', 'subproperty_of:<PREDICATE>',
+        'domain:<CLASS>', 'range:<CLASS>'
+
+    infer() then materializes the entailments (transitive/inverse edges,
+    subClassOf/subPropertyOf hierarchy, domain/range typing).
+    """
+    kind, sep, other = characteristic.partition(":")
+    if sep:
+        if kind == "inverse_of":
+            return db.add(predicate, OWL_INVERSE_OF, other)
+        if kind in RDFS_RELATIONS:
+            return db.add(predicate, RDFS_RELATIONS[kind], other)
     try:
         uri = OWL_CHARACTERISTICS[characteristic]
     except KeyError:
+        known = sorted(OWL_CHARACTERISTICS) + [f"{k}:<OTHER>" for k in
+                                               ["inverse_of", *RDFS_RELATIONS]]
         raise ValueError(
-            f"unknown characteristic {characteristic!r} "
-            f"(known: {sorted(OWL_CHARACTERISTICS)} or 'inverse_of:<PRED>')"
+            f"unknown characteristic {characteristic!r} (known: {known})"
         ) from None
     return db.add(predicate, RDF_TYPE, uri)
 
@@ -40,7 +68,7 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
         raise ImportError(
             "OWL inference requires owlrl — pip install 'trikedb[owl]'"
         ) from None
-    from rdflib import Literal
+    from rdflib import Literal, URIRef
 
     from .db import _shorten
 
@@ -50,19 +78,32 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
     existing = {t.spo() for t in db}
     new = []
     for s, p, o in set(g) - before:
-        row = []
-        for term in (s, p, o):
-            if isinstance(term, Literal):
-                row.append(str(term))
-                continue
-            text = str(term)
-            if not text.startswith(base):
-                row = None  # axiomatic rdf/owl vocabulary noise or bnode
-                break
-            row.append(_shorten(term, base))
-        if row and tuple(row) not in existing:
-            new.append(tuple(row))
-    new.sort()
+        # Keep only facts *about the user's own resources*. The OWL-RL closure
+        # also emits mountains of rdf/owl bookkeeping (x rdf:type owl:Thing,
+        # x subClassOf rdfs:Resource, bnodes …) — those have a non-base subject
+        # or object and are dropped.
+        if not (isinstance(s, URIRef) and str(s).startswith(base)):
+            continue
+        p_text = str(p)
+        p_is_base = p_text.startswith(base)
+        # predicate must be one of the user's own, or an RDFS classification /
+        # hierarchy predicate (rdf:type, rdfs:subClassOf, rdfs:subPropertyOf)
+        if not (p_is_base or p_text in SURFACEABLE_PREDICATES):
+            continue
+        if isinstance(o, Literal):
+            o_out = str(o)
+        elif isinstance(o, URIRef) and str(o).startswith(base):
+            o_out = _shorten(o, base)
+        else:
+            continue  # object is rdfs:Resource / owl:Thing / a bnode → noise
+        s_out = _shorten(s, base)
+        if s_out == o_out and not p_is_base:
+            continue  # reflexive classification noise (X subClassOf X, X type X)
+        p_out = _shorten(p, base) if p_is_base else p_text
+        row = (s_out, p_out, o_out)
+        if row not in existing:
+            new.append(row)
+    new = sorted(set(new))
     if apply:
         for s, p, o in new:
             db.add(s, p, o, inferred=True)

@@ -169,8 +169,8 @@ call `save()` yourself.
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
 | `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals |
 | `import_file(path)` | Merge from CSV/TSV (s,p,o header), Markdown (s/p/o tables), or another YAML graph |
-| `declare(pred, characteristic)` | OWL semantics: `transitive` / `symmetric` / `functional` / `inverse_of:X` — stored as a reviewable triple |
-| `infer(apply=False)` | OWL-RL materialization; `apply=True` adds facts tagged `inferred: true` |
+| `declare(pred, characteristic)` | RDFS/OWL semantics: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`, or RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — stored as a reviewable triple |
+| `infer(apply=False)` | OWL-RL materialization (RDFS classification + hierarchy and OWL edges; rdf/owl bookkeeping noise suppressed); `apply=True` adds facts tagged `inferred: true` |
 | `validate(shapes)` | SHACL via pySHACL → `(conforms, report)` |
 | `audit()` | Health findings (see `trikedb audit` below) |
 | `content_hash()` | Stable fingerprint of graph content (embedded in HTML exports) |

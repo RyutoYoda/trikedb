@@ -162,8 +162,8 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |
 | `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可 |
 | `import_file(path)` | CSV/TSV(s,p,oヘッダ)・Markdown(s/p/o表)・別のYAMLグラフをマージ |
-| `declare(pred, characteristic)` | OWL特性の宣言: `transitive` / `symmetric` / `functional` / `inverse_of:X` — レビュー可能なトリプルとして保存 |
-| `infer(apply=False)` | OWL-RL推論の実体化。`apply=True` で `inferred: true` 付きで追加 |
+| `declare(pred, characteristic)` | RDFS/OWL意味論の宣言: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`、または RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — レビュー可能なトリプルとして保存 |
+| `infer(apply=False)` | OWL-RL推論の実体化（RDFSの分類・階層＋OWLエッジを表面化、rdf/owlの内部ノイズは抑制）。`apply=True` で `inferred: true` 付きで追加 |
 | `validate(shapes)` | pySHACLによるSHACL検証 → `(conforms, report)` |
 | `audit()` | 健全性の所見(下記 `trikedb audit` 参照) |
 | `content_hash()` | グラフ内容の安定指紋(HTML出力に埋め込まれる) |

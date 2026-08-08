@@ -213,16 +213,29 @@ t:BotShape a sh:NodeShape ;
 trikedb validate graph.yaml shapes.ttl   # exit code 1 on violations — CI-friendly
 ```
 
-For inference, declare OWL characteristics on your predicates and
-materialize what follows (`pip install 'trikedb[owl]'`, OWL-RL via
-[owlrl](https://github.com/RDFLib/OWL-RL)):
+For inference, declare RDFS/OWL semantics on your predicates (and
+classes) and materialize what follows (`pip install 'trikedb[owl]'`,
+OWL-RL via [owlrl](https://github.com/RDFLib/OWL-RL)):
 
 ```python
+# OWL property characteristics
 db.declare("INHERITS", "transitive")     # stored as a reviewable triple
 db.add("admin", "INHERITS", "editor")
 db.add("editor", "INHERITS", "viewer")
 db.infer(apply=True)                     # adds (admin, INHERITS, viewer) — marked inferred: true
+
+# RDFS class hierarchy + typing
+db.declare("Cat", "subclass_of:Animal")        # rdfs:subClassOf
+db.declare("authored", "domain:Person")        # rdfs:domain  → subjects get typed
+db.declare("authored", "range:Book")           # rdfs:range   → objects get typed
+db.declare("bornIn", "subproperty_of:locatedIn")  # rdfs:subPropertyOf
+db.add("felix", "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "Cat")
+db.infer()   # → (felix, rdf:type, Animal)  via subClassOf; domain/range typing; etc.
 ```
+
+`infer()` surfaces classifications and hierarchy (rdf:type, subClassOf,
+subPropertyOf) as well as OWL edges (transitive / symmetric / inverse),
+while suppressing the reasoner's rdf/owl bookkeeping noise.
 
 Inference is **materialization, not magic**: derived facts land in the
 YAML tagged `inferred: true`, so the git diff shows exactly what the

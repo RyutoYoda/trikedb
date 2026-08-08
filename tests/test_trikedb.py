@@ -498,6 +498,69 @@ def test_owl_symmetric_inference():
     assert ("bob", "MARRIED_TO", "alice") in db.infer()
 
 
+# --------------------------------------------------------------- rdfs
+# infer() surfaces RDFS entailments (classification + hierarchy), not just OWL
+# property characteristics. Regression: the closure derived these all along, but
+# the result filter discarded every rdf:type / rdfs: triple as "vocabulary noise".
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_SUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+
+
+def test_rdfs_subclass_type_propagation():
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("Cat", "subclass_of:Animal")
+    db.add("felix", RDF_TYPE, "Cat")
+    assert ("felix", RDF_TYPE, "Animal") in db.infer()
+
+
+def test_rdfs_domain_and_range_typing():
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("authored", "domain:Person")
+    db.declare("authored", "range:Book")
+    db.add("alice", "authored", "book1")
+    new = db.infer()
+    assert ("alice", RDF_TYPE, "Person") in new
+    assert ("book1", RDF_TYPE, "Book") in new
+
+
+def test_rdfs_subproperty_of():
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("bornIn", "subproperty_of:locatedIn")
+    db.add("alice", "bornIn", "paris")
+    assert ("alice", "locatedIn", "paris") in db.infer()
+
+
+def test_rdfs_subclass_transitive_and_apply():
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("Cat", "subclass_of:Mammal")
+    db.declare("Mammal", "subclass_of:Animal")
+    new = db.infer(apply=True)
+    assert ("Cat", RDFS_SUBCLASS, "Animal") in new
+    t = next(db.triples(s="Cat", p=RDFS_SUBCLASS, o="Animal"))
+    assert t.attrs == {"inferred": True}
+    assert db.infer(apply=True) == []  # idempotent
+
+
+def test_infer_suppresses_owl_bookkeeping_noise():
+    """RDFS/OWL closure emits x rdf:type owl:Thing, x subClassOf rdfs:Resource,
+    bnodes, etc. None of that vocabulary noise should surface — only facts whose
+    subject and object are the user's own resources."""
+    pytest.importorskip("owlrl")
+    db = TrikeDB()
+    db.declare("Cat", "subclass_of:Animal")
+    db.add("felix", RDF_TYPE, "Cat")
+    new = db.infer()
+    assert new == [("felix", RDF_TYPE, "Animal")]
+    for s, p, o in new:
+        assert not s.startswith(("http://", "urn:"))  # subject is a plain name
+        assert "owl#" not in o and "rdf-schema#" not in o  # no vocabulary objects
+
+
 SHAPES = """
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix t:  <urn:trikedb:> .
