@@ -90,57 +90,56 @@ pip install 'trikedb[semantic]' # + semantic search (numpy + model2vec, no torch
 ```python
 from trikedb import TrikeDB
 
+# A typed knowledge graph that lives in one YAML file. The predicates you declare
+# are the schema — that whitelist catches typos and junk on write.
 db = TrikeDB("pipeline.yaml", ontology={
-    "PROVIDES": "SaaS vendor -> ingestion job",
+    "PROVIDES":   "SaaS vendor -> ingestion job",
     "INGESTS_TO": "ingestion job -> warehouse table",
     "MIGRATED_TO": "deprecated table -> its replacement",
 })
 
+# Add facts. Any keyword becomes an edge attribute — and `prov` is the one to
+# standardize on: cite where each fact came from so the graph stays verifiable.
 db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
-# `prov` is just another edge attribute — but the recommended one: cite where each
-# fact came from (a URL, doc, or command output) so the graph stays verifiable.
 db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS",
-       schedule="hourly",
-       prov="https://runbook.example/crm#sync")   # any URL/doc/section works
+       schedule="hourly", prov="https://runbook.example/crm#sync")
 db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 
-try:
-    db.add("crm-sync-job", "OWNS", "x")   # OntologyError: predicate not declared
-except Exception as e:
-    print(e)  # predicate 'OWNS' is not in the ontology
+# The ontology is a guardrail: db.add("crm-sync-job", "OWNS", "x") would raise
+# OntologyError — 'OWNS' isn't a declared predicate, so the typo never lands.
 
-# Pattern matching — None is a wildcard, '*' globs
-for t in db.triples(p="INGESTS_TO", o="RAW_*"):
-    print(t.s, "->", t.o, t.attrs)
+# Describe nodes: `type` colors the graph and is queryable; attach anything else.
+db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
+            url="https://catalog.example/raw_crm_contacts")
 
-# Multi-pattern queries with variable joins (zero dependencies)
+# Ask questions — join patterns with zero dependencies …
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
 
-# Or real SPARQL 1.1 — FILTER, OPTIONAL, aggregates, the lot.
-# Delegated to rdflib, not hand-rolled. The prefix t: is pre-bound.
-db.sparql("""
-  SELECT ?vendor ?table WHERE {
-    ?vendor t:PROVIDES ?job .
-    ?job t:INGESTS_TO ?table .
-  }
-""")
-db.sparql("ASK { ?x t:MIGRATED_TO ?y }")  # True
+# … or full SPARQL 1.1 (FILTER, OPTIONAL, aggregates — delegated to rdflib, t: pre-bound)
+db.sparql('SELECT ?t WHERE { ?t t:type "table" ; t:pii true }')   # every PII table
+db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')  # edge attrs, too
 
-# Edge attributes are queryable too (standard RDF reification, rdf: pre-bound):
-db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')
+# Let the graph classify itself — declare RDFS/OWL semantics and materialize what
+# follows (pip install 'trikedb[owl]'). Inferred facts land in the YAML, reviewable.
+db.declare("INGESTS_TO", "domain:job")    # subjects of INGESTS_TO are jobs
+db.declare("INGESTS_TO", "range:table")   # objects are tables
+db.infer(apply=True)   # -> crm-sync-job a job, RAW_CRM_CONTACTS a table (tagged inferred: true)
 
-# Semantic search — meaning, not spelling (requires: pip install 'trikedb[semantic]')
-db.search("what syncs the CRM?", k=5)   # scored triples + nodes
+# Check it before you trust it — validate against SHACL shapes (pip install 'trikedb[shacl]')
+ok, report = db.validate('''@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix t: <urn:trikedb:> .
+  t:IngestShape a sh:NodeShape ; sh:targetObjectsOf t:INGESTS_TO ;
+    sh:property [ sh:path t:type ; sh:minCount 1 ] .''')   # does every landed table declare a type?
 
-# Writes go through SPARQL too — and land back in the YAML
-# (mutations autosave to the file by default; pass autosave=False to batch)
+# Find facts by meaning, not spelling (pip install 'trikedb[semantic]')
+db.search("what syncs the CRM?", k=5)
+
+# Writes go through SPARQL too and autosave straight back to the YAML
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
-db.sparql("DELETE WHERE { ?job t:INGESTS_TO t:LEGACY_CONTACTS_DUMP }")
 
-db.to_rdflib()               # plain rdflib.Graph, if you want to go further
-db.to_html("pipeline.html")  # interactive graph workbench (see demos below)
-db.to_jsonld()               # best-effort export for real RDF tooling
+# Ship one self-contained HTML file your team can actually click through
+db.to_html("pipeline.html")     # searchable graph + node details + in-browser SPARQL console
+db.to_rdflib(); db.to_jsonld()  # or graduate to any RDF tool — an export, not a rewrite
 ```
 
 ## Quickstart (CLI)
