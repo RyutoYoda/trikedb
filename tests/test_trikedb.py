@@ -774,3 +774,21 @@ def test_search_k_clamps_to_positive(tmp_path):
         assert len(rows) >= 1
         rows = semantic.search(db, "test", k=-5)
         assert len(rows) >= 1
+
+
+def test_readme_links_are_absolute_for_pypi():
+    """README relative links (docs/, examples/, benchmarks/) render broken on
+    PyPI, which serves the README standalone. Every non-anchor link must be an
+    absolute URL. Guards against shipping dead doc links in a release."""
+    import re
+    from pathlib import Path
+
+    readme = Path(__file__).resolve().parent.parent / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    md_targets = re.findall(r"\]\(([^)]+)\)", text)
+    html_targets = re.findall(r'(?:src|href)="([^"]+)"', text)
+    relative = [
+        t for t in md_targets + html_targets
+        if not t.startswith(("http://", "https://", "#", "mailto:"))
+    ]
+    assert not relative, f"README has relative links that break on PyPI: {relative}"

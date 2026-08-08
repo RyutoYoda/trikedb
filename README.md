@@ -191,7 +191,7 @@ trikedb import pipeline.yaml design_doc.md
 | clickpath-webhook | INGESTS_TO | RAW_PRODUCT_EVENTS | streaming |
 ```
 
-Imports are deterministic — no LLM extraction, so nothing gets invented. The ontology is enforced on the way in, and `"true"`/`"false"` cells become booleans. See [`examples/acme_design_doc.md`](examples/acme_design_doc.md) and [`examples/acme_new_vendors.csv`](examples/acme_new_vendors.csv).
+Imports are deterministic — no LLM extraction, so nothing gets invented. The ontology is enforced on the way in, and `"true"`/`"false"` cells become booleans. See [`examples/acme_design_doc.md`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_design_doc.md) and [`examples/acme_new_vendors.csv`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_new_vendors.csv).
 
 ## Validation and inference (SHACL / OWL)
 
@@ -345,7 +345,7 @@ triples:
     o: "2025-04-01 adastra API v3: spend now in micros (was cents)"
 ```
 
-Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml)):
+Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)):
 
 - **Change events as objects.** `AFFECTED_BY` edges pointing at dated event strings give your graph a memory — "why did this number change in April?" becomes a query.
 - **`deprecated: true`** on edges renders them dashed in the HTML view and lets agents filter dead paths.
@@ -395,11 +395,11 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## Examples
 
-- [`examples/freebase_sample.yaml`](examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. This powers the live demo.
-- [`examples/freebase_workspace.yaml`](examples/freebase_workspace.yaml) — the same facts split into 6 domain graphs (film / music / books / people / places / misc) and unioned back as a **workspace**: each member renders as its own island with a filter chip. This powers the workspace demo.
-- [`examples/acme_pipeline.yaml`](examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
-- [`examples/python_ecosystem.yaml`](examples/python_ecosystem.yaml) — free-form predicates, no ontology.
-- [`examples/trikedb_quickstart.ipynb`](examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. This powers the live demo.
+- [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — the same facts split into 6 domain graphs (film / music / books / people / places / misc) and unioned back as a **workspace**: each member renders as its own island with a filter chip. This powers the workspace demo.
+- [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
+- [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — free-form predicates, no ontology.
+- [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
 **Live demo:** https://ryutoyoda.github.io/trikedb/ · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
 
@@ -407,14 +407,14 @@ The exported HTML is a small workbench, not just a picture: click a node for a r
 
 ## Benchmark
 
-On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same small LLM answers **60% alone vs 83% with a trikedb graph as context** — a +23-point delta under a deterministic, reproducible protocol. Scripts, method, and an honest scoring-sensitivity analysis live in [`benchmarks/`](benchmarks/).
+On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same small LLM answers **60% alone vs 83% with a trikedb graph as context** — a +23-point delta under a deterministic, reproducible protocol. Scripts, method, and an honest scoring-sensitivity analysis live in [`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks).
 
 ## Documentation
 
-- [docs/REFERENCE.md](docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras) · [日本語版](docs/REFERENCE_jp.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layering and where new code goes
-- [docs/SCALING.md](docs/SCALING.md) — measured limits at 1k/10k/100k triples, and when to move from whole-file reads to a served graph
-- [benchmarks/](benchmarks/) — WebQSP methodology and findings
+- [docs/REFERENCE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md) — every feature and how to use it (CLI, Python API, MCP, serve, extras) · [日本語版](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)
+- [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE.md) — the layering and where new code goes
+- [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — measured limits at 1k/10k/100k triples, and when to move from whole-file reads to a served graph
+- [benchmarks/](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks) — WebQSP methodology and findings
 
 ## Development
 
