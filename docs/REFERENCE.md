@@ -176,7 +176,8 @@ call `save()` yourself.
 | `audit()` | Health findings (see `trikedb audit` below) |
 | `content_hash()` | Stable fingerprint of graph content (embedded in HTML exports) |
 | `to_html(path, title=, event_predicates=, layout=)` | Interactive workbench (see below) |
-| `to_rdflib()` / `to_jsonld()` | Interop exports |
+| `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
+| `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
 
@@ -319,3 +320,4 @@ the agent writes inside your vocabulary.
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |
+| `[networkx]` | `to_networkx` (property-graph projection) | networkx |

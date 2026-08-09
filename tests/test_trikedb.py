@@ -106,6 +106,25 @@ def test_jsonld_export(db):
     assert doc["@context"]["PROVIDES"]["@type"] == "@id"
 
 
+def test_networkx_projection(db):
+    """The property-graph view: node props + edge label/attrs preserved, and
+    real graph algorithms run over it — the same YAML that speaks SPARQL."""
+    nx = pytest.importorskip("networkx")
+    db.set_node("RAW_CRM_CONTACTS", type="table", pii=True)
+    g = db.to_networkx()
+    assert isinstance(g, nx.MultiDiGraph)
+    # node properties carried across
+    assert g.nodes["RAW_CRM_CONTACTS"] == {"type": "table", "pii": True}
+    # edge carries predicate as label + its attributes, keyed by predicate
+    edge = g.get_edge_data("crm-sync-job", "RAW_CRM_CONTACTS")["INGESTS_TO"]
+    assert edge["label"] == "INGESTS_TO" and edge["schedule"] == "hourly"
+    # a real property-graph traversal works over the projection
+    assert nx.shortest_path(g, "salesflow-crm", "RAW_CRM_CONTACTS") == [
+        "salesflow-crm", "crm-sync-job", "RAW_CRM_CONTACTS"]
+    # multigraph=False collapses to a plain DiGraph
+    assert isinstance(db.to_networkx(multigraph=False), nx.DiGraph)
+
+
 def test_html_export(db, tmp_path):
     out = tmp_path / "graph.html"
     html = db.to_html(out)

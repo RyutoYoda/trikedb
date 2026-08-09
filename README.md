@@ -51,6 +51,7 @@ trikedb keeps the *interface* of the big system — real SPARQL 1.1 (rdflib's en
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
 | Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
+| Graph model | usually pick one: RDF *or* property graph (two systems) | **both from one file** — SPARQL/RDF (`to_rdflib`) and property graph (`to_networkx`, via `[networkx]`) |
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a predicate whitelist, plus SHACL shapes via `[shacl]` |
 | Inference | DL reasoning engines | OWL-RL materialization via `[owl]` — inferred facts land in the YAML, reviewable |
@@ -83,6 +84,7 @@ pip install 'trikedb[remote]'   # + s3:// gs:// graphs
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
 pip install 'trikedb[semantic]' # + semantic search (numpy + model2vec, no torch)
+pip install 'trikedb[networkx]' # + property-graph projection (to_networkx)
 ```
 
 ## Quickstart (Python)
@@ -144,7 +146,9 @@ db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 
 # Ship one self-contained HTML file your team can actually click through
 db.to_html("pipeline.html")     # searchable graph + node details + in-browser SPARQL console
-db.to_rdflib(); db.to_jsonld()  # or graduate to any RDF tool — an export, not a rewrite
+db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL view — or graduate to any RDF tool
+db.to_networkx()                # property-graph view: run networkx algorithms on the
+                                # same file (shortest path, centrality) — 'trikedb[networkx]'
 ```
 
 ## Quickstart (CLI)

@@ -619,6 +619,37 @@ class TrikeDB:
             node.setdefault(t.p, []).append(t.o)
         return {"@context": context, "@graph": list(nodes.values())}
 
+    def to_networkx(self, multigraph: bool = True):
+        """Project to a networkx graph — the property-graph view (requires
+        the [networkx] extra: pip install 'trikedb[networkx]').
+
+        One YAML file, two projections: to_rdflib() gives the RDF/SPARQL view,
+        this gives the labeled-property-graph view for graph algorithms
+        (shortest path, centrality, communities) via networkx. Nodes carry
+        their properties (type, url, ...); each edge carries the predicate as
+        `label` plus every edge attribute (schedule, prov, deprecated, ...).
+
+        multigraph=True (default) returns a MultiDiGraph, preserving parallel
+        edges with different predicates between the same pair; False collapses
+        to a DiGraph (last edge between a pair wins).
+        """
+        try:
+            import networkx as nx
+        except ImportError:  # pragma: no cover
+            raise ImportError(
+                "networkx projection requires networkx — pip install 'trikedb[networkx]'"
+            ) from None
+
+        g = nx.MultiDiGraph() if multigraph else nx.DiGraph()
+        for name in self.nodes():           # nodes first, so property-only nodes survive
+            g.add_node(name, **self.node(name))
+        for t in self._triples:
+            if multigraph:
+                g.add_edge(t.s, t.o, key=t.p, label=t.p, **t.attrs)
+            else:
+                g.add_edge(t.s, t.o, label=t.p, **t.attrs)
+        return g
+
     def to_html(
         self,
         path: Union[str, Path, None] = None,

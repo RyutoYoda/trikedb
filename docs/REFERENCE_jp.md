@@ -169,7 +169,8 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `audit()` | 健全性の所見(下記 `trikedb audit` 参照) |
 | `content_hash()` | グラフ内容の安定指紋(HTML出力に埋め込まれる) |
 | `to_html(path, title=, event_predicates=, layout=)` | インタラクティブワークベンチ(後述) |
-| `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート |
+| `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート(RDF/SPARQLビュー) |
+| `to_networkx(multigraph=True)` | プロパティグラフ投影(`[networkx]` extra): ノードのプロパティ＋エッジのlabel/属性を保持。同じファイルでnetworkxのアルゴリズム(最短経路・中心性)が使える |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状態属性 |
 
@@ -303,3 +304,4 @@ flowchart LR
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |
+| `[networkx]` | `to_networkx`(プロパティグラフ投影) | networkx |
