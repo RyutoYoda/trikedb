@@ -518,6 +518,47 @@ class TrikeDB:
         kwargs = {"model": model} if model else {}
         return semantic.search(self, query, k=k, **kwargs)
 
+    def find(self, question: str, where=None, k: int = 10,
+             model: Optional[str] = None) -> list:
+        """Hybrid retrieval: semantic recall, then a hard structured filter.
+
+        Two stages, one call — the pattern an agent wants:
+          1. recall — `search()` casts a wide semantic net (meaning, not
+             spelling; cross-lingual) to gather candidate nodes;
+          2. precision — keep only the ones that satisfy `where`, an exact
+             filter with no fuzz.
+
+        where: None (keep every recalled node), a dict of required node
+        properties (`{"type": "table", "pii": True}` — all must match), or
+        a callable `(name, props) -> bool` for arbitrary logic.
+
+        Returns candidates in recall-rank order, each as a ready-to-use
+        payload: {"node": name, "props": {...}, "facts": [[p, o], ...]}.
+        Requires the [semantic] extra (for the recall stage).
+        """
+        candidates = []
+        for hit in self.search(question, k=k, model=model):   # stage 1: recall
+            candidates += (
+                [hit["node"]] if hit.get("kind") == "node"
+                else [hit.get("s"), hit.get("o")]
+            )
+        out, seen = [], set()
+        for name in candidates:                               # stage 2: precision
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            props = self.node(name)
+            if callable(where):
+                keep = bool(where(name, props))
+            elif where:
+                keep = all(props.get(key) == val for key, val in where.items())
+            else:
+                keep = True
+            if keep:
+                facts = [[t.p, t.o] for t in self.triples(s=name)]
+                out.append({"node": name, "props": props, "facts": facts})
+        return out
+
     def infer(self, apply: bool = False, base: str = "urn:trikedb:") -> list:
         """Materialize OWL-RL inferences over the graph (requires [owl] extra).
 

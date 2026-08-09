@@ -158,6 +158,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `query([patterns])` | `?変数` の複数パターン結合(SPARQL的BGP、依存ゼロ) |
 | `sparql(q)` | rdflib経由のSPARQL 1.1フル。SELECT→行、ASK→bool、INSERT/DELETE→増減数。`t:`/`rdf:` pre-bound |
 | `search(q, k=10)` | 意味検索(`[semantic]` extra): 綴りでなく意味で事実をランク付け — 「認証まわりの注意点」がキーワード共有ゼロのkeypair/MFA事実を見つける |
+| `find(question, where=None, k=10)` | ハイブリッド検索(`[semantic]` extra): 意味でのrecall→ハードな構造フィルタ(`where`: 必須ノードプロパティのdict、または `(name, props) -> bool` の関数)。`{node, props, facts}` のペイロードを返す |
 | `update(q)` | SPARQL Updateを明示実行(`sparql`が書き込み形を委譲する先) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |
 | `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可 |
@@ -207,6 +208,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 |---|---|---|
 | `sparql` | 読み書き | prefix `t:`/`rdf:` は事前バインド。更新は永続化 |
 | `search` | 読み | 曖昧な質問のための意味検索(`[semantic]` extra) |
+| `find` | 読み | ハイブリッド検索: 意味recall + 構造`where`フィルタ(`[semantic]` extra) |
 | `match` | 読み | 属性つきパターンマッチ |
 | `get_node` | 読み | プロパティ+入出エッジ |
 | `ontology` / `stats` | 読み | 語彙 / サマリ |

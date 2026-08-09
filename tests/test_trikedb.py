@@ -798,6 +798,44 @@ def test_semantic_search_ranks_by_meaning(tmp_path):
     assert rows[0]["score"] > rows[1]["score"]
 
 
+def _hybrid_db(tmp_path):
+    db = TrikeDB(tmp_path / "g.yaml")
+    db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS", note="顧客データを毎時同期")
+    db.add("billing-etl", "INGESTS_TO", "RAW_INVOICES", note="請求データのETL")
+    db.set_node("RAW_CRM_CONTACTS", type="table", pii=True, desc="customer contacts")
+    db.set_node("RAW_INVOICES", type="table", pii=False, desc="invoice line items")
+    return db
+
+
+def test_find_hybrid_recall_then_filter(tmp_path):
+    pytest.importorskip("model2vec")
+    db = _hybrid_db(tmp_path)
+    try:
+        # recall casts a wide net; the where filter enforces hard constraints
+        rows = db.find("where is the customer CRM data?",
+                       where={"type": "table", "pii": True}, k=8)
+    except Exception as exc:  # model uncached + offline
+        pytest.skip(f"model unavailable: {exc}")
+    names = [r["node"] for r in rows]
+    assert "RAW_CRM_CONTACTS" in names        # semantically recalled + passes filter
+    assert "RAW_INVOICES" not in names        # a table, but pii=False → dropped
+    hit = next(r for r in rows if r["node"] == "RAW_CRM_CONTACTS")
+    assert hit["props"]["pii"] is True
+    assert isinstance(hit["facts"], list)     # ready-to-use structured payload
+
+
+def test_find_where_callable_and_none(tmp_path):
+    pytest.importorskip("model2vec")
+    db = _hybrid_db(tmp_path)
+    try:
+        cb = db.find("customer data", where=lambda name, p: p.get("pii") is True, k=8)
+        every = db.find("customer data", where=None, k=8)
+    except Exception as exc:
+        pytest.skip(f"model unavailable: {exc}")
+    assert [r["node"] for r in cb] == ["RAW_CRM_CONTACTS"]
+    assert len(every) >= len(cb)              # no filter keeps at least as many
+
+
 def test_add_upsert_autosaves(tmp_path):
     # add() で既存 spo の attrs を更新したとき autosave が走ること
     path = tmp_path / "g.yaml"

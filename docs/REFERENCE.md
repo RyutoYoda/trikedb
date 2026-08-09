@@ -165,6 +165,7 @@ call `save()` yourself.
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
 | `sparql(q)` | Full SPARQL 1.1 via rdflib. SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
 | `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords |
+| `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
 | `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals |
@@ -214,6 +215,7 @@ Ten tools, one server definition, two transports:
 |---|---|---|
 | `sparql` | read/write | prefixes `t:`/`rdf:` pre-bound; updates persist |
 | `search` | read | semantic search for fuzzy questions (`[semantic]` extra) |
+| `find` | read | hybrid retrieval: semantic recall + structured `where` filter (`[semantic]` extra) |
 | `match` | read | pattern matching with attrs |
 | `get_node` | read | props + outgoing/incoming edges |
 | `ontology` / `stats` | read | vocabulary / summary |

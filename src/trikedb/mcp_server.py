@@ -59,6 +59,18 @@ def build_server(path: Union[str, Path]):
         return db.search(query, k=k)
 
     @server.tool()
+    def find(question: str, where: Optional[dict] = None, k: int = 10) -> list:
+        """Hybrid retrieval: semantic recall + a hard structured filter.
+
+        The one-call version of "search, then narrow": recall candidate
+        nodes by meaning, then keep only those whose properties match
+        `where` (e.g. {"type": "table", "pii": true}). Returns each match
+        with its properties and outgoing facts — a ready-to-use payload.
+        Prefer this over search when you can name the hard constraints.
+        Requires the [semantic] extra on the server side."""
+        return db.find(question, where=where, k=k)
+
+    @server.tool()
     def match(
         s: Optional[str] = None, p: Optional[str] = None, o: Optional[str] = None
     ) -> list:

@@ -134,6 +134,11 @@ ok, report = db.validate('''@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix 
 # Find facts by meaning, not spelling (pip install 'trikedb[semantic]')
 db.search("what syncs the CRM?", k=5)
 
+# Hybrid retrieval for agents — semantic recall + a hard structured filter, in one
+# call: cast a wide net by meaning, then keep only what precisely matches.
+db.find("where is the customer CRM data?", where={"type": "table", "pii": True})
+# -> [{'node': 'RAW_CRM_CONTACTS', 'props': {'type': 'table', 'pii': True, ...}, 'facts': [...]}]
+
 # Writes go through SPARQL too and autosave straight back to the YAML
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 
@@ -364,6 +369,23 @@ Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](https://gi
 - **`via:` / `schedule:`** attributes carry operational detail without polluting the node set.
 - **Node properties keep growing.** That's the RDF promise: attach `type`, `url`, `schema`, owners — whatever your team needs — without a schema migration. `type` drives color grouping in the HTML view, and node properties are queryable in SPARQL (`?x t:type "table"`). Set them from code with `db.set_node("RAW_CRM_CONTACTS", pii=True)`.
 
+## Hybrid retrieval for agents
+
+Semantic search is great at recall (finds what you mean) but not precision — the score is uncalibrated and it never says "no match." SPARQL is the opposite: exact, but only if you already know the names. `find()` combines them in one call — **semantic recall, then a hard structured filter** — which is the retrieval an agent actually wants:
+
+```python
+# "cast a wide net by meaning, then keep only what precisely matches"
+db.find("where is the customer CRM data?",
+        where={"type": "table", "pii": True})   # dict of required node props …
+db.find("customer data", where=lambda name, props: props.get("pii"))  # … or a predicate
+
+# each result is a ready-to-use payload: the node, its properties, its facts
+# [{"node": "RAW_CRM_CONTACTS", "props": {"type": "table", "pii": True, ...},
+#   "facts": [["INGESTS_TO", ...], ...]}]
+```
+
+Recall casts a wide net (`search`, cross-lingual, synonym-tolerant); the `where` filter drops the false positives with no fuzz and pulls exact structured facts. Use the recall stage for candidates and the filter for correctness — never gate on the raw similarity score. The same two-stage move is available to LLM agents as the **`find` MCP tool** below, or hand-rolled from `search` + `sparql`/`match` when you want full control.
+
 ## An ontology layer for AI agents (MCP)
 
 trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio — the graph runs inside the agent session, no server to operate. Register it with any MCP client:
@@ -379,7 +401,7 @@ trikedb is embedded, not hosted. For agents, "embedded" means MCP over stdio —
 }
 ```
 
-The agent gets `sparql`, `match`, `get_node`, `ontology`, `stats` to read, and `add_triple`, `set_node`, `remove_triples`, `import_source` to write. Every write autosaves to the YAML — so agent contributions arrive as reviewable git diffs.
+The agent gets `sparql`, `match`, `search`, `find`, `get_node`, `ontology`, `stats` to read, and `add_triple`, `set_node`, `remove_triples`, `import_source` to write. Every write autosaves to the YAML — so agent contributions arrive as reviewable git diffs.
 
 This is also the answer to "just throw docs at it": **the agent is the extractor, trikedb is the validated write path.** Point your agent at a pile of documents and ask it to record the facts; it reads them (any format — it's an LLM), calls `add_triple` for each fact, and the ontology rejects any predicate it tries to invent. Extraction stays flexible, the graph stays clean, and a human reviews the diff.
 
