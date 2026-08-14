@@ -196,14 +196,14 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb check FILE [--html PATH]` | パース確認+HTML鮮度検出(埋め込みハッシュ照合) |
 | `trikedb audit FILE [--json] [--strict]` | 健全性所見。errorでexit 1(`--strict`で警告も) |
 | `trikedb mcp FILE` | stdioのMCPサーバー |
-| `trikedb serve FILE [--host] [--port] [--token]` | UI + REST + Streamable HTTPのMCP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope]` | UI + REST + Streamable HTTPのMCP |
 
 `FILE` 引数はどれもローカルパス・`s3://`/`gs://`/`https://` URL
 (`[remote]` extra)・workspaceファイルを受け付ける。
 
 ## MCP: エージェントのためのオントロジーレイヤー
 
-ツール10個・サーバー定義は1つ・トランスポートは2つ:
+ツール11個・サーバー定義は1つ・トランスポートは2つ:
 
 | ツール | 種別 | 備考 |
 |---|---|---|
@@ -228,7 +228,125 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
 
 `trikedb serve` は1プロセスで3つの入口を提供する: `/`(常に最新の
 ワークベンチUI)、`/sparql`(REST: `POST {"query": ...}` → JSON)、`/mcp`。
-v1の認証は静的Bearerトークン1本。
+
+### 認証
+
+方式は2つ。どちらも3つの入口すべてを保護する:
+
+| フラグ | 中身 | 用途 |
+|---|---|---|
+| `--token SECRET` | 静的Bearerトークン1本 | スクリプト、CI、信頼できるネットワーク内 |
+| `--oauth-issuer URL` | 自社IdPに委譲するOAuth 2.1 (`[oauth]` extra) | claude.ai / ChatGPT のUI、ユーザー単位の識別 |
+
+```bash
+pip install 'trikedb[serve,oauth]'
+trikedb serve graph.yaml \
+  --public-url   https://kg.example.com \
+  --oauth-issuer https://idp.example.com/ \
+  --required-scope kg:read
+```
+
+trikedbは**リソースサーバーに徹する** — JWTを検証するだけで発行はしない。
+つまり認可サーバーもセッションストアもユーザーテーブルも運用しなくていい。
+初回リクエスト時にissuerのメタデータ
+(`/.well-known/openid-configuration`、無ければ
+`/.well-known/oauth-authorization-server`)を引いてJWKSをキャッシュし、
+以降は各トークンの署名・`iss`・`exp`・`aud` を検証する。
+
+- **audience** の既定値は `<public-url>/mcp`。クライアントがRFC 8707の
+  `resource` パラメータとして送る正規MCP URIそのもの。IdP側でこの `aud` を
+  発行させるか、IdPが使う識別子に `--oauth-audience` を合わせる。
+  **他サービス向けに発行されたトークンでグラフを開かせない**ための検証で、
+  ここを省くと意味がない。
+- **スコープ** は `scope` と、IdPによって使われる `scp` / `permissions`
+  クレームから読む。`--required-scope` は各々強制され、足りないトークンには
+  何が不足かを添えて `403 insufficient_scope` を返す。
+- **ディスカバリ** は `/.well-known/oauth-protected-resource/mcp` (RFC 9728)
+  に自動で生え、トークン無しでも到達できる。`/mcp` への未認証リクエストは
+  そこを指す `WWW-Authenticate` 付きの `401` を返し、これがコネクタの
+  ログイン導線になる。
+- **クライアント登録** はIdP側の仕事で、trikedbは一切関与しない。Dynamic
+  Client Registration対応なら一番楽。MCPクライアントはClient ID Metadata
+  Documentや手動発行のclient IDも受け付ける。
+
+#### IdPに求める条件
+
+OAuth 2.1 / OIDC のプロバイダなら何でも動く。trikedbにベンダー固有の実装は
+入っていない。条件は4つで、それぞれコマンド1本で確認できる:
+
+| 条件 | 確認方法 |
+|---|---|
+| issuerでメタデータを公開している | `curl -s https://idp.example.com/.well-known/openid-configuration \| jq '{issuer, jwks_uri, registration_endpoint}'` |
+| アクセストークンを非対称鍵(RS256/ES256/PS256)のJWTで署名する | トークンがドット区切りの3パートになっていること。不透明な文字列ならIdPがどのAPI向けか判断できていない |
+| `aud` に `<public-url>/mcp` を入れる | 実物をデコードする: `python -c "import jwt,sys;print(jwt.decode(sys.argv[1],options={'verify_signature':False}))" "$TOKEN"` |
+| MCPクライアントがclient IDを取得できる(DCR / CIMD / 手動発行) | 上のメタデータの `registration_endpoint`、またはプロバイダのアプリ一覧 |
+
+プロバイダごとの違いは、これらが管理画面のどこにあるかだけ。**トークンが
+JWTでなく不透明な文字列で返る**なら「デフォルトaudience」に相当する設定を
+探すこと(大半はこれが原因)。**動的登録されたクライアントが拒否される**なら、
+サードパーティアプリ向けのデフォルト権限設定が別にないか探すこと。API側で
+「全アプリを許可」にしても、自分で登録したクライアントは対象外という
+プロバイダが多い。
+
+trikedb側はトークン無しで確認できる:
+
+```bash
+curl -s  https://kg.example.com/.well-known/oauth-protected-resource/mcp | jq
+curl -si https://kg.example.com/mcp -X POST -d '{}' | grep -i www-authenticate
+```
+
+1つ目に自分のissuerが並び、2つ目が1つ目を指していれば正しい。
+
+#### うまくいかないとき
+
+| 症状 | 原因 | 対処 |
+|---|---|---|
+| 正しそうなトークンで `401` | `aud` / `iss` / `exp` の不一致 | 上のコマンドでデコードする。`aud` は `<public-url>/mcp` と一致必須、違うなら `--oauth-audience` |
+| `403 insufficient_scope` | `--required-scope` が足りない | IdPでそのスコープを付与するか、フラグを外す |
+| ログイン成功**後**に `421 Misdirected Request` | `Host` ヘッダが信用されていない | `--public-url` を渡す。認証エラーに見えるが違う |
+| ログイン画面まで到達しない | ディスカバリかクライアント登録の失敗 | 上の `curl` 2本を実行し、`registration_endpoint` を確認する |
+
+リモートMCPクライアントは公開HTTPSエンドポイントを要求する。`localhost` に
+は繋がらないので、開発中はトンネルを挟むこと。なお `--public-url` は同時に
+SDKのDNSリバインディング対策の許可リストにもそのホスト名を入れる(既定では
+localhostしか信用しない)。**プロキシやトンネル越しの構成なら、OAuthの有無に
+関わらず**このフラグが必要。
+
+### デプロイ
+
+サーバーはローカル状態を持たない1プロセスなので、コンテナが動く場所なら
+どこでもよい (Cloud Run / ECS / Fly / VM):
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir 'trikedb[serve,oauth,remote]'
+CMD trikedb serve "$GRAPH" \
+      --host 0.0.0.0 --port "$PORT" \
+      --public-url "$PUBLIC_URL" \
+      --oauth-issuer "$OAUTH_ISSUER" \
+      --required-scope kg:read
+```
+
+```bash
+GRAPH=s3://team-bucket/kg/graph.yaml
+PUBLIC_URL=https://kg.example.com
+OAUTH_ISSUER=https://idp.example.com/
+```
+
+外すと分かりにくい壊れ方をするのが3つある:
+
+- **`--host 0.0.0.0`** — 既定はループバックに束縛するため、コンテナの外から
+  到達できない。
+- **`--public-url` は任意ではなく必須** — リクエストはロードバランサの
+  ホスト名を `Host` ヘッダに載せて届く。指定しないと**認証が成功した後**に
+  `421` で拒否される。デプロイ時にURLが決まるプラットフォーム(Cloud Run)は、
+  URLを知るための1回目と、それを反映する2回目でデプロイが2回要る。
+- **エージェントに書かせるならグラフはリモートストレージに置く**
+  (`s3://` / `gs://` / `https://` — `[remote]` extra)。コンテナの
+  ファイルシステムは揮発するので、`COPY` で焼き込んだグラフは次のデプロイで
+  書き込みが全部消える。リモートなら複数レプリカで1つのグラフを共有できる。
+  書き込みは last-write-lands なので、単一レプリカに寄せるか、gitレビュー
+  経由のバッチに寄せること。
 
 ## エージェントはどう読み分けるべきか
 
@@ -300,6 +418,7 @@ flowchart LR
 | *(コア)* | 上記すべて(↓以外) | PyYAML, rdflib |
 | `[mcp]` | `trikedb mcp`(stdio) | mcp (1.x) |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
+| `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` 等 | fsspec, s3fs |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |

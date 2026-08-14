@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.16.0"
+version = "0.17.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,16 +32,18 @@ owl = ["owlrl>=6.0.2"]
 semantic = ["model2vec>=0.3", "numpy>=1.24"]
 networkx = ["networkx>=3"]
 serve = ["mcp>=1.2,<2", "uvicorn>=0.27", "starlette>=0.37"]
+oauth = ["mcp>=1.2,<2", "pyjwt[crypto]>=2.8"]
 all = [
     "mcp>=1.2,<2", "uvicorn>=0.27", "starlette>=0.37",
     "fsspec>=2024.2", "s3fs>=2024.2",
     "pyshacl>=0.25", "owlrl>=6.0.2",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3",
+    "pyjwt[crypto]>=2.8",
 ]
 dev = [
     "pytest>=7", "mcp>=1.2,<2", "fsspec>=2024.2", "pyshacl>=0.25",
     "owlrl>=6.0.2", "uvicorn>=0.27", "starlette>=0.37", "httpx>=0.27",
-    "model2vec>=0.3", "numpy>=1.24", "networkx>=3",
+    "model2vec>=0.3", "numpy>=1.24", "networkx>=3", "pyjwt[crypto]>=2.8",
 ]
 
 [project.scripts]

@@ -16,7 +16,37 @@ from typing import Any, Optional, Union
 from .db import TrikeDB
 
 
-def build_server(path: Union[str, Path]):
+def _transport_security(public_url):
+    """Trust the public hostname too, on top of the SDK's localhost defaults."""
+    if not public_url:
+        return None
+    from urllib.parse import urlparse
+
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    netloc = urlparse(str(public_url)).netloc
+    host = netloc.split(":")[0]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        # Exact entry covers the default-port case (Host: example.com), the
+        # ":*" pattern covers an explicit port (Host: example.com:8443).
+        allowed_hosts=[netloc, f"{host}:*", "127.0.0.1:*", "localhost:*", "[::1]:*"],
+        allowed_origins=[
+            f"https://{netloc}", f"https://{host}:*",
+            "http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*",
+        ],
+    )
+
+
+def build_server(path: Union[str, Path], auth=None, public_url=None):
+    """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
+    ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
+    transports, leave it None for stdio (which authenticates via the OS).
+
+    ``public_url`` is the address clients actually reach this server at. The
+    SDK's DNS-rebinding guard only trusts localhost by default, so a server
+    behind a proxy or tunnel must declare its public hostname or every
+    request arrives with an untrusted Host header and is refused with 421."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError:  # pragma: no cover
@@ -28,8 +58,12 @@ def build_server(path: Union[str, Path]):
     if p.exists() and not p.stat().st_mode & 0o200:
         raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = TrikeDB(path, autosave=True)
+    settings, verifier = auth if auth else (None, None)
     server = FastMCP(
         "trikedb",
+        auth=settings,
+        token_verifier=verifier,
+        transport_security=_transport_security(public_url),
         instructions=(
             f"Knowledge graph stored in {path}. Read with sparql/match/get_node, "
             "write with add_triple/set_node/import_source. Call ontology() before "

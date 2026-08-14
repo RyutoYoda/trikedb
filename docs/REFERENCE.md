@@ -203,14 +203,14 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb check FILE [--html PATH]` | Parse check + stale-HTML detection via embedded content hash |
 | `trikedb audit FILE [--json] [--strict]` | Health findings; exit 1 on errors (`--strict`: warnings too) |
 | `trikedb mcp FILE` | MCP server over stdio |
-| `trikedb serve FILE [--host] [--port] [--token]` | UI + REST + MCP over Streamable HTTP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope]` | UI + REST + MCP over Streamable HTTP |
 
 All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
 URLs (`[remote]` extra), and workspace files.
 
 ## MCP: the ontology layer for agents
 
-Ten tools, one server definition, two transports:
+Eleven tools, one server definition, two transports:
 
 | Tool | Kind | Notes |
 |---|---|---|
@@ -235,7 +235,128 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
 
 `trikedb serve` exposes three doors from one process: `/` (workbench UI,
 always current), `/sparql` (REST: `POST {"query": ...}` → JSON), `/mcp`.
-v1 auth is a single static Bearer token.
+
+### Auth
+
+Two mechanisms, both covering all three doors:
+
+| Flag | What it is | Use for |
+|---|---|---|
+| `--token SECRET` | one static Bearer token | scripts, CI, a trusted network |
+| `--oauth-issuer URL` | OAuth 2.1 against your IdP (`[oauth]` extra) | the claude.ai / ChatGPT UIs, per-user identity |
+
+```bash
+pip install 'trikedb[serve,oauth]'
+trikedb serve graph.yaml \
+  --public-url   https://kg.example.com \
+  --oauth-issuer https://idp.example.com/ \
+  --required-scope kg:read
+```
+
+trikedb acts as a **resource server only** — it verifies JWTs and never
+issues them, so there is no authorization server, session store, or user
+table to operate. On first request it discovers the issuer's metadata
+(`/.well-known/openid-configuration`, falling back to
+`/.well-known/oauth-authorization-server`), caches the JWKS, and then
+checks each token's signature, `iss`, `exp`, and `aud`.
+
+- **Audience** defaults to `<public-url>/mcp`, the canonical MCP URI
+  clients send as the RFC 8707 `resource` parameter. Your IdP must mint
+  tokens with that `aud`, or point `--oauth-audience` at whatever
+  identifier it does use. This check is what stops a token issued for
+  another service from opening the graph.
+- **Scopes** are read from `scope`, and from the `scp` and `permissions`
+  claims that some IdPs use instead. Each `--required-scope` is enforced;
+  a token that's short one gets `403 insufficient_scope` naming what's
+  missing.
+- **Discovery** is published at
+  `/.well-known/oauth-protected-resource/mcp` (RFC 9728) and stays
+  reachable without a token — an anonymous request to `/mcp` answers
+  `401` with a `WWW-Authenticate` header pointing at it, which is how a
+  connector bootstraps the login.
+- **Client registration** happens at your IdP, and trikedb takes no part
+  in it. Dynamic Client Registration is the smooth path; MCP clients also
+  accept a Client ID Metadata Document or a client ID you create by hand.
+
+#### What your IdP has to provide
+
+Any OAuth 2.1 / OIDC provider works — there is nothing vendor-specific in
+trikedb. Four requirements, and one command to check each:
+
+| Requirement | Check it |
+|---|---|
+| Publishes metadata at the issuer | `curl -s https://idp.example.com/.well-known/openid-configuration \| jq '{issuer, jwks_uri, registration_endpoint}'` |
+| Signs access tokens as JWTs with an asymmetric key (RS256/ES256/PS256) | the token has three dot-separated parts; an opaque string means the IdP didn't know which API the token was for |
+| Puts `<public-url>/mcp` in `aud` | decode a real token: `python -c "import jwt,sys;print(jwt.decode(sys.argv[1],options={'verify_signature':False}))" "$TOKEN"` |
+| Lets the MCP client obtain a client ID (DCR, CIMD, or one you create) | `registration_endpoint` in the metadata above, or your provider's app list |
+
+Providers differ mostly in where these live in their console. If tokens
+come back opaque rather than as JWTs, look for a "default audience" (or
+equivalent) setting — that is the usual cause. If a dynamically
+registered client is refused, look for a separate default-permissions
+setting for third-party applications: allowing "all applications" on the
+API often does *not* cover clients that registered themselves.
+
+And verify the trikedb side with no token at all:
+
+```bash
+curl -s  https://kg.example.com/.well-known/oauth-protected-resource/mcp | jq
+curl -si https://kg.example.com/mcp -X POST -d '{}' | grep -i www-authenticate
+```
+
+The first must list your issuer, the second must point back at the first.
+
+#### When it doesn't work
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `401` with a token that looks fine | `aud`, `iss`, or `exp` mismatch | decode the token (above); `aud` must equal `<public-url>/mcp`, or set `--oauth-audience` |
+| `403 insufficient_scope` | the token lacks a `--required-scope` | grant that scope at the IdP, or drop the flag |
+| `421 Misdirected Request` *after* login succeeds | the `Host` header isn't trusted | pass `--public-url` — this is not an auth failure, despite looking like one |
+| The connector never reaches a login screen | discovery or client registration failed | run the two `curl`s above, then check `registration_endpoint` |
+
+Remote MCP clients require a public HTTPS endpoint — `localhost` will not
+connect, so use a tunnel during development. Note that `--public-url`
+also whitelists that hostname for the SDK's DNS-rebinding guard, which
+otherwise trusts only localhost: **any** deployment behind a proxy or
+tunnel needs the flag, OAuth or not.
+
+### Deploying it
+
+The server is one process with no local state, so any container host runs
+it — Cloud Run, ECS, Fly, a VM:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir 'trikedb[serve,oauth,remote]'
+CMD trikedb serve "$GRAPH" \
+      --host 0.0.0.0 --port "$PORT" \
+      --public-url "$PUBLIC_URL" \
+      --oauth-issuer "$OAUTH_ISSUER" \
+      --required-scope kg:read
+```
+
+```bash
+GRAPH=s3://team-bucket/kg/graph.yaml
+PUBLIC_URL=https://kg.example.com
+OAUTH_ISSUER=https://idp.example.com/
+```
+
+Three things to get right, all of which fail confusingly:
+
+- **`--host 0.0.0.0`.** The default binds to loopback, which is
+  unreachable from outside the container.
+- **`--public-url` is required, not optional.** Requests arrive with the
+  load balancer's hostname in the `Host` header; without the flag they
+  are refused with `421` *after* authentication succeeds. Platforms that
+  assign the URL at deploy time (Cloud Run) need one deploy to learn it
+  and a second to apply it.
+- **Keep the graph in remote storage** (`s3://`, `gs://`, `https://` —
+  the `[remote]` extra) if agents write to it. A container filesystem is
+  ephemeral, so a graph baked in with `COPY` loses every write on the
+  next deploy. Remote storage also lets several replicas share one graph;
+  writes are last-write-lands, so route them through a single replica or
+  keep them in git-reviewed batches.
 
 ## How an agent should read a graph
 
@@ -316,6 +437,7 @@ the agent writes inside your vocabulary.
 | *(core)* | everything above except ↓ | PyYAML, rdflib |
 | `[mcp]` | `trikedb mcp` (stdio) | mcp (1.x) |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
+| `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` etc. | fsspec, s3fs |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |

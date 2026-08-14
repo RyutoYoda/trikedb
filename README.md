@@ -80,6 +80,7 @@ pip install 'trikedb[all]'      # everything below in one shot
 
 pip install 'trikedb[mcp]'      # + MCP server for AI agents (stdio)
 pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
+pip install 'trikedb[oauth]'    # + OAuth 2.1 for the claude.ai / ChatGPT UIs
 pip install 'trikedb[remote]'   # + s3:// gs:// graphs
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
@@ -337,10 +338,45 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
   --header "Authorization: Bearer $SECRET"
 ```
 
-Same ten MCP tools as stdio — the server definition is shared, only
-the transport differs. v1 auth is a single static Bearer token
-(OAuth 2.1 delegation to an IdP is the planned v2). Pair it with an
-`s3://` graph and the server is stateless — run it anywhere.
+Same eleven MCP tools as stdio — the server definition is shared, only
+the transport differs. Pair it with an `s3://` graph and the server is
+stateless — run it anywhere.
+
+### OAuth 2.1, for the claude.ai and ChatGPT UIs
+
+A static token is fine for a script, but the web UIs want a real login.
+Point trikedb at an IdP you already run and it becomes an OAuth 2.1
+resource server — the thing both connector UIs know how to talk to:
+
+```bash
+pip install 'trikedb[serve,oauth]'
+trikedb serve graph.yaml --public-url https://kg.example.com \
+  --oauth-issuer https://idp.example.com/ --required-scope kg:read
+```
+
+Then add `https://kg.example.com/mcp` as a custom connector and log in
+as yourself. trikedb **verifies** tokens; it never issues them. There is
+no authorization server here, no user table, no password — just a JWKS
+lookup against your issuer and a check that the token's signature,
+expiry, and audience are right. Your IdP stays the only place identity
+lives, and the graph stays a file.
+
+Three things to get right:
+
+- **`--public-url` must be the HTTPS URL clients actually reach.** Tokens
+  are bound to `<public-url>/mcp` as their audience (RFC 8707), so a
+  token minted for another service can't open your graph. Override with
+  `--oauth-audience` if your IdP issues a fixed API identifier instead.
+- **The IdP needs to register the connector.** Dynamic Client Registration
+  is the smooth path (Auth0, Okta, Keycloak, WorkOS all support it); if
+  yours doesn't, claude.ai also accepts a Client ID Metadata Document or
+  a client ID/secret you paste in.
+- **It has to be publicly reachable over HTTPS.** Neither UI can connect
+  to `localhost` — use a tunnel while you're developing.
+
+Discovery is served for you at
+`/.well-known/oauth-protected-resource/mcp`, and an unauthenticated
+request gets the RFC 9728 challenge that starts the login flow.
 
 ## The file format
 

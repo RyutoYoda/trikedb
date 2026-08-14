@@ -697,6 +697,208 @@ def test_serve_token_gate(tmp_path):
     assert ok.status_code == 200
 
 
+# ------------------------------------------------------------------ oauth
+
+ISSUER = "https://tenant.example.com/"
+RESOURCE = "https://kg.example.com/mcp"
+
+
+@pytest.fixture
+def idp(monkeypatch):
+    """A fake IdP: a real RSA keypair, minus the network round-trip.
+
+    Discovery and JWKS fetching are the only parts stubbed out — the tokens
+    are genuinely signed and genuinely verified.
+    """
+    pytest.importorskip("jwt")
+    pytest.importorskip("mcp")
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from trikedb import oauth
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    class _Keys:
+        def get_signing_key_from_jwt(self, token):
+            return type("K", (), {"key": key.public_key()})()
+
+    async def _signing_keys(self):
+        self._issuer_claim = ISSUER
+        return _Keys()
+
+    monkeypatch.setattr(oauth.JWKSVerifier, "_signing_keys", _signing_keys)
+
+    def mint(**overrides):
+        claims = {
+            "iss": ISSUER,
+            "aud": RESOURCE,
+            "sub": "auth0|ryuto",
+            "azp": "claude-ai-connector",
+            "scope": "kg:read kg:write",
+            "exp": int(time.time()) + 300,
+        }
+        claims.update(overrides)
+        return jwt.encode(claims, key, algorithm="RS256")
+
+    return mint
+
+
+def test_oauth_verifier_accepts_and_rejects(idp):
+    import asyncio
+    import time
+
+    from trikedb.oauth import JWKSVerifier
+
+    v = JWKSVerifier(ISSUER, RESOURCE)
+    verify = lambda t: asyncio.run(v.verify_token(t))  # noqa: E731
+
+    good = verify(idp())
+    assert good is not None
+    assert set(good.scopes) == {"kg:read", "kg:write"}
+    assert good.subject == "auth0|ryuto" and good.client_id == "claude-ai-connector"
+
+    # A token minted for some other service must not open the graph (RFC 8707).
+    assert verify(idp(aud="https://someone-elses-api.example.com")) is None
+    assert verify(idp(exp=int(time.time()) - 1)) is None
+    assert verify(idp(iss="https://evil.example.com/")) is None
+    assert verify("not-even-a-jwt") is None
+
+
+def test_oauth_verifier_reads_auth0_rbac_permissions(idp):
+    import asyncio
+
+    from trikedb.oauth import JWKSVerifier
+
+    v = JWKSVerifier(ISSUER, RESOURCE)
+    token = idp(scope="openid", permissions=["kg:read"])
+    assert set(asyncio.run(v.verify_token(token)).scopes) == {"openid", "kg:read"}
+
+
+def test_serve_oauth_protects_ui_and_rest(tmp_path, idp):
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    app = build_app(
+        str(g), with_mcp=False,
+        oauth_issuer=ISSUER, public_url="https://kg.example.com",
+    )
+    client = TestClient(app)
+
+    anon = client.get("/")
+    assert anon.status_code == 401
+    # The 401 must tell the client where to discover the auth server (RFC 9728).
+    assert "/.well-known/oauth-protected-resource/mcp" in anon.headers["www-authenticate"]
+
+    auth = {"Authorization": f"Bearer {idp()}"}
+    assert client.get("/", headers=auth).status_code == 200
+    rows = client.post("/sparql", json={"query": "SELECT ?o WHERE { t:a t:P ?o }"}, headers=auth)
+    assert rows.json() == {"rows": [{"o": "b"}]}
+    assert client.post("/sparql", json={"query": "SELECT ?o WHERE {?s ?p ?o}"}).status_code == 401
+
+
+def test_serve_oauth_publishes_resource_metadata(tmp_path, idp):
+    """Discovery has to work *before* the client has a token, or it can never get one."""
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    app = build_app(
+        str(g), oauth_issuer=ISSUER, public_url="https://kg.example.com",
+        required_scopes=["kg:read"],
+    )
+    with TestClient(app) as client:
+        meta = client.get("/.well-known/oauth-protected-resource/mcp")
+        assert meta.status_code == 200
+        body = meta.json()
+        assert body["resource"] == RESOURCE
+        assert body["authorization_servers"] == [ISSUER]
+        assert body["scopes_supported"] == ["kg:read"]
+        # ...and /mcp itself still challenges anonymous callers.
+        assert client.post("/mcp", json={}).status_code == 401
+
+
+def test_serve_oauth_enforces_scopes_on_every_door(tmp_path, idp):
+    """One --required-scope has to mean the same thing on /, /sparql and /mcp."""
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    client = TestClient(build_app(
+        str(g), with_mcp=False, oauth_issuer=ISSUER,
+        public_url="https://kg.example.com", required_scopes=["kg:admin"],
+    ))
+
+    thin = {"Authorization": f"Bearer {idp(scope='kg:read')}"}
+    short = client.get("/", headers=thin)
+    assert short.status_code == 403
+    assert 'error="insufficient_scope"' in short.headers["www-authenticate"]
+    assert 'scope="kg:admin"' in short.headers["www-authenticate"]
+
+    full = {"Authorization": f"Bearer {idp(scope='kg:read kg:admin')}"}
+    assert client.get("/", headers=full).status_code == 200
+    assert client.post("/sparql", json={"query": "ASK { t:a t:P t:b }"}, headers=full).json() == {"ask": True}
+
+
+def test_serve_trusts_its_own_public_hostname(tmp_path, idp):
+    """Behind a proxy or tunnel the Host header is the public name, not localhost.
+
+    The SDK's DNS-rebinding guard trusts only localhost by default, so without
+    declaring the public host every authenticated request dies with 421 — after
+    the token has already been verified, which makes it look like an auth bug.
+    """
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.mcp_server import _transport_security
+    from trikedb.serve import build_app
+
+    s = _transport_security("https://kg.example.com")
+    assert "kg.example.com" in s.allowed_hosts      # Host: kg.example.com (443)
+    assert "kg.example.com:*" in s.allowed_hosts    # Host: kg.example.com:8443
+    assert "localhost:*" in s.allowed_hosts         # local dev still works
+    assert _transport_security(None) is None        # stdio keeps SDK defaults
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    with TestClient(build_app(
+        str(g), oauth_issuer=ISSUER, public_url="https://kg.example.com",
+    )) as client:
+        r = client.post(
+            "/mcp",
+            headers={
+                "Authorization": f"Bearer {idp()}",
+                "Host": "kg.example.com",
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+            },
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                  "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                             "clientInfo": {"name": "t", "version": "0"}}},
+        )
+        assert r.status_code == 200 and "trikedb" in r.text
+
+
+def test_serve_oauth_requires_public_url(tmp_path):
+    pytest.importorskip("starlette")
+    from trikedb.serve import build_app
+
+    with pytest.raises(ValueError, match="public-url"):
+        build_app(str(tmp_path / "g.yaml"), oauth_issuer=ISSUER, with_mcp=False)
+
+
 # ------------------------------------------------------------ check/audit
 
 def test_content_hash_and_check(tmp_path, capsys):

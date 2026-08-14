@@ -146,6 +146,25 @@ def main(argv=None) -> int:
         "--token", default=None,
         help="require 'Authorization: Bearer <token>' on every request",
     )
+    p_serve.add_argument(
+        "--oauth-issuer", default=None,
+        help="OAuth 2.1 via your IdP (e.g. https://idp.example.com/) — what "
+             "claude.ai and the ChatGPT UI speak. Requires --public-url",
+    )
+    p_serve.add_argument(
+        "--public-url", default=None,
+        help="the public HTTPS base URL clients reach this server at. Required "
+             "behind a proxy or tunnel (the Host header is checked), and tokens "
+             "are bound to <public-url>/mcp as their audience",
+    )
+    p_serve.add_argument(
+        "--oauth-audience", default=None,
+        help="override the expected 'aud' claim (default: <public-url>/mcp)",
+    )
+    p_serve.add_argument(
+        "--required-scope", action="append", default=None, metavar="SCOPE",
+        help="scope a token must carry; repeat for several",
+    )
 
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
@@ -376,7 +395,16 @@ def _cmd_mcp(args) -> int:
 def _cmd_serve(args) -> int:
     from .serve import serve
 
-    serve(args.file, host=args.host, port=args.port, token=args.token)
+    serve(
+        args.file,
+        host=args.host,
+        port=args.port,
+        token=args.token,
+        oauth_issuer=args.oauth_issuer,
+        public_url=args.public_url,
+        oauth_audience=args.oauth_audience,
+        required_scopes=args.required_scope,
+    )
     return 0
 
 
