@@ -891,6 +891,37 @@ def test_serve_trusts_its_own_public_hostname(tmp_path, idp):
         assert r.status_code == 200 and "trikedb" in r.text
 
 
+def test_serve_stateless_serves_requests_with_no_session(tmp_path):
+    """Some clients never echo Mcp-Session-Id back, and replicas don't share sessions.
+
+    A session lives in one process's memory, so the stateful transport answers
+    `400 Bad Request: Missing session ID` to any follow-up that arrives without
+    it — which is also what a second replica behind a load balancer would do.
+    `--stateless` drops the session so each request stands alone.
+    """
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=True).add("a", "P", "b")
+    headers = {"Accept": "application/json, text/event-stream",
+               "Content-Type": "application/json"}
+    call = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+
+    public = "http://testserver"  # what TestClient puts in the Host header
+
+    with TestClient(build_app(str(g), public_url=public)) as client:  # stateful
+        r = client.post("/mcp", headers=headers, json=call)
+        assert r.status_code == 400 and "session ID" in r.text
+
+    with TestClient(build_app(str(g), public_url=public, stateless=True)) as client:
+        r = client.post("/mcp", headers=headers, json=call)
+        assert r.status_code == 200
+        assert "sparql" in r.text and "add_triple" in r.text
+
+
 def test_serve_oauth_requires_public_url(tmp_path):
     pytest.importorskip("starlette")
     from trikedb.serve import build_app

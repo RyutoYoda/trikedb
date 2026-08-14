@@ -165,6 +165,12 @@ def main(argv=None) -> int:
         "--required-scope", action="append", default=None, metavar="SCOPE",
         help="scope a token must carry; repeat for several",
     )
+    p_serve.add_argument(
+        "--stateless", action="store_true",
+        help="serve each MCP request independently, with no session to carry. "
+             "Needed for clients that don't echo Mcp-Session-Id back, and for "
+             "running more than one replica behind a load balancer",
+    )
 
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
@@ -404,6 +410,7 @@ def _cmd_serve(args) -> int:
         public_url=args.public_url,
         oauth_audience=args.oauth_audience,
         required_scopes=args.required_scope,
+        stateless=args.stateless,
     )
     return 0
 

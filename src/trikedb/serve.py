@@ -32,6 +32,7 @@ def build_app(
     public_url=None,
     oauth_audience=None,
     required_scopes=None,
+    stateless: bool = False,
 ):
     from starlette.applications import Starlette
     from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -119,7 +120,9 @@ def build_app(
     if with_mcp:
         from .mcp_server import build_server
 
-        server = build_server(path, auth=auth, public_url=public_url)
+        server = build_server(
+            path, auth=auth, public_url=public_url, stateless=stateless
+        )
         routes.append(Mount("/", app=server.streamable_http_app()))
 
         def lifespan(app):  # noqa: ANN001 - starlette lifespan signature
@@ -158,6 +161,7 @@ def serve(
     public_url=None,
     oauth_audience=None,
     required_scopes=None,
+    stateless: bool = False,
 ) -> None:
     """Blocking entry point used by ``trikedb serve``."""
     try:
@@ -174,5 +178,6 @@ def serve(
         public_url=public_url,
         oauth_audience=oauth_audience,
         required_scopes=required_scopes,
+        stateless=stateless,
     )
     uvicorn.run(app, host=host, port=port)

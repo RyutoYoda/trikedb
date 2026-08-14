@@ -196,7 +196,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb check FILE [--html PATH]` | パース確認+HTML鮮度検出(埋め込みハッシュ照合) |
 | `trikedb audit FILE [--json] [--strict]` | 健全性所見。errorでexit 1(`--strict`で警告も) |
 | `trikedb mcp FILE` | stdioのMCPサーバー |
-| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope]` | UI + REST + Streamable HTTPのMCP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + Streamable HTTPのMCP |
 
 `FILE` 引数はどれもローカルパス・`s3://`/`gs://`/`https://` URL
 (`[remote]` extra)・workspaceファイルを受け付ける。
@@ -347,6 +347,27 @@ OAUTH_ISSUER=https://idp.example.com/
   書き込みが全部消える。リモートなら複数レプリカで1つのグラフを共有できる。
   書き込みは last-write-lands なので、単一レプリカに寄せるか、gitレビュー
   経由のバッチに寄せること。
+
+#### `--stateless`
+
+既定のMCPトランスポートは初回リクエストで `Mcp-Session-Id` を発行し、以降の
+全リクエストでそれを返してくることを期待する。このセッションは1プロセスの
+メモリ上にしか無いので、2つの構成が壊れる:
+
+- **レプリカが複数あるとき。** レプリカAで張ったセッションはレプリカBには
+  存在しないため、ロードバランサ配下だとランダムに
+  `400 Bad Request: Missing session ID` が返る。
+- **セッションを持ち回らないクライアント。** ヘッダをエコーしないMCP
+  クライアントは、接続直後に同じ400を受け取る。サーバー側の障害に見えるが
+  違う。
+
+`--stateless` はセッション管理をやめ、各リクエストを独立したトランスポートで
+処理する。どのレプリカでもどのリクエストにも答えられ、ヘッダを持ち回る必要も
+なくなる。trikedbはどのみちリクエストごとにグラフを読み直すので、失うのは
+SSEの再開機能だけ。認証には影響しない（トークンは毎回検証される）。
+
+レプリカを複数立てるとき、またはこの400から抜けられないクライアントに
+当たったときは、このフラグを使う。
 
 ## エージェントはどう読み分けるべきか
 

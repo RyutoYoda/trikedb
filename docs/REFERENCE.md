@@ -203,7 +203,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb check FILE [--html PATH]` | Parse check + stale-HTML detection via embedded content hash |
 | `trikedb audit FILE [--json] [--strict]` | Health findings; exit 1 on errors (`--strict`: warnings too) |
 | `trikedb mcp FILE` | MCP server over stdio |
-| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope]` | UI + REST + MCP over Streamable HTTP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + MCP over Streamable HTTP |
 
 All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
 URLs (`[remote]` extra), and workspace files.
@@ -357,6 +357,28 @@ Three things to get right, all of which fail confusingly:
   next deploy. Remote storage also lets several replicas share one graph;
   writes are last-write-lands, so route them through a single replica or
   keep them in git-reviewed batches.
+
+#### `--stateless`
+
+By default the MCP transport issues an `Mcp-Session-Id` on the first
+request and expects it back on every following one. That session lives in
+one process's memory, which breaks two setups:
+
+- **More than one replica.** A session opened on replica A is unknown to
+  replica B, so a load-balanced deployment answers
+  `400 Bad Request: Missing session ID` at random.
+- **Clients that don't carry the session forward.** Not every MCP client
+  echoes the header back; one that doesn't gets the same 400 immediately
+  after connecting, which reads as a server fault when it isn't.
+
+`--stateless` drops session tracking and serves each request on its own
+transport, so any replica can answer anything and no header has to be
+carried. trikedb re-reads the graph per request regardless, so it gives
+up nothing except SSE resumability. Authentication is unaffected —
+tokens are still verified on every request.
+
+Run more than one replica, or find a client stuck on that 400, and this
+is the flag.
 
 ## How an agent should read a graph
 

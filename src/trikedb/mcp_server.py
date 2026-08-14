@@ -38,7 +38,9 @@ def _transport_security(public_url):
     )
 
 
-def build_server(path: Union[str, Path], auth=None, public_url=None):
+def build_server(
+    path: Union[str, Path], auth=None, public_url=None, stateless: bool = False
+):
     """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
     ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
     transports, leave it None for stdio (which authenticates via the OS).
@@ -46,7 +48,15 @@ def build_server(path: Union[str, Path], auth=None, public_url=None):
     ``public_url`` is the address clients actually reach this server at. The
     SDK's DNS-rebinding guard only trusts localhost by default, so a server
     behind a proxy or tunnel must declare its public hostname or every
-    request arrives with an untrusted Host header and is refused with 421."""
+    request arrives with an untrusted Host header and is refused with 421.
+
+    ``stateless`` drops session tracking: each request is served on its own
+    transport, so clients need not echo the ``Mcp-Session-Id`` header back and
+    any replica can answer any request. Required for clients that don't carry
+    the session forward, and for running more than one replica behind a load
+    balancer — a session lives in one process's memory, so a second replica
+    would reject it. The graph is re-read per request either way, so nothing
+    trikedb does needs the session; only SSE resumability is given up."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError:  # pragma: no cover
@@ -64,6 +74,7 @@ def build_server(path: Union[str, Path], auth=None, public_url=None):
         auth=settings,
         token_verifier=verifier,
         transport_security=_transport_security(public_url),
+        stateless_http=stateless,
         instructions=(
             f"Knowledge graph stored in {path}. Read with sparql/match/get_node, "
             "write with add_triple/set_node/import_source. Call ontology() before "
