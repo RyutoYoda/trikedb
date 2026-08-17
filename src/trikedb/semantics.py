@@ -64,10 +64,10 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
     """Materialize OWL-RL inferences; see TrikeDB.infer for the contract."""
     try:
         from owlrl import DeductiveClosure, OWLRL_Semantics
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "OWL inference requires owlrl — pip install 'trikedb[owl]'"
-        ) from None
+            "OWL inference requires owlrl - pip install 'trikedb[owl]'"
+        ) from exc
     from rdflib import Literal, URIRef
 
     from .db import _shorten
@@ -114,10 +114,10 @@ def validate(db, shapes, base: str = "urn:trikedb:"):
     """SHACL-validate the graph; see TrikeDB.validate for the contract."""
     try:
         from pyshacl import validate as shacl_validate
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "SHACL validation requires pyshacl — pip install 'trikedb[shacl]'"
-        ) from None
+            "SHACL validation requires pyshacl - pip install 'trikedb[shacl]'"
+        ) from exc
     from rdflib import Graph
 
     sg = Graph()

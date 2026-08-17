@@ -166,10 +166,10 @@ def serve(
     """Blocking entry point used by ``trikedb serve``."""
     try:
         import uvicorn
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "serving requires uvicorn — pip install 'trikedb[serve]'"
-        ) from None
+            "serving requires uvicorn - pip install 'trikedb[serve]'"
+        ) from exc
 
     app = build_app(
         path,

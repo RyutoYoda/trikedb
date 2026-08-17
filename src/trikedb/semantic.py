@@ -20,10 +20,10 @@ _MODELS: dict = {}
 def _load_model(name: str):
     try:
         from model2vec import StaticModel
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "semantic search requires model2vec — pip install 'trikedb[semantic]'"
-        ) from None
+            "semantic search requires model2vec - pip install 'trikedb[semantic]'"
+        ) from exc
     if name not in _MODELS:
         _MODELS[name] = StaticModel.from_pretrained(name)
     return _MODELS[name]

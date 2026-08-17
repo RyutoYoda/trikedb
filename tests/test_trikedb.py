@@ -922,6 +922,85 @@ def test_serve_stateless_serves_requests_with_no_session(tmp_path):
         assert "sparql" in r.text and "add_triple" in r.text
 
 
+def test_conditional_write_refuses_to_clobber(tmp_path, monkeypatch):
+    """A save must not overwrite bytes it never read.
+
+    Only backends that can express the condition get the guarantee, so this
+    drives the storage layer with a stub filesystem that behaves like S3:
+    ``pipe_file(..., IfMatch=)`` fails when the stored token has moved on.
+    """
+    from trikedb import storage
+
+    stored = {"etag": "v1"}
+
+    class FakeS3:
+        protocol = ("s3", "s3a")
+
+        def info(self, key):
+            if stored.get("etag") is None:
+                raise FileNotFoundError(key)
+            return {"ETag": f'"{stored["etag"]}"'}
+
+        def pipe_file(self, key, data, mode=None, IfMatch=None):
+            if mode == "create" and stored.get("etag") is not None:
+                raise FileExistsError(key)
+            if IfMatch is not None and IfMatch != stored["etag"]:
+                raise RuntimeError("An error occurred (PreconditionFailed)")
+            stored["etag"] = "v2"
+
+    monkeypatch.setattr(storage, "_conditional_fs", lambda path: (FakeS3(), "k"))
+
+    assert storage.version("s3://b/k") == "v1"
+    with pytest.raises(storage.ConcurrentWriteError):
+        storage.write_text("s3://b/k", "x", expect="v0")   # someone else saved
+    storage.write_text("s3://b/k", "x", expect="v1")       # ours is still current
+    assert stored["etag"] == "v2"
+
+    stored["etag"] = None                                   # nothing stored yet
+    storage.write_text("s3://b/k", "x", expect=None)        # create wins the race
+    stored["etag"] = "someone-else"
+    with pytest.raises(storage.ConcurrentWriteError):
+        storage.write_text("s3://b/k", "x", expect=None)    # ...or loses it
+
+
+def test_reload_picks_up_the_other_writer(tmp_path):
+    """reload() is the documented way out of a conflict, so it has to work."""
+    g = tmp_path / "g.yaml"
+    a = TrikeDB(g, autosave=True)
+    a.add("a", "P", "b")
+
+    TrikeDB(g, autosave=True).add("c", "P", "d")   # another writer
+    assert len(a) == 1                              # not visible yet
+    a.reload()
+    assert {t.s for t in a.triples()} == {"a", "c"}
+
+
+def test_missing_extra_error_keeps_the_real_cause(monkeypatch, tmp_path):
+    """A broken install must not be reported as a missing one.
+
+    "pip install 'trikedb[mcp]'" is the right hint when the package is absent
+    and actively misleading when it is present but failing to import for some
+    other reason — the package metadata is gone, a shared library won't load.
+    Keeping the original error as __cause__ costs nothing and is often the
+    only thing that names the real problem.
+    """
+    import sys
+
+    from trikedb.mcp_server import build_server
+
+    # None in sys.modules makes the import fail the way a broken install does.
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    with pytest.raises(ImportError) as caught:
+        build_server(tmp_path / "g.yaml")
+
+    assert "trikedb[mcp]" in str(caught.value)   # the hint survives
+    assert caught.value.__cause__ is not None    # ...and so does the reason
+    # Non-latin-1 characters in the message are dropped by some runtimes'
+    # error reporting (AWS Lambda's init handler among them), which loses the
+    # whole traceback. Keep exception text plain.
+    assert str(caught.value).isascii()
+
+
 def test_serve_oauth_requires_public_url(tmp_path):
     pytest.importorskip("starlette")
     from trikedb.serve import build_app

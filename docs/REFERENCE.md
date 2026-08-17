@@ -373,12 +373,38 @@ one process's memory, which breaks two setups:
 
 `--stateless` drops session tracking and serves each request on its own
 transport, so any replica can answer anything and no header has to be
-carried. trikedb re-reads the graph per request regardless, so it gives
-up nothing except SSE resumability. Authentication is unaffected —
-tokens are still verified on every request.
+carried. Nothing the MCP tools do needs the session, so SSE resumability
+is the only thing given up. Authentication is unaffected — tokens are
+still verified on every request.
 
 Run more than one replica, or find a client stuck on that 400, and this
 is the flag.
+
+#### Concurrent writes
+
+A save rewrites the whole file, so two writers that both read version N
+each produce a version N+1 and one of them would vanish. On S3 that does
+not happen: the save is conditional on the object still being the one the
+graph was read from, and a write that would clobber someone else is
+refused with `ConcurrentWriteError` instead. The MCP write tools recover
+on their own — they re-read the graph, re-apply the single change they
+were asked to make, and save again, backing off between tries.
+
+Ten concurrent `add_triple` calls against one S3 file, through a Lambda
+that scales out to a container per request, land all ten. Before the
+conditional write they landed four, and the other six disappeared with no
+error anywhere.
+
+Two limits worth knowing:
+
+- **Only S3 enforces it.** Other backends have no conditional write, so
+  they stay last-write-wins. Local files are unguarded too — the
+  assumption there is one process.
+- **Long-running replicas don't see each other.** The MCP tools hold one
+  graph instance for the life of the process and only re-read it when a
+  write conflicts. A replica that never writes never notices another
+  replica's writes; restart it, or serve read-only replicas from a graph
+  that changes through review rather than through agents.
 
 ## How an agent should read a graph
 

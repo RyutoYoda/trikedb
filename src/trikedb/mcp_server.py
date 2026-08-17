@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from .db import TrikeDB
+from .storage import ConcurrentWriteError
 
 
 def _transport_security(public_url):
@@ -55,20 +56,51 @@ def build_server(
     any replica can answer any request. Required for clients that don't carry
     the session forward, and for running more than one replica behind a load
     balancer — a session lives in one process's memory, so a second replica
-    would reject it. The graph is re-read per request either way, so nothing
-    trikedb does needs the session; only SSE resumability is given up."""
+    would reject it. Nothing these tools do needs the session, so SSE
+    resumability is the only thing given up.
+
+    Note that the graph is opened once, here, and the tools share that one
+    instance for the life of the server — they do not re-read the file per
+    request. Two processes serving the same file each hold their own copy and
+    will not see each other's writes."""
     try:
         from mcp.server.fastmcp import FastMCP
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "MCP support requires the mcp package — pip install 'trikedb[mcp]'"
-        ) from None
+            "MCP support requires the mcp package - pip install 'trikedb[mcp]'"
+        ) from exc
 
     p = Path(path)
     if p.exists() and not p.stat().st_mode & 0o200:
         raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = TrikeDB(path, autosave=True)
     settings, verifier = auth if auth else (None, None)
+
+    def write(mutate, attempts: int = 8):
+        """Apply one mutation, losing the race gracefully.
+
+        With the graph on shared storage, another writer can land between our
+        read and our save; the save then refuses rather than overwriting them.
+        Every write tool is a single self-contained mutation, so recovery is
+        just: take their version, do ours again on top. Without this the agent
+        sees a storage error it has no way to act on.
+
+        Retries back off with jitter. Contended writers all wake at the same
+        moment otherwise, and collide again for the same reason they collided
+        the first time.
+        """
+        import random
+        import time
+
+        for attempt in range(attempts):
+            try:
+                return mutate()
+            except ConcurrentWriteError:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(random.uniform(0, 0.05 * 2**attempt))
+                db.reload()  # their save won; re-apply ours on top of it
+
     server = FastMCP(
         "trikedb",
         auth=settings,
@@ -91,7 +123,7 @@ def build_server(
         SELECT returns rows, ASK returns a bool. Update forms (INSERT DATA,
         DELETE WHERE, ...) mutate the graph, persist to the YAML file, and
         return the net change in triple count."""
-        return db.sparql(query)
+        return write(lambda: db.sparql(query))
 
     @server.tool()
     def search(query: str, k: int = 10) -> list:
@@ -130,7 +162,7 @@ def build_server(
 
         Same (s, p, o) merges attrs. Use attrs for provenance and detail:
         source URL, date, schedule, deprecated, note..."""
-        return db.add(s, p, o, **(attrs or {})).to_dict()
+        return write(lambda: db.add(s, p, o, **(attrs or {})).to_dict())
 
     @server.tool()
     def remove_triples(
@@ -141,7 +173,7 @@ def build_server(
         Returns how many were removed."""
         if s is None and p is None and o is None:
             raise ValueError("refusing to remove everything: give at least one of s/p/o")
-        return db.remove(s=s, p=p, o=o)
+        return write(lambda: db.remove(s=s, p=p, o=o))
 
     @server.tool()
     def set_node(name: str, props: dict) -> dict:
@@ -149,7 +181,7 @@ def build_server(
 
         Conventional keys: type (color grouping), label, url, description.
         Properties are queryable in SPARQL, e.g. ?x t:type "table"."""
-        return db.set_node(name, **props)
+        return write(lambda: db.set_node(name, **props))
 
     @server.tool()
     def get_node(name: str) -> dict:
@@ -183,7 +215,7 @@ def build_server(
         """Merge triples from a CSV/TSV file, Markdown document (s/p/o tables), or another YAML graph.
 
         Deterministic parsing, ontology enforced. Returns how many triples were added."""
-        return db.import_file(file_path)
+        return write(lambda: db.import_file(file_path))
 
     return server
 

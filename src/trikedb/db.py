@@ -20,6 +20,7 @@ class OntologyError(ValueError):
 from .storage import exists as _exists
 from .storage import is_remote as _is_remote
 from .storage import read_text as _read_text
+from .storage import version as _version_of
 from .storage import write_text as _write_text
 
 
@@ -90,6 +91,8 @@ class TrikeDB:
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
         self._triples: list = []
+        #: storage token the in-memory graph was built from; see storage.version
+        self._version = None
         if ontology is not None:
             if isinstance(ontology, dict):
                 self.ontology = {str(k): str(v or "") for k, v in ontology.items()}
@@ -100,7 +103,26 @@ class TrikeDB:
 
     # ------------------------------------------------------------------ io
 
+    def reload(self) -> "TrikeDB":
+        """Throw away the in-memory graph and read it again from storage.
+
+        The way out of a ``ConcurrentWriteError``: someone else's version is
+        now the real one, so pick it up and re-apply whatever you were doing
+        on top of it.
+        """
+        self.nodes_meta = {}
+        self._triples = []
+        self.workspace = None
+        self.read_only = False
+        self._version = None
+        if self.path is not None and _exists(self.path):
+            self._load()
+        return self
+
     def _load(self) -> None:
+        # Version first, content second — the other order can hand us a token
+        # that belongs to bytes we never saw. See storage.version.
+        self._version = _version_of(self.path)
         data = yaml.safe_load(_read_text(self.path)) or {}
         graphs = data.get("graphs")
         if isinstance(graphs, dict) and not data.get("triples"):
@@ -149,9 +171,11 @@ class TrikeDB:
     def save(self, path: Union[str, Path, None] = None):
         """Write the graph back to YAML. Plain triples stay on one line.
 
-        Works for local paths and remote URLs (s3://, ...) alike. Remote
-        writes are last-write-wins — keep team graphs behind review, or
-        serve them through a single MCP process.
+        Works for local paths and remote URLs (s3://, ...) alike. On S3 the
+        write is conditional on the file still being the one this graph was
+        read from: if another writer got there first, nothing is written and
+        ``ConcurrentWriteError`` is raised — call ``reload()`` and re-apply.
+        Backends without conditional writes stay last-write-wins.
         """
         self._guard_writable()
         if path is None:
@@ -173,7 +197,13 @@ class TrikeDB:
             default_flow_style=None,
             width=120,
         )
-        _write_text(target, text)
+        if target == self.path:
+            # Same file we read: refuse to overwrite someone else's save.
+            _write_text(target, text, expect=self._version)
+            self._version = _version_of(target)
+        else:  # save-as: nothing to compare against
+            _write_text(target, text)
+            self._version = _version_of(target)
         self.path = target
         return target
 
@@ -635,10 +665,10 @@ class TrikeDB:
         """
         try:
             import networkx as nx
-        except ImportError:  # pragma: no cover
+        except ImportError as exc:  # pragma: no cover
             raise ImportError(
-                "networkx projection requires networkx — pip install 'trikedb[networkx]'"
-            ) from None
+                "networkx projection requires networkx - pip install 'trikedb[networkx]'"
+            ) from exc
 
         g = nx.MultiDiGraph() if multigraph else nx.DiGraph()
         for name in self.nodes():           # nodes first, so property-only nodes survive

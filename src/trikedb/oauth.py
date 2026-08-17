@@ -61,10 +61,10 @@ class JWKSVerifier:
     ) -> None:
         try:
             import jwt  # noqa: F401
-        except ImportError:  # pragma: no cover
+        except ImportError as exc:  # pragma: no cover
             raise ImportError(
-                "OAuth support requires PyJWT — pip install 'trikedb[oauth]'"
-            ) from None
+                "OAuth support requires PyJWT - pip install 'trikedb[oauth]'"
+            ) from exc
         self.issuer = issuer
         self.audience = audience
         self.algorithms = list(algorithms or _DEFAULT_ALGORITHMS)
@@ -144,10 +144,10 @@ def build_auth(
     """
     try:
         from mcp.server.auth.settings import AuthSettings
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "OAuth support requires the mcp package — pip install 'trikedb[serve]'"
-        ) from None
+            "OAuth support requires the mcp package - pip install 'trikedb[serve]'"
+        ) from exc
 
     settings = AuthSettings(
         issuer_url=issuer,
