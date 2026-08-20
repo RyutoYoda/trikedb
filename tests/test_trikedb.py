@@ -1744,3 +1744,131 @@ def test_a_new_dialect_is_one_literal():
     bare = dataclasses.replace(storage_sql.SNOWFLAKE, name="bare", views={})
     store = storage_sql.SqlGraphStore(bare, "T", "g")
     assert store._dialect.views == {}
+
+
+def test_a_vendored_subset_without_the_sql_backend_still_works(tmp_path, monkeypatch):
+    """trikedb gets copied file-by-file into hosts that cannot pip install.
+
+    Streamlit in Snowflake is the case in hand: db.py + storage.py +
+    __init__.py, no warehouse driver available. Importing storage_sql from
+    inside storage.exists() turned "open a local YAML file" into an
+    ImportError there — every operation, not just saving. Nothing but a
+    warehouse URL may reach for that module.
+    """
+    import sys
+
+    from trikedb import storage
+
+    # sys.modules alone is not enough: once any earlier test has imported the
+    # submodule, the package keeps it as an attribute and `from . import
+    # storage_sql` is satisfied from there. Remove both.
+    import trikedb
+
+    monkeypatch.setitem(sys.modules, "trikedb.storage_sql", None)
+    monkeypatch.delattr(trikedb, "storage_sql", raising=False)
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g)                              # used to raise here
+    db.add("a", "P", "b")
+    db.set_node("a", type="job")
+    assert len(TrikeDB(g)) == 1
+    assert TrikeDB(g).sparql("ASK { ?s t:P ?o }") is True
+    assert storage.serialization(g) == "yaml"    # no import needed to answer
+
+    # ...but asking for a warehouse URL is a real error, not a silent fallback
+    with pytest.raises(ImportError):
+        TrikeDB("snowflake://DB.PUBLIC.T/g")
+
+
+def test_sql_schemes_match_the_dialects():
+    """storage.py names the SQL schemes without importing storage_sql.
+
+    That duplication is deliberate (see the comment there) and therefore has
+    to be kept honest, or a new dialect would be registered and never
+    dispatched to.
+    """
+    from trikedb import storage, storage_sql
+
+    assert set(storage._SQL_SCHEMES) == set(storage_sql.DIALECTS)
+
+
+def test_dialect_templates_only_use_percent_s():
+    """The Snowpark path rewrites %s to ?, so a stray percent would corrupt SQL."""
+    import re
+
+    from trikedb import storage_sql
+
+    for dialect in storage_sql.DIALECTS.values():
+        sql = [dialect.ddl, dialect.select, dialect.update,
+               dialect.insert_if_absent, dialect.upsert, *dialect.views.values()]
+        for stmt in sql:
+            leftover = re.sub(r"%s", "", stmt)
+            assert "%" not in leftover, f"{dialect.name}: stray percent in {stmt[:60]}"
+
+
+class FakeSnowparkSession:
+    """Shaped like snowflake.snowpark.Session: sql().collect(), no cursor().
+
+    Snowflake answers DML with a row whose first cell is the affected count,
+    which is what makes the compare-and-swap work without a rowcount.
+    """
+
+    def __init__(self, warehouse):
+        self._wh = warehouse
+        self.statements = []
+
+    def sql(self, statement, params=None):
+        self.statements.append(statement)
+        assert "%s" not in statement, "Snowpark binds with ?, not %s"
+        cursor = FakeCursor(self._wh)
+        cursor.execute(statement.replace("?", "%s"), tuple(params or ()))
+        if cursor.description is not None:      # a query: rows, or none of them
+            return _Collected(list(cursor._rows))
+        return _Collected([(cursor.rowcount,)])  # DML: Snowflake answers with a count
+
+
+class _Collected:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def collect(self):
+        return self._rows
+
+
+def test_an_injected_connection_is_used_instead_of_building_one(warehouse):
+    """Some hosts have a session and no way to make one.
+
+    Inside Streamlit in Snowflake there are no credentials to find and no
+    outbound connection to open — only the session the host already holds.
+    """
+    session = FakeSnowparkSession(warehouse)
+
+    db = TrikeDB(URL, autosave=False, connection=session)
+    db.add("salesflow", "PROVIDES", "crm-sync-job")
+    db.save()
+
+    assert warehouse.opens == 0, "it built a connection despite being given one"
+    assert session.statements, "the injected session was never used"
+    assert warehouse.rows["sales/crm"]
+
+    # reads come back through the same session, and read_only composes
+    ro = TrikeDB(URL, connection=session, read_only=True)
+    assert [t.s for t in ro] == ["salesflow"]
+    with pytest.raises(ValueError, match="read_only=True"):
+        ro.add("x", "P", "y")
+
+
+def test_injected_db_api_connection_also_works(warehouse):
+    """The DB-API shape keeps working — dispatch is on capability, not type."""
+    db = TrikeDB(URL, autosave=False, connection=warehouse)
+    db.add("a", "P", "b")
+    db.save()
+    assert warehouse.opens == 0
+    assert [t.s for t in TrikeDB(URL, connection=warehouse)] == ["a"]
+
+
+def test_an_unusable_connection_says_what_it_needed(warehouse):
+    from trikedb import storage_sql
+
+    with pytest.raises(TypeError, match="neither a DB-API connection"):
+        storage_sql.open_url(URL, connection=object()).exists()

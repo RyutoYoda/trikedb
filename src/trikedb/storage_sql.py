@@ -307,8 +307,8 @@ def ddl_for(url: str, views: bool = True) -> str:
     return ";\n\n".join(statements)
 
 
-def open_url(url: str) -> "SqlGraphStore":
-    return SqlGraphStore(*_split(url), url=url)
+def open_url(url: str, connection=None) -> "SqlGraphStore":
+    return SqlGraphStore(*_split(url), url=url, connection=connection)
 
 
 # ------------------------------------------------------------------- connections
@@ -369,17 +369,59 @@ def _matches(exc: BaseException, markers) -> bool:
     return False
 
 
+# --------------------------------------------------------------------- execute
+
+def _execute(conn, sql: str, params: tuple, want_rows: bool):
+    """Run one statement on a DB-API connection or a Snowpark session.
+
+    Two shapes reach us. A DB-API connection has ``cursor()`` and reports
+    affected rows as ``cursor.rowcount``. A Snowpark ``Session`` has neither:
+    ``session.sql(...).collect()`` returns rows either way, and for DML
+    Snowflake's own answer *is* a row — ``number of rows updated`` — so the
+    count is the first cell of the first row. Dispatch on the capability
+    rather than on an imported type, so neither driver has to be installed
+    for the other path to work.
+    """
+    if hasattr(conn, "cursor"):
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql, params or None)
+            return cursor.fetchall() if want_rows else cursor.rowcount
+        finally:
+            cursor.close()
+
+    if hasattr(conn, "sql"):
+        # Snowpark binds with ? where the connector binds with %s. Every
+        # template here is ours and contains no other percent sign;
+        # test_dialect_templates_only_use_percent_s holds that true.
+        rows = conn.sql(sql.replace("%s", "?"), params=list(params or ())).collect()
+        if want_rows:
+            return [tuple(r) for r in rows]
+        return int(rows[0][0]) if rows and len(rows[0]) else 0
+
+    raise TypeError(
+        f"{type(conn).__name__} is neither a DB-API connection (no cursor()) "
+        "nor a Snowpark session (no sql()); pass one of those as connection="
+    )
+
+
 # ------------------------------------------------------------------------ store
 
 class SqlGraphStore:
     """One graph, stored as one row. Mirrors the storage.py function set."""
 
-    def __init__(self, dialect: _Dialect, table: str, name: str, url: str = ""):
+    def __init__(self, dialect: _Dialect, table: str, name: str, url: str = "",
+                 connection=None):
         self._dialect = dialect
         self._table = table
         self._name = name
         self._url = url or f"{dialect.name}://{table}/{name}"
         self._config: Optional[dict] = None
+        #: an already-open connection or session to use instead of building
+        #: one. Some hosts cannot build one at all: inside Streamlit in
+        #: Snowflake there are no credentials to find and no outbound
+        #: connection to make, only the session the host already holds.
+        self._injected = connection
 
     # -- plumbing
 
@@ -396,21 +438,16 @@ class SqlGraphStore:
         into a failure the caller cannot act on.
         """
         sql = template.format(table=self._table)
+        if self._injected is not None:
+            # Someone else owns this connection's lifetime, so there is
+            # nothing to cache, drop or reconnect: hand the statement over
+            # and let their errors surface as they are.
+            return _execute(self._injected, sql, params, want_rows)
         config = self._settings()
         for remaining in (1, 0):
             conn = _connection(self._dialect, config)
             try:
-                cursor = conn.cursor()
-                try:
-                    # None rather than () for parameterless SQL: a driver is
-                    # entitled to still look for placeholders when given a
-                    # sequence, and the DDL has none.
-                    cursor.execute(sql, params or None)
-                    if want_rows:
-                        return cursor.fetchall()
-                    return cursor.rowcount
-                finally:
-                    cursor.close()
+                return _execute(conn, sql, params, want_rows)
             except Exception as exc:
                 if _matches(exc, _MISSING_TABLE_MARKERS):
                     raise TableMissing(

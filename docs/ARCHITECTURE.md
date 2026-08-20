@@ -104,6 +104,12 @@ pipeline, and nothing is stored twice.
 
 ## Rules of thumb for changes
 
+- `storage.py` must stay importable on its own. trikedb gets vendored as a
+  subset of its files into hosts that cannot install anything — Streamlit in
+  Snowflake among them — so `db.py` + `storage.py` + `__init__.py` has to be
+  a working install. Only a warehouse URL may reach for `storage_sql`, which
+  is why the SQL schemes are named in `storage.py` rather than imported from
+  there.
 - New way to *store* a graph → `storage.py` (a filesystem-shaped
   backend) or a `_Dialect` in `storage_sql.py` (a SQL-table-shaped
   one). Never above those two files.

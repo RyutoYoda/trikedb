@@ -40,35 +40,56 @@ def is_remote(path) -> bool:
     return isinstance(path, str) and path.startswith(REMOTE_PREFIXES)
 
 
+#: Schemes handled by :mod:`trikedb.storage_sql`. Named here, deliberately
+#: duplicating what that module knows, so that a plain path or an ``s3://``
+#: URL never imports it: the SQL backend pulls in a warehouse driver, and
+#: trikedb also gets vendored as a subset of its files into places that
+#: cannot install one — Streamlit in Snowflake among them. Importing it
+#: unconditionally turned "open a local YAML file" into an ImportError there.
+#: ``test_sql_schemes_match_the_dialects`` keeps the two lists honest.
+_SQL_SCHEMES = ("snowflake",)
+
+
+def _scheme(path) -> str:
+    if not isinstance(path, str) or "://" not in path:
+        return ""
+    return path.split("://", 1)[0]
+
+
 def serialization(path) -> str:
     """"yaml" or "json" — how a graph should be written down for this target.
 
     YAML everywhere a person might open the file, which is the whole point of
     the format. JSON for a warehouse row, because SQL can crack JSON open
-    (`PARSE_JSON(doc):triples`) and there is no YAML parser in SQL to do the
-    same — a YAML string in a column is a graph nothing but trikedb can read.
+    (`TRY_PARSE_JSON(doc):triples`) and there is no YAML parser in SQL to do
+    the same — a YAML string in a column is a graph nothing but trikedb can
+    read.
 
     Nothing is lost by the switch: JSON is a subset of YAML, so the loader
     reads either without knowing which it got. The reader stays oblivious;
     only the writer needs to ask.
     """
-    from . import storage_sql
-
-    return "json" if storage_sql.is_sql_url(path) else "yaml"
+    return "json" if _scheme(path) in _SQL_SCHEMES else "yaml"
 
 
-def _sql_store(path):
+def _sql_store(path, connection=None):
     """The SQL-table store for this URL, or None if it isn't one.
 
     Warehouses are not filesystems, so they do not reach fsspec: a graph
     there is a row, addressed by table and name. The split happens here so
     that everything above still only knows read_text/write_text.
+
+    ``connection`` is an already-open connection or session to run through
+    instead of building one. The import stays inside the scheme check so an
+    install without the SQL backend is only a problem for someone actually
+    asking for a warehouse URL — and then it is a real ImportError naming
+    the missing module, not a silent fallback to the wrong backend.
     """
+    if _scheme(path) not in _SQL_SCHEMES:
+        return None
     from . import storage_sql
 
-    if not storage_sql.is_sql_url(path):
-        return None
-    return storage_sql.open_url(path)
+    return storage_sql.open_url(path, connection=connection)
 
 
 def _fsspec():
@@ -128,8 +149,8 @@ def _is_precondition_failure(exc: BaseException) -> bool:
     return False
 
 
-def exists(path) -> bool:
-    store = _sql_store(path)
+def exists(path, connection=None) -> bool:
+    store = _sql_store(path, connection)
     if store is not None:
         return store.exists()
     if is_remote(path):
@@ -138,7 +159,7 @@ def exists(path) -> bool:
     return Path(path).exists()
 
 
-def version(path):
+def version(path, connection=None):
     """An opaque token for the bytes currently stored, or None.
 
     None means either "nothing is stored there" or "this backend has no
@@ -150,7 +171,7 @@ def version(path):
     overwrite them. This way round the worst case is a conflict you didn't
     strictly need.
     """
-    store = _sql_store(path)
+    store = _sql_store(path, connection)
     if store is not None:
         return store.version()
     target = _conditional_fs(path)
@@ -179,8 +200,8 @@ def _is_stale_read(exc: BaseException) -> bool:
     return False
 
 
-def read_text(path, attempts: int = 3) -> str:
-    store = _sql_store(path)
+def read_text(path, attempts: int = 3, connection=None) -> str:
+    store = _sql_store(path, connection)
     if store is not None:
         return store.read_text()
     if not is_remote(path):
@@ -194,7 +215,7 @@ def read_text(path, attempts: int = 3) -> str:
                 raise
 
 
-def write_text(path, text: str, expect=_UNCHECKED) -> None:
+def write_text(path, text: str, expect=_UNCHECKED, connection=None) -> None:
     """Write the graph out, optionally only if it hasn't moved under us.
 
     ``expect`` is a token from a previous ``version()`` call: pass the one
@@ -207,7 +228,7 @@ def write_text(path, text: str, expect=_UNCHECKED) -> None:
     Backends that cannot express the condition fall back to an ordinary
     write; the guarantee is only as good as the storage underneath.
     """
-    store = _sql_store(path)
+    store = _sql_store(path, connection)
     if store is not None:
         # A SQL backend answers with a row count rather than an error, so the
         # conflict is a plain False and needs no message-matching.

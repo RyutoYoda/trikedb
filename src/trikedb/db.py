@@ -76,6 +76,7 @@ class TrikeDB:
         ontology: Union[dict, Sequence[str], None] = None,
         autosave: bool = True,
         read_only: bool = False,
+        connection=None,
     ):
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
@@ -91,6 +92,10 @@ class TrikeDB:
         #: union. Kept apart because reload() has to be able to restore it:
         #: forgetting it there would silently hand back a writable graph.
         self._read_only_requested = bool(read_only)
+        #: an already-open warehouse connection or Snowpark session to run
+        #: through, for hosts that cannot open one themselves. Ignored for
+        #: file-backed graphs, which have nothing to connect to.
+        self._connection = connection
         #: True for workspace unions and for read_only=True — mutations are
         #: refused. A reader that cannot write is the point when the graph is
         #: shared: an app serving a warehouse-backed graph has no business
@@ -109,7 +114,7 @@ class TrikeDB:
                 self.ontology = {str(k): str(v or "") for k, v in ontology.items()}
             else:
                 self.ontology = {str(p): "" for p in ontology}
-        if self.path is not None and _exists(self.path):
+        if self.path is not None and _exists(self.path, self._connection):
             self._load()
 
     # ------------------------------------------------------------------ io
@@ -126,15 +131,15 @@ class TrikeDB:
         self.workspace = None
         self.read_only = self._read_only_requested   # a reload must not grant writes
         self._version = None
-        if self.path is not None and _exists(self.path):
+        if self.path is not None and _exists(self.path, self._connection):
             self._load()
         return self
 
     def _load(self) -> None:
         # Version first, content second — the other order can hand us a token
         # that belongs to bytes we never saw. See storage.version.
-        self._version = _version_of(self.path)
-        data = yaml.safe_load(_read_text(self.path)) or {}
+        self._version = _version_of(self.path, self._connection)
+        data = yaml.safe_load(_read_text(self.path, connection=self._connection)) or {}
         if not isinstance(data, dict):
             # Valid YAML that isn't a mapping — a bare string or list. Reaching
             # .get() on it blames whichever key we happened to ask for first,
@@ -172,7 +177,11 @@ class TrikeDB:
         for name, gpath in self.workspace.items():
             if not _is_remote(gpath) and base_dir is not None and not Path(gpath).is_absolute():
                 gpath = str(base_dir / gpath)
-            sub = TrikeDB(gpath)
+            # Members inherit the connection: a union whose members live in a
+            # warehouse has to reach it the same way this graph did, and a
+            # host that cannot open its own connection cannot open one here
+            # either.
+            sub = TrikeDB(gpath, connection=self._connection)
             for k, v in sub.ontology.items():
                 self.ontology.setdefault(k, v)
             for n, props in sub.nodes_meta.items():
@@ -237,11 +246,11 @@ class TrikeDB:
             )
         if target == self.path:
             # Same file we read: refuse to overwrite someone else's save.
-            _write_text(target, text, expect=self._version)
-            self._version = _version_of(target)
+            _write_text(target, text, expect=self._version, connection=self._connection)
+            self._version = _version_of(target, self._connection)
         else:  # save-as: nothing to compare against
-            _write_text(target, text)
-            self._version = _version_of(target)
+            _write_text(target, text, connection=self._connection)
+            self._version = _version_of(target, self._connection)
         self.path = target
         return target
 

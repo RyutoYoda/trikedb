@@ -179,6 +179,7 @@ call `save()` yourself.
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
+| `TrikeDB(url, connection=conn)` | Run through an already-open warehouse connection or Snowpark session instead of building one |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
 
@@ -594,6 +595,27 @@ makes the CLI unusable in a loop and a CI step impossible:
 ```bash
 pip install 'snowflake-connector-python[secure-local-storage]'
 ```
+
+**Bringing your own connection.** Some hosts have a session and no way to
+make another: inside Streamlit in Snowflake there are no credentials to
+find and no outbound connection to open, only the session the host already
+holds. Pass it in:
+
+```python
+from snowflake.snowpark.context import get_active_session
+
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
+             connection=get_active_session(),
+             read_only=True)
+```
+
+A DB-API connection works too. Dispatch is on what the object can do, not
+on an imported type, so neither driver has to be installed for the other
+path to work: `cursor()` means DB-API and affected rows come from
+`rowcount`; `sql()` means Snowpark, where `collect()` returns rows either
+way and Snowflake's own answer to DML *is* a row whose first cell is the
+count. An injected connection is used as-is — trikedb neither caches nor
+reconnects it, because its lifetime belongs to whoever passed it.
 
 **Opening a graph read-only.** `TrikeDB(url, read_only=True)` refuses
 every mutation — `add`, `remove`, `set_node`, `save` and SPARQL updates

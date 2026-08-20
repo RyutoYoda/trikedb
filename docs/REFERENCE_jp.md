@@ -172,6 +172,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート(RDF/SPARQLビュー) |
 | `to_networkx(multigraph=True)` | プロパティグラフ投影(`[networkx]` extra): ノードのプロパティ＋エッジのlabel/属性を保持。同じファイルでnetworkxのアルゴリズム(最短経路・中心性)が使える |
 | `TrikeDB(path, read_only=True)` | 読み取り専用で開く。全ての変更が例外になる。`reload()` 後も維持される |
+| `TrikeDB(url, connection=conn)` | 接続を作る代わりに、既存のウェアハウス接続かSnowparkセッションで実行する |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状態属性 |
 
@@ -562,6 +563,25 @@ CLIをループで回せず、CIのステップにもできない:
 ```bash
 pip install 'snowflake-connector-python[secure-local-storage]'
 ```
+
+**既存の接続を渡す。** ホストによっては「セッションはあるが新しく作れない」
+ことがある。Streamlit in Snowflake の中には探すべき認証情報も、張るべき外向き
+接続も存在せず、ホストが既に持っているセッションだけがある。それを渡す:
+
+```python
+from snowflake.snowpark.context import get_active_session
+
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
+             connection=get_active_session(),
+             read_only=True)
+```
+
+DB-API接続も渡せる。判定はimportした型ではなく**オブジェクトが何をできるか**で
+行うので、片方のドライバが入っていなくてももう片方の経路が動く。`cursor()` が
+あればDB-APIで影響行数は `rowcount` から、`sql()` があればSnowparkで、
+`collect()` はどちらでも行を返し、DMLに対するSnowflakeの答え自体が
+「先頭セルが件数の行」になっている。渡された接続はそのまま使う — キャッシュも
+再接続もしない。寿命は渡した側のものだから。
 
 **読み取り専用で開く。** `TrikeDB(url, read_only=True)` は全ての変更を拒否する
 （`add`・`remove`・`set_node`・`save`・SPARQL update すべて）。`reload()` 後も

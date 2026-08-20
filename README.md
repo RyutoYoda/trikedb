@@ -339,6 +339,21 @@ Use it when writes belong somewhere else — a reviewed file in git, say —
 and the warehouse is there for distribution and SQL access. An app that
 only reads shouldn't be holding a capability a bug could spend.
 
+**Bringing your own connection.** Some hosts have a session and no way to
+make another — inside Streamlit in Snowflake there are no credentials to
+find and no outbound connection to open. Pass what you have:
+
+```python
+from snowflake.snowpark.context import get_active_session
+
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
+             connection=get_active_session(), read_only=True)
+```
+
+A DB-API connection works too; dispatch is on what the object can do, not
+on an imported type, so neither driver has to be installed for the other
+path to work.
+
 Concurrent writes are safe on both. A save is conditional on the stored
 graph still being the one it was read from, so a write that would clobber
 someone else is refused with `ConcurrentWriteError` rather than silently
