@@ -1330,7 +1330,8 @@ def warehouse(monkeypatch):
     return fake
 
 
-URL = "snowflake://MYDB.PUBLIC.TRIKE_GRAPHS/sales/crm"
+TABLE = "MYDB.PUBLIC.TRIKE_GRAPHS"
+URL = f"snowflake://{TABLE}/sales/crm"
 
 
 def test_sql_url_parsing():
@@ -1872,3 +1873,72 @@ def test_an_unusable_connection_says_what_it_needed(warehouse):
 
     with pytest.raises(TypeError, match="neither a DB-API connection"):
         storage_sql.open_url(URL, connection=object()).exists()
+
+
+def test_union_merges_node_properties_per_key(tmp_path):
+    """Per key, not per node — and the difference is silent when wrong.
+
+    A node declared in two members keeps the first value of each key, so a
+    description only the second member carries still survives. Reimplementing
+    the union as "first member's dict wins" drops it with no error anywhere:
+    the graph simply comes out slightly poorer than the files it was built
+    from.
+    """
+    a = tmp_path / "a.yaml"
+    a.write_text(
+        "ontology:\n  predicates:\n    P: from a\n"
+        "nodes:\n  shared: {type: skill, owner: team-a}\n"
+        "triples:\n- {s: shared, p: P, o: x}\n", encoding="utf-8")
+    b = tmp_path / "b.yaml"
+    b.write_text(
+        "ontology:\n  predicates:\n    P: from b\n    Q: only in b\n"
+        "nodes:\n  shared: {type: overridden, description: only in b}\n"
+        "triples:\n- {s: shared, p: Q, o: y}\n", encoding="utf-8")
+    ws = tmp_path / "ws.yaml"
+    ws.write_text("graphs:\n  first: a.yaml\n  second: b.yaml\n", encoding="utf-8")
+
+    db = TrikeDB(ws)
+    props = db.node("shared")
+    assert props["type"] == "skill"              # first member wins the key
+    assert props["owner"] == "team-a"
+    assert props["description"] == "only in b"   # ...but this must not vanish
+
+    assert db.ontology["P"] == "from a"          # per predicate, first wins
+    assert db.ontology["Q"] == "only in b"
+
+    # a triple's `graph` attr is the workspace key, not the member filename
+    assert {t.attrs["graph"] for t in db} == {"first", "second"}
+
+
+def test_a_union_of_warehouse_members_inherits_the_connection(warehouse):
+    """The shape that makes a union usable where nothing can connect.
+
+    A host holding only a session can open a workspace whose members are
+    warehouse rows: the members are opened through the same session, so no
+    member has to find credentials of its own.
+    """
+    import json
+
+    for name, doc in (
+        ("kg/one", {"ontology": {"predicates": {"P": "from one"}},
+                    "nodes": {"shared": {"type": "skill"}},
+                    "triples": [{"s": "shared", "p": "P", "o": "x"}]}),
+        ("kg/two", {"nodes": {"shared": {"description": "only in two"}},
+                    "triples": [{"s": "shared", "p": "P", "o": "y"}]}),
+    ):
+        warehouse.rows[name] = [json.dumps(doc), f"v-{name}"]
+
+    ws = {"graphs": {"one": f"snowflake://{TABLE}/kg/one",
+                     "two": f"snowflake://{TABLE}/kg/two"}}
+    warehouse.rows["kg/ws"] = [json.dumps(ws), "v-ws"]
+
+    db = TrikeDB(f"snowflake://{TABLE}/kg/ws", connection=warehouse, read_only=True)
+
+    assert warehouse.opens == 0                       # nothing connected itself
+    assert db.read_only is True
+    assert len(db) == 2
+    assert {t.attrs["graph"] for t in db} == {"one", "two"}
+    props = db.node("shared")
+    assert props["type"] == "skill" and props["description"] == "only in two"
+    with pytest.raises(ValueError):
+        db.add("x", "P", "y")

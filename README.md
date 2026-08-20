@@ -390,6 +390,36 @@ names, `(tanaka, OWNS_BUDGET, project-atlas)` in finance and
 no foreign keys, no schema negotiation. Unions are **read-only views**;
 each member graph stays owned (and permissioned) by its team, and
 writes go to the member file.
+Members can be warehouse rows too, and they inherit the connection — which
+is what makes a union usable somewhere that cannot open one of its own:
+
+```yaml
+# workspace.yaml, itself stored as a row
+graphs:
+  ontology: snowflake://DB.SCHEMA.T/kg/ontology
+  skills:   snowflake://DB.SCHEMA.T/kg/skills
+```
+
+```python
+db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
+             connection=get_active_session(), read_only=True)
+```
+
+**Let `TrikeDB` build the union rather than reading the members and merging
+them yourself.** Three details decide what a union contains, and getting
+one wrong is silent — the graph just comes out slightly poorer than the
+files it was built from:
+
+- **Node properties merge per key, not per node.** A node declared in two
+  members keeps the first value of each *key*, so a `description` only the
+  second member carries still survives. Taking the whole dict from the
+  first member drops it with no error anywhere.
+- **Ontologies merge per predicate**, first member wins the description.
+- **A triple's `graph` attribute is the workspace key**, not the member's
+  filename or path.
+
+`content_hash()` is the cheap way to prove a union you built matches one
+trikedb built: same hash, same graph.
 
 ## Keeping a growing graph healthy
 

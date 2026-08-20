@@ -168,9 +168,21 @@ class TrikeDB:
             self._triples.append(Triple.from_dict(item))
 
     def _load_workspace(self, graphs: dict) -> None:
-        """Union view over member graphs. Each triple gains a `graph` attr
-        naming its source; ontologies and node properties merge (first
-        wins). The union is read-only — write to a member graph instead."""
+        """Union view over member graphs. The union is read-only — write to a
+        member graph instead.
+
+        Three details decide what the union contains, and all three are easy
+        to get wrong when reimplementing this by hand:
+
+        - **Node properties merge per key, not per node.** A node declared in
+          two members keeps the first value of each *key*, so a description
+          only the second member carries still survives. Taking the whole
+          dict from the first member instead drops it silently.
+        - **Ontologies merge per predicate**, first member wins the
+          description.
+        - **A triple's `graph` attribute is the workspace key**, not the
+          member's path or filename.
+        """
         self.workspace = {str(k): str(v) for k, v in graphs.items()}
         self.read_only = True
         base_dir = None if _is_remote(self.path) else Path(self.path).parent
