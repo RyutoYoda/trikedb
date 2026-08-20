@@ -1,83 +1,14 @@
 # Benchmarks
 
-## Where is the ceiling?
+Two questions, in the order they matter:
 
-**Question:** how big can a graph get and still be a graph you keep in git,
-review in a pull request, and query without waiting?
-
-The size a document *fits* in turns out to be the least interesting answer.
-Extrapolating from the measurements below at roughly 58 bytes and 3 KB of RAM
-per triple:
-
-| Limit | Triples | Binding? |
-|---|---|---|
-| 8 GB of RAM | ~2,500,000 | no — you hit everything else first |
-| GitHub's 100 MB file block | ~1,700,000 | no |
-| GitHub's 50 MB file warning | **~870,000** | the hard stop, and nothing reaches it |
-
-Nothing curated gets near 870,000. The graphs this is actually used for —
-an ops map, a domain ontology, a chatbot's knowledge base — run two to three
-orders of magnitude below that. So "how many triples fit" is not the question
-worth answering.
-
-**What you actually hit is one feature at a time getting slow, and they do not
-degrade together.**
-
-![Each operation hits its own ceiling](ceiling.png)
-
-Semantic search leaves the pack at 10k triples and is unusable by 30k, while
-SPARQL over the same graph is still answering in a quarter of a second at
-200k. Reading and writing sit in between, and *which format you chose* moves
-them by an order of magnitude.
-
-| triples | YAML | open `.json` | open `.yaml` | save `.yaml` | SPARQL 2-hop | `to_html` | HTML | `search()` |
-|---|---|---|---|---|---|---|---|---|
-| 733 | 0.0 MB | 1 ms | 9 ms | 8 ms | 1 ms | 14 ms | 0.2 MB | 19 ms |
-| 2,040 | 0.1 MB | 1 ms | 35 ms | 26 ms | 2 ms | 39 ms | 0.5 MB | 42 ms |
-| 7,333 | 0.4 MB | 5 ms | 122 ms | 101 ms | 9 ms | 163 ms | 1.7 MB | 155 ms |
-| 20,400 | 1.1 MB | 13 ms | 456 ms | 305 ms | 26 ms | 491 ms | 4.8 MB | 4.3 s |
-| 73,333 | 3.9 MB | 71 ms | 1.6 s | 1.0 s | 94 ms | 1.9 s | 16.9 MB | 13.5 s |
-| 204,000 | 11.2 MB | 147 ms | 4.6 s | 3.2 s | 297 ms | 6.0 s | 48.9 MB | 41.9 s |
-
-`ceiling_bench.py` produced this; `ceiling_chart.py` draws the plot from its
-JSON. Medians of three on an Apple-silicon laptop, one synthetic
-pipeline-shaped graph (vendors → jobs → tables, a third of the edges carrying
-note/prov attributes). Absolute numbers will differ on your hardware; the
-*shape* of each curve is the point.
-
-### How to read it
-
-**Up to ~1,000 triples.** Everything is immediate and you can review the whole
-graph in a pull request. This is the size the tool is shaped for.
-
-**Up to ~10,000.** Still comfortable everywhere, semantic search included
-(155 ms). Reviewing the whole graph stops being realistic around here — 10k
-triples is 10k lines — so review moves to diffs. A one-fact change is one
-line of diff at *every* size, so that keeps working indefinitely.
-
-**Up to ~100,000.** SPARQL and pattern queries stay fast (93 ms for a 2-hop
-join). Three things stop being pleasant: semantic search (13 s), the HTML
-workbench (1.9 s to generate, 17 MB to open in a browser), and saving as YAML
-(1.1 s — which with the default `autosave=True` is the cost of *every*
-`add()`; open with `autosave=False` and batch instead). Naming the file
-`.json` keeps opening and saving an order of magnitude cheaper.
-
-**Past ~500,000.** It works, and it is outside what the design is for. Save
-times are seconds, git is carrying a 20 MB text file, and GitHub stops
-rendering the diff.
-
-### What does *not* degrade
-
-- **The diff for one change.** One line, at 700 triples and at 700,000 —
-  because triples serialise one per line and the save is deterministic.
-- **Queries, by backend.** A `snowflake://` row, an `s3://` object and a
-  local file answer the same query in the same time; the graph is answered
-  from memory, so the backend only decides what opening and saving cost. See
-  `backend_bench.py`.
-- **Building the graph.** `add()` was O(n²) until 0.27.0 — a linear scan for
-  the upsert check made 100k triples take 289 seconds to build, with the cost
-  of a single `add` growing from 60 µs to 2.9 ms. It is indexed now, so
-  importing a large graph is linear. Loading was never affected.
+1. **[Does the graph make an LLM more accurate?](#kgqa-does-the-graph-reduce-hallucination)**
+   — 60% → 83% on WebQSP, with the measurement protocol's own sensitivity
+   reported alongside it, because the headline number moves depending on how
+   you score.
+2. **[Where is the ceiling?](#where-is-the-ceiling)** — which operation stops
+   being usable first, and at what graph size. Not the same as "how many
+   triples fit", which nothing reaches.
 
 ## KGQA: does the graph reduce hallucination?
 
@@ -192,3 +123,82 @@ Two findings worth internalizing:
 The remaining misses at any depth are dominated by gold-label noise
 (4/30) and answer-granularity mismatches — consistent with published
 SOTA plateauing in the mid-80s.
+
+## Where is the ceiling?
+
+**Question:** how big can a graph get and still be a graph you keep in git,
+review in a pull request, and query without waiting?
+
+The size a document *fits* in turns out to be the least interesting answer.
+Extrapolating from the measurements below at roughly 58 bytes and 3 KB of RAM
+per triple:
+
+| Limit | Triples | Binding? |
+|---|---|---|
+| 8 GB of RAM | ~2,500,000 | no — you hit everything else first |
+| GitHub's 100 MB file block | ~1,700,000 | no |
+| GitHub's 50 MB file warning | **~870,000** | the hard stop, and nothing reaches it |
+
+Nothing curated gets near 870,000. The graphs this is actually used for —
+an ops map, a domain ontology, a chatbot's knowledge base — run two to three
+orders of magnitude below that. So "how many triples fit" is not the question
+worth answering.
+
+**What you actually hit is one feature at a time getting slow, and they do not
+degrade together.**
+
+![Each operation hits its own ceiling](ceiling.png)
+
+Semantic search leaves the pack at 10k triples and is unusable by 30k, while
+SPARQL over the same graph is still answering in a quarter of a second at
+200k. Reading and writing sit in between, and *which format you chose* moves
+them by an order of magnitude.
+
+| triples | YAML | open `.json` | open `.yaml` | save `.yaml` | SPARQL 2-hop | `to_html` | HTML | `search()` |
+|---|---|---|---|---|---|---|---|---|
+| 733 | 0.0 MB | 1 ms | 9 ms | 8 ms | 1 ms | 14 ms | 0.2 MB | 19 ms |
+| 2,040 | 0.1 MB | 1 ms | 35 ms | 26 ms | 2 ms | 39 ms | 0.5 MB | 42 ms |
+| 7,333 | 0.4 MB | 5 ms | 122 ms | 101 ms | 9 ms | 163 ms | 1.7 MB | 155 ms |
+| 20,400 | 1.1 MB | 13 ms | 456 ms | 305 ms | 26 ms | 491 ms | 4.8 MB | 4.3 s |
+| 73,333 | 3.9 MB | 71 ms | 1.6 s | 1.0 s | 94 ms | 1.9 s | 16.9 MB | 13.5 s |
+| 204,000 | 11.2 MB | 147 ms | 4.6 s | 3.2 s | 297 ms | 6.0 s | 48.9 MB | 41.9 s |
+
+`ceiling_bench.py` produced this; `ceiling_chart.py` draws the plot from its
+JSON. Medians of three on an Apple-silicon laptop, one synthetic
+pipeline-shaped graph (vendors → jobs → tables, a third of the edges carrying
+note/prov attributes). Absolute numbers will differ on your hardware; the
+*shape* of each curve is the point.
+
+### How to read it
+
+**Up to ~1,000 triples.** Everything is immediate and you can review the whole
+graph in a pull request. This is the size the tool is shaped for.
+
+**Up to ~10,000.** Still comfortable everywhere, semantic search included
+(155 ms). Reviewing the whole graph stops being realistic around here — 10k
+triples is 10k lines — so review moves to diffs. A one-fact change is one
+line of diff at *every* size, so that keeps working indefinitely.
+
+**Up to ~100,000.** SPARQL and pattern queries stay fast (93 ms for a 2-hop
+join). Three things stop being pleasant: semantic search (13 s), the HTML
+workbench (1.9 s to generate, 17 MB to open in a browser), and saving as YAML
+(1.1 s — which with the default `autosave=True` is the cost of *every*
+`add()`; open with `autosave=False` and batch instead). Naming the file
+`.json` keeps opening and saving an order of magnitude cheaper.
+
+**Past ~500,000.** It works, and it is outside what the design is for. Save
+times are seconds, git is carrying a 20 MB text file, and GitHub stops
+rendering the diff.
+
+### What does *not* degrade
+
+- **The diff for one change.** One line, at 700 triples and at 700,000 —
+  because triples serialise one per line and the save is deterministic.
+- **Queries, by backend.** A `snowflake://` row, an `s3://` object and a
+  local file answer the same query in the same time; the graph is answered
+  from memory, so the backend only decides what opening and saving cost. See
+  `backend_bench.py`.
+- **Building the graph.** `add()` was O(n²) until 0.27.0 — a linear scan for
+  the upsert check made 100k triples take 289 seconds to build, with the cost
+  of a single `add` growing from 60 µs to 2.9 ms. It is indexed now, so
+  importing a large graph is linear. Loading was never affected.

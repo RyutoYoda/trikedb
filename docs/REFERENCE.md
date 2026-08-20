@@ -195,7 +195,7 @@ call `save()` yourself.
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
-| `sparql(q)` | Full SPARQL 1.1 via rdflib. SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
+| `sparql(q)` | Full SPARQL 1.1. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
 | `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords |
 | `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |

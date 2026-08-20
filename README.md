@@ -45,12 +45,12 @@ And it renders as an interactive workbench ([live demo](https://ryutoyoda.github
 
 RDF graph databases are powerful, correct — and heavy. SPARQL endpoints, OWL reasoners, enterprise semantic layers: great at scale, overkill when what you need is a curated map of a few hundred facts that your AI agents (and teammates) can trust.
 
-trikedb keeps the *interface* of the big system — real SPARQL 1.1 (rdflib's engine, not a homegrown subset) — and shrinks the *machinery* down to an embedded library over a file you can read, diff, and commit:
+trikedb keeps the *interface* of the big system — real SPARQL 1.1, executed by [Oxigraph](https://github.com/oxigraph/oxigraph), not a homegrown subset — and shrinks the *machinery* down to an embedded library over a file you can read, diff, and commit:
 
 |  | A full triple-store deployment | trikedb |
 |---|---|---|
 | Storage | server / cloud service | one YAML file |
-| Query | SPARQL 1.1 | SPARQL 1.1 (same language, rdflib engine) |
+| Query | SPARQL 1.1 | SPARQL 1.1 (same language, Oxigraph's Rust engine) |
 | Graph model | usually pick one: RDF *or* property graph (two systems) | **both from one file** — SPARQL/RDF (`to_rdflib`) and property graph (`to_networkx`, via `[networkx]`) |
 | Writes | SPARQL Update | SPARQL Update — persisted back to the YAML |
 | Schema | OWL + reasoners | a predicate whitelist, plus SHACL shapes via `[shacl]` |
@@ -121,7 +121,7 @@ db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
 
-# … or full SPARQL 1.1 (FILTER, OPTIONAL, aggregates — delegated to rdflib, t: pre-bound)
+# … or full SPARQL 1.1 (FILTER, OPTIONAL, aggregates — run by Oxigraph, t: pre-bound)
 db.sparql('SELECT ?t WHERE { ?t t:type "table" ; t:pii true }')   # every PII table
 db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')  # edge attrs, too
 
