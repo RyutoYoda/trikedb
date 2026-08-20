@@ -1224,3 +1224,258 @@ def test_readme_links_are_absolute_for_pypi():
         if not t.startswith(("http://", "https://", "#", "mailto:"))
     ]
     assert not relative, f"README has relative links that break on PyPI: {relative}"
+
+
+# ------------------------------------------------- warehouse-backed storage
+
+class FakeWarehouse:
+    """A DB-API-shaped stand-in that understands the statements storage_sql
+    issues, so the compare-and-swap can be tested without a warehouse.
+
+    The row counts are the point: a real warehouse serialises UPDATE/MERGE on
+    a table and reports how many rows it touched, and that count is the whole
+    conflict-detection mechanism. Getting it wrong here would make the tests
+    agree with a bug.
+    """
+
+    def __init__(self):
+        self.rows = {}        # graph name -> [doc, version]
+        self.created = []     # tables sql-init made
+        self.opens = 0
+        self.fail_once_with = None
+
+    # -- DB-API surface used by storage_sql
+    def cursor(self):
+        return FakeCursor(self)
+
+    def is_closed(self):
+        return False
+
+    def close(self):
+        pass
+
+
+class FakeCursor:
+    def __init__(self, warehouse):
+        self._wh = warehouse
+        self.rowcount = -1
+        self.description = None
+        self._rows = []
+
+    def execute(self, sql, params=None):
+        if self._wh.fail_once_with is not None:
+            exc, self._wh.fail_once_with = self._wh.fail_once_with, None
+            raise exc
+        sql = " ".join(sql.split())
+        if sql.startswith("CREATE TABLE"):
+            self._wh.created.append(sql)
+            self.rowcount = 0
+        elif sql.startswith("SELECT"):
+            row = self._wh.rows.get(params[0])
+            self._rows = [(row[0], row[1])] if row else []
+            self.description = [("doc",), ("version",)]
+        elif sql.startswith("UPDATE"):
+            doc, token, name, expect = params
+            current = self._wh.rows.get(name)
+            hit = current is not None and current[1] == expect
+            if hit:
+                self._wh.rows[name] = [doc, token]
+            self.rowcount = 1 if hit else 0
+        elif sql.startswith("MERGE"):
+            name, doc, token = params
+            present = name in self._wh.rows
+            replaces = "WHEN MATCHED THEN UPDATE" in sql
+            if not present or replaces:
+                self._wh.rows[name] = [doc, token]
+                self.rowcount = 1
+            else:
+                self.rowcount = 0
+        else:
+            raise AssertionError(f"unexpected SQL: {sql}")
+
+    def fetchall(self):
+        return self._rows
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def warehouse(monkeypatch):
+    """A snowflake:// scheme wired to FakeWarehouse instead of Snowflake."""
+    import dataclasses
+
+    from trikedb import storage_sql
+
+    fake = FakeWarehouse()
+
+    def connect(config):
+        fake.opens += 1
+        return fake
+
+    monkeypatch.setitem(
+        storage_sql.DIALECTS,
+        "snowflake",
+        dataclasses.replace(
+            storage_sql.SNOWFLAKE,
+            connect=connect,
+            config_from_env=lambda: {"account": "test"},
+        ),
+    )
+    monkeypatch.setattr(storage_sql, "_CONNECTIONS", {})
+    return fake
+
+
+URL = "snowflake://MYDB.PUBLIC.TRIKE_GRAPHS/sales/crm"
+
+
+def test_sql_url_parsing():
+    """The table name is interpolated into SQL, so it has to be validated."""
+    from trikedb import storage_sql
+
+    for url, table, name in (
+        ("snowflake://T/g", "T", "g"),
+        ("snowflake://S.T/g", "S.T", "g"),
+        (URL, "MYDB.PUBLIC.TRIKE_GRAPHS", "sales/crm"),
+    ):
+        dialect, got_table, got_name = storage_sql._split(url)
+        assert (got_table, got_name) == (table, name)
+        assert dialect.name == "snowflake"
+
+    with pytest.raises(ValueError, match="no graph name"):
+        storage_sql._split("snowflake://T")
+    with pytest.raises(ValueError, match="DATABASE.SCHEMA.TABLE"):
+        storage_sql._split("snowflake://a.b.c.d/g")
+    # An identifier cannot be parameterised, so injection has to die at the door
+    for hostile in ("snowflake://T; DROP TABLE X/g", "snowflake://T--/g",
+                    "snowflake://\"T\"/g", "snowflake:///g"):
+        with pytest.raises(ValueError):
+            storage_sql._split(hostile)
+
+
+def test_sql_backend_roundtrip(warehouse):
+    """A warehouse row is a graph: the layers above must not notice."""
+    db = TrikeDB(URL)
+    assert len(db) == 0                      # no row yet == empty graph
+    db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
+
+    stored = warehouse.rows["sales/crm"][0]  # autosave wrote it through
+    assert "PROVIDES" in stored
+    assert yaml.safe_load(stored)["triples"]  # it really is the YAML document
+
+    again = TrikeDB(URL)
+    assert [(t.s, t.p, t.o) for t in again.triples()] == [
+        ("salesflow-crm", "PROVIDES", "crm-sync-job")
+    ]
+    # SPARQL and friends sit above storage, so they come along for free
+    assert again.sparql(
+        "SELECT ?o WHERE { t:salesflow-crm t:PROVIDES ?o }"
+    ) == [{"o": "crm-sync-job"}]
+
+
+def test_sql_conditional_write_refuses_to_clobber(warehouse):
+    """The row count is the conflict: no error-message matching needed."""
+    from trikedb.storage import ConcurrentWriteError
+
+    a = TrikeDB(URL, autosave=False)
+    a.add("a", "P", "b")
+    a.save()
+
+    b = TrikeDB(URL, autosave=False)       # reads a's version
+    a.add("c", "P", "d")
+    a.save()                               # a moves the version on
+
+    b.add("e", "P", "f")
+    with pytest.raises(ConcurrentWriteError):
+        b.save()                           # b's version is stale
+    landed = yaml.safe_load(warehouse.rows["sales/crm"][0])["triples"]
+    assert [t["s"] for t in landed] == ["a", "c"]       # nothing was written
+
+    b.reload()                             # the documented way out
+    b.add("e", "P", "f")
+    b.save()
+    assert {t.s for t in TrikeDB(URL)} == {"a", "c", "e"}
+
+
+def test_sql_create_is_a_race_too(warehouse):
+    """Two writers finding no row must not both think they created it."""
+    from trikedb.storage import ConcurrentWriteError
+
+    a = TrikeDB(URL, autosave=False)
+    b = TrikeDB(URL, autosave=False)       # both saw an empty graph
+    a.add("a", "P", "b")
+    b.add("x", "P", "y")
+    a.save()
+    with pytest.raises(ConcurrentWriteError):
+        b.save()
+    assert {t.s for t in TrikeDB(URL)} == {"a"}
+
+
+def test_sql_missing_table_says_how_to_fix(warehouse):
+    """"Object does not exist" is unactionable unless it names the command."""
+    from trikedb import storage_sql
+
+    warehouse.fail_once_with = RuntimeError(
+        "002003 (42S02): SQL compilation error: Object "
+        "'MYDB.PUBLIC.TRIKE_GRAPHS' does not exist or not authorized."
+    )
+    with pytest.raises(storage_sql.TableMissing, match="sql-init"):
+        TrikeDB(URL)
+
+
+def test_sql_reconnects_when_the_session_went_away(warehouse):
+    """Warehouse sessions expire on their own schedule; a save must survive."""
+    TrikeDB(URL, autosave=False).save()          # opens and caches a connection
+    assert warehouse.opens == 1
+
+    warehouse.fail_once_with = RuntimeError("Connection is closed")
+    db = TrikeDB(URL, autosave=False)            # hits the dead session, retries
+    db.add("a", "P", "b")
+    db.save()
+    assert warehouse.opens == 2
+    assert warehouse.rows["sales/crm"]
+
+
+def test_sql_init_creates_the_table(warehouse, capsys):
+    from trikedb.cli import main
+
+    assert main(["sql-init", URL, "--print"]) == 0
+    printed = capsys.readouterr().out
+    assert "CREATE TABLE IF NOT EXISTS MYDB.PUBLIC.TRIKE_GRAPHS" in printed
+    assert not warehouse.created                 # --print must not touch it
+
+    assert main(["sql-init", URL]) == 0
+    assert warehouse.created
+
+
+def test_snowflake_missing_connector_error_keeps_the_real_cause(monkeypatch):
+    """Same contract as the other extras: hint without hiding the reason."""
+    import sys
+
+    from trikedb import storage_sql
+
+    monkeypatch.setitem(sys.modules, "snowflake.connector", None)
+    with pytest.raises(ImportError) as caught:
+        storage_sql._snowflake_connect({"account": "x"})
+    assert "trikedb[snowflake]" in str(caught.value)
+    assert caught.value.__cause__ is not None
+    assert str(caught.value).isascii()
+
+
+def test_a_file_that_isnt_a_graph_fails_clearly(tmp_path):
+    """Valid YAML that isn't a mapping used to surface as an AttributeError.
+
+    ``'str' object has no attribute 'get'`` names whichever key happened to be
+    read first and sends the reader hunting in the wrong place. It matters more
+    once the graph lives somewhere other people can write to — a shared
+    warehouse row, a bucket — than it did for a file you own outright.
+    """
+    for content in ("just a string\n", "- a\n- b\n"):
+        g = tmp_path / "not-a-graph.yaml"
+        g.write_text(content, encoding="utf-8")
+        with pytest.raises(ValueError, match="does not hold a graph"):
+            TrikeDB(g)
+
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("", encoding="utf-8")
+    assert len(TrikeDB(empty)) == 0        # empty is still a legitimate graph

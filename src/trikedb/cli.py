@@ -172,6 +172,19 @@ def main(argv=None) -> int:
              "running more than one replica behind a load balancer",
     )
 
+    p_sql_init = sub.add_parser(
+        "sql-init",
+        help="create the table a warehouse-backed graph URL needs "
+             "(requires trikedb[snowflake])",
+    )
+    p_sql_init.add_argument(
+        "url", help="e.g. snowflake://MYDB.PUBLIC.TRIKE_GRAPHS/sales/crm"
+    )
+    p_sql_init.add_argument(
+        "--print", dest="print_only", action="store_true",
+        help="print the DDL instead of running it, to review or hand to a DBA",
+    )
+
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
 
@@ -415,6 +428,24 @@ def _cmd_serve(args) -> int:
     return 0
 
 
+def _cmd_sql_init(args) -> int:
+    """Create the table, or show what would be created.
+
+    Creating tables in a company-wide warehouse is not something a graph
+    library should do behind someone's back, so it is an explicit command
+    and --print exists for the case where only a DBA may run the DDL.
+    """
+    from . import storage_sql
+
+    ddl = storage_sql.ddl_for(args.url)
+    if args.print_only:
+        print(ddl + ";")
+        return 0
+    storage_sql.open_url(args.url).create_table()
+    print(f"table ready for {args.url}", file=sys.stderr)
+    return 0
+
+
 _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
@@ -433,6 +464,7 @@ _COMMANDS = {
     "infer": _cmd_infer,
     "mcp": _cmd_mcp,
     "serve": _cmd_serve,
+    "sql-init": _cmd_sql_init,
 }
 
 

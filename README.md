@@ -82,6 +82,7 @@ pip install 'trikedb[mcp]'      # + MCP server for AI agents (stdio)
 pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
 pip install 'trikedb[oauth]'    # + OAuth 2.1 for the claude.ai / ChatGPT UIs
 pip install 'trikedb[remote]'   # + s3:// gs:// graphs
+pip install 'trikedb[snowflake]' # + snowflake:// graphs (the warehouse is the store)
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
 pip install 'trikedb[semantic]' # + semantic search (numpy + model2vec, no torch)
@@ -252,9 +253,14 @@ reasoner concluded and a human can review it like any other change.
 (For ad-hoc transitivity you often don't need OWL at all — SPARQL
 property paths like `t:INHERITS+` already walk chains at query time.)
 
-## Remote graphs (S3)
+## Where the graph lives: your storage, your choice
 
-The file doesn't have to be local (`pip install 'trikedb[remote]'`):
+The file doesn't have to be local, and it doesn't have to be a file.
+Everything above storage only ever asks for one whole document, so the
+destination swaps out and nothing else changes — SPARQL, the MCP tools,
+SHACL and `to_networkx` behave identically wherever the bytes are.
+
+**Object storage** (`pip install 'trikedb[remote]'`):
 
 ```python
 db = TrikeDB("s3://team-bucket/kg/pipeline.yaml")   # read and write
@@ -273,8 +279,43 @@ policies give each team its own graph. `gs://`, `az://` and plain
 `https://` (read-only) work through the same mechanism with the
 matching fsspec backend installed.
 
-Concurrency is last-write-wins in this version — point writers through
-a single MCP process or CI job, or keep writes in git-reviewed batches.
+**A warehouse table** (`pip install 'trikedb[snowflake]'`) — for teams
+whose governance says data lives in the warehouse:
+
+```python
+db = TrikeDB("snowflake://ANALYTICS.PUBLIC.TRIKE_GRAPHS/sales/crm")
+```
+
+One graph is one row (`name`, `doc`, `version`, `updated_at`), and one
+table holds many graphs — adopting trikedb costs a company one table, not
+one per graph. There's no local copy and nothing to synchronise: the
+`doc` column holds the same YAML document, byte for byte, and the row
+*is* the graph. Create the table first (trikedb won't run DDL in your
+warehouse on its own):
+
+```bash
+trikedb sql-init snowflake://ANALYTICS.PUBLIC.TRIKE_GRAPHS/sales/crm --print   # review the DDL
+trikedb sql-init snowflake://ANALYTICS.PUBLIC.TRIKE_GRAPHS/sales/crm           # or just run it
+```
+
+Connection settings come from the environment (`SNOWFLAKE_ACCOUNT`,
+`SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY_PATH` or `SNOWFLAKE_PASSWORD`,
+plus role/warehouse/database as needed), or name an entry in your
+`connections.toml` with `SNOWFLAKE_CONNECTION_NAME` and let your existing
+Snowflake tooling own it. Same as S3: trikedb stores no credentials, and
+your grants are the access control.
+
+Concurrent writes are safe on both. A save is conditional on the stored
+graph still being the one it was read from, so a write that would clobber
+someone else is refused with `ConcurrentWriteError` rather than silently
+winning — S3 does it with an ETag precondition, a warehouse with a
+version column and an affected-row count. Ten concurrent writers land ten
+triples in either. `gs://`, `az://` and local files have no conditional
+write, so they stay last-write-wins: point writers through a single MCP
+process or keep writes in git-reviewed batches.
+
+Adding a backend happens in one place. A warehouse is four SQL templates
+and a connect function.
 
 ## Workspaces: many graphs, one view
 

@@ -20,7 +20,7 @@ flowchart LR
     end
 
     subgraph store["Store"]
-        Y[("graph.yaml<br/>local · s3:// · workspace union")]
+        Y[("graph.yaml<br/>local · s3:// · snowflake:// · workspace union")]
         H("health: check · audit · SHACL")
     end
 
@@ -206,7 +206,8 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + MCP over Streamable HTTP |
 
 All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
-URLs (`[remote]` extra), and workspace files.
+URLs (`[remote]` extra), `snowflake://` graphs (`[snowflake]` extra),
+and workspace files.
 
 ## MCP: the ontology layer for agents
 
@@ -382,24 +383,33 @@ is the flag.
 
 #### Concurrent writes
 
-A save rewrites the whole file, so two writers that both read version N
-each produce a version N+1 and one of them would vanish. On S3 that does
-not happen: the save is conditional on the object still being the one the
-graph was read from, and a write that would clobber someone else is
-refused with `ConcurrentWriteError` instead. The MCP write tools recover
-on their own — they re-read the graph, re-apply the single change they
-were asked to make, and save again, backing off between tries.
+A save rewrites the whole document, so two writers that both read version
+N each produce a version N+1 and one of them would vanish. On S3 and on a
+warehouse that does not happen: the save is conditional on the stored
+graph still being the one it was read from, and a write that would clobber
+someone else is refused with `ConcurrentWriteError` instead. The MCP write
+tools recover on their own — they re-read the graph, re-apply the single
+change they were asked to make, and save again, backing off between tries.
 
 Ten concurrent `add_triple` calls against one S3 file, through a Lambda
 that scales out to a container per request, land all ten. Before the
 conditional write they landed four, and the other six disappeared with no
-error anywhere.
+error anywhere. Ten concurrent writers against one `snowflake://` row land
+all ten as well.
+
+The two backends express the same guarantee differently. S3 compares an
+ETag through `If-Match` and reports a failed precondition as an error. A
+warehouse compares a version column inside the statement itself
+(`UPDATE ... WHERE name = ? AND version = ?`) and reports the outcome as
+an affected-row count, so a conflict is a plain zero rather than an error
+to interpret.
 
 Two limits worth knowing:
 
-- **Only S3 enforces it.** Other backends have no conditional write, so
-  they stay last-write-wins. Local files are unguarded too — the
-  assumption there is one process.
+- **Only S3 and warehouse backends enforce it.** `gs://`, `az://` and
+  plain `https://` have no conditional write yet, so they stay
+  last-write-wins. Local files are unguarded too — the assumption there is
+  one process.
 - **Long-running replicas don't see each other.** The MCP tools hold one
   graph instance for the life of the process and only re-read it when a
   write conflicts. A replica that never writes never notices another
@@ -443,14 +453,65 @@ in [SCALING.md](SCALING.md).)
   (`--events AFFECTED_BY` to pin which predicates count)
 - light/dark toggle (persisted), content hash embedded for `trikedb check`
 
-## Remote graphs
+## Where the graph lives
 
-`TrikeDB("s3://bucket/kg/graph.yaml")` — reads and writes through
-fsspec (`[remote]` extra). Auth is delegated to the standard AWS
-credential chain (env vars, profiles, SSO, IAM roles); trikedb stores
-no credentials and your bucket policy is the access control.
-Concurrency is last-write-wins: point writers through one MCP/serve
-process or git-reviewed batches.
+The layer above storage only ever asks for one whole document, so the
+destination is swappable and nothing else changes: SPARQL, the MCP tools,
+SHACL and `to_networkx` behave identically wherever the bytes are.
+
+**Object storage** — `TrikeDB("s3://bucket/kg/graph.yaml")` reads and
+writes through fsspec (`[remote]` extra). Auth is delegated to the
+standard AWS credential chain (env vars, profiles, SSO, IAM roles);
+trikedb stores no credentials and your bucket policy is the access
+control. `gs://`, `az://` and read-only `https://` work the same way with
+the matching fsspec backend installed.
+
+**A warehouse table** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
+keeps the graph in a row (`[snowflake]` extra). One table holds many
+graphs, so adopting trikedb costs one table rather than one per graph:
+
+| column | |
+|---|---|
+| `name` | the graph, from the path after the table |
+| `doc` | the YAML document, byte for byte |
+| `version` | the token that makes a save conditional |
+| `updated_at` | when it last changed |
+
+There is no local copy and nothing to synchronise — the row *is* the
+graph. The whole document is read on open and written on save, so this
+suits graphs up to a few MB rather than tens.
+
+Create the table before first use; trikedb will not run DDL in your
+warehouse on its own:
+
+```bash
+trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # show the DDL
+trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # or run it
+```
+
+Connection settings come from the environment — `SNOWFLAKE_ACCOUNT`,
+`SNOWFLAKE_USER`, and either `SNOWFLAKE_PRIVATE_KEY_PATH` (a PKCS#8 PEM)
+or `SNOWFLAKE_PASSWORD`, plus optional `SNOWFLAKE_ROLE`,
+`SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` and
+`SNOWFLAKE_AUTHENTICATOR`. If your organisation already standardises
+Snowflake access in `connections.toml`, name the entry instead and the
+rest is deferred to it:
+
+```bash
+export SNOWFLAKE_CONNECTION_NAME=analytics
+```
+
+Warehouse DML serialises per table, so writers to *different* graphs in
+one table serialise too. That is invisible at agent-editing rates; shard
+into several tables if you ever push real write throughput through it.
+
+Table names cannot be parameterised, so the one in the URL is validated
+as an identifier (`DATABASE.SCHEMA.TABLE`, at most three parts) rather
+than quoted, and anything else is rejected before a statement is built.
+
+Adding a backend happens in `storage.py` / `storage_sql.py` and nowhere
+else. A warehouse is a `_Dialect` — four SQL templates and a connect
+function.
 
 ## Validation & inference
 
@@ -487,6 +548,7 @@ the agent writes inside your vocabulary.
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` etc. | fsspec, s3fs |
+| `[snowflake]` | `snowflake://` graphs | snowflake-connector-python |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |

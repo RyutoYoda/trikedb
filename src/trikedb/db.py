@@ -124,6 +124,16 @@ class TrikeDB:
         # that belongs to bytes we never saw. See storage.version.
         self._version = _version_of(self.path)
         data = yaml.safe_load(_read_text(self.path)) or {}
+        if not isinstance(data, dict):
+            # Valid YAML that isn't a mapping — a bare string or list. Reaching
+            # .get() on it blames whichever key we happened to ask for first,
+            # which sends the reader looking in the wrong place entirely. More
+            # than a theoretical worry once the graph lives somewhere other
+            # people can write to, like a shared warehouse table.
+            raise ValueError(
+                f"{self.path} does not hold a graph: expected a YAML mapping "
+                f"with triples/nodes/ontology keys, found {type(data).__name__}"
+            )
         graphs = data.get("graphs")
         if isinstance(graphs, dict) and not data.get("triples"):
             self._load_workspace(graphs)

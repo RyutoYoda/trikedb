@@ -19,6 +19,7 @@ from pathlib import Path
 REMOTE_PREFIXES = (
     "s3://", "gs://", "gcs://", "http://", "https://",
     "az://", "abfs://", "memory://",
+    "snowflake://",
 )
 
 #: Backends whose conditional writes we know how to drive.
@@ -37,6 +38,20 @@ class ConcurrentWriteError(RuntimeError):
 
 def is_remote(path) -> bool:
     return isinstance(path, str) and path.startswith(REMOTE_PREFIXES)
+
+
+def _sql_store(path):
+    """The SQL-table store for this URL, or None if it isn't one.
+
+    Warehouses are not filesystems, so they do not reach fsspec: a graph
+    there is a row, addressed by table and name. The split happens here so
+    that everything above still only knows read_text/write_text.
+    """
+    from . import storage_sql
+
+    if not storage_sql.is_sql_url(path):
+        return None
+    return storage_sql.open_url(path)
 
 
 def _fsspec():
@@ -97,6 +112,9 @@ def _is_precondition_failure(exc: BaseException) -> bool:
 
 
 def exists(path) -> bool:
+    store = _sql_store(path)
+    if store is not None:
+        return store.exists()
     if is_remote(path):
         fs, p = _fsspec().core.url_to_fs(path)
         return fs.exists(p)
@@ -115,6 +133,9 @@ def version(path):
     overwrite them. This way round the worst case is a conflict you didn't
     strictly need.
     """
+    store = _sql_store(path)
+    if store is not None:
+        return store.version()
     target = _conditional_fs(path)
     if target is None:
         return None
@@ -142,6 +163,9 @@ def _is_stale_read(exc: BaseException) -> bool:
 
 
 def read_text(path, attempts: int = 3) -> str:
+    store = _sql_store(path)
+    if store is not None:
+        return store.read_text()
     if not is_remote(path):
         return Path(path).read_text(encoding="utf-8")
     for remaining in range(attempts - 1, -1, -1):
@@ -166,6 +190,17 @@ def write_text(path, text: str, expect=_UNCHECKED) -> None:
     Backends that cannot express the condition fall back to an ordinary
     write; the guarantee is only as good as the storage underneath.
     """
+    store = _sql_store(path)
+    if store is not None:
+        # A SQL backend answers with a row count rather than an error, so the
+        # conflict is a plain False and needs no message-matching.
+        if not store.write_text(text, expect, _UNCHECKED):
+            raise ConcurrentWriteError(
+                f"{path} changed since it was read - "
+                "re-read the graph and re-apply the change"
+            )
+        return
+
     target = None if expect is _UNCHECKED else _conditional_fs(path)
     if target is not None:
         fs, key = target

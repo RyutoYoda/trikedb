@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from .db import TrikeDB
-from .storage import ConcurrentWriteError
+from .storage import ConcurrentWriteError, is_remote
 
 
 def _transport_security(public_url):
@@ -70,9 +70,13 @@ def build_server(
             "MCP support requires the mcp package - pip install 'trikedb[mcp]'"
         ) from exc
 
-    p = Path(path)
-    if p.exists() and not p.stat().st_mode & 0o200:
-        raise PermissionError(f"{path} is read-only; MCP server needs write access")
+    # Only a local file has a mode to check. Path() on a URL yields a
+    # nonsense relative path whose exists() is False, so this guard used to
+    # be silently inert for every remote graph rather than skipped on purpose.
+    if not is_remote(path):
+        p = Path(path)
+        if p.exists() and not p.stat().st_mode & 0o200:
+            raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = TrikeDB(path, autosave=True)
     settings, verifier = auth if auth else (None, None)
 

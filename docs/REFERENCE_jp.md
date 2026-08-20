@@ -18,7 +18,7 @@ flowchart LR
     end
 
     subgraph store["ストア"]
-        Y[("graph.yaml<br/>ローカル · s3:// · workspace統合")]
+        Y[("graph.yaml<br/>ローカル · s3:// · snowflake:// · workspace統合")]
         H("健全性: check · audit · SHACL")
     end
 
@@ -199,7 +199,8 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + Streamable HTTPのMCP |
 
 `FILE` 引数はどれもローカルパス・`s3://`/`gs://`/`https://` URL
-(`[remote]` extra)・workspaceファイルを受け付ける。
+(`[remote]` extra)・`snowflake://` グラフ(`[snowflake]` extra)・
+workspaceファイルを受け付ける。
 
 ## MCP: エージェントのためのオントロジーレイヤー
 
@@ -371,20 +372,27 @@ OAUTH_ISSUER=https://idp.example.com/
 
 #### 同時書き込み
 
-保存はファイル全体を書き直すので、版Nを読んだ2者がそれぞれ版N+1を作れば
-片方が消えるはずだった。S3ではそうならない。保存は「そのグラフを読んだときの
-オブジェクトのままであること」を条件に実行され、他者を上書きしてしまう書き込みは
+保存は文書全体を書き直すので、版Nを読んだ2者がそれぞれ版N+1を作れば
+片方が消えるはずだった。S3とウェアハウスではそうならない。保存は「そのグラフを
+読んだときのままであること」を条件に実行され、他者を上書きしてしまう書き込みは
 `ConcurrentWriteError` で拒否される。MCPの書き込みツールは自力で復帰する —
 グラフを読み直し、依頼された1つの変更を再適用して保存し直す（間隔を空けながら）。
 
 リクエストごとにコンテナが増えるLambda経由で、1つのS3ファイルに `add_triple` を
 10件同時に投げると**10件とも残る**。条件付き書き込みを入れる前は4件で、
-残り6件はどこにもエラーを残さず消えていた。
+残り6件はどこにもエラーを残さず消えていた。1つの `snowflake://` 行に対する
+10並列の書き込みも**10件とも残る**。
+
+同じ保証を、2つのバックエンドは別の形で表現する。S3は `If-Match` でETagを
+比較し、条件の不成立をエラーとして返す。ウェアハウスは文の中でversion列を
+比較し（`UPDATE ... WHERE name = ? AND version = ?`）、結果を影響行数として
+返す。つまり競合は解釈すべきエラーではなく、ただのゼロになる。
 
 制約が2つある:
 
-- **保証されるのはS3だけ。** 他のバックエンドは条件付き書き込みを持たないので
-  last-write-wins のまま。ローカルファイルも保護されない（単一プロセス前提）。
+- **保証されるのはS3とウェアハウスだけ。** `gs://` `az://` `https://` は
+  まだ条件付き書き込みを持たないので last-write-wins のまま。
+  ローカルファイルも保護されない（単一プロセス前提）。
 - **長時間動くレプリカは互いを見ない。** MCPツールはプロセスの生存期間中ずっと
   同じグラフインスタンスを保持し、書き込みが衝突したときにだけ読み直す。
   一度も書かないレプリカは他のレプリカの書き込みに気づかない。再起動するか、
@@ -422,13 +430,63 @@ OAUTH_ISSUER=https://idp.example.com/
 - 変更イベントは赤ダイヤ+下部タイムラインバー(`--events AFFECTED_BY` で述語を固定)
 - ライト/ダーク切替(保存される)、`trikedb check` 用のコンテンツハッシュ埋め込み
 
-## リモートグラフ
+## グラフをどこに置くか
 
-`TrikeDB("s3://bucket/kg/graph.yaml")` — fsspec経由で読み書き
-(`[remote]` extra)。認証はAWS標準の認証チェーン(環境変数・プロファイル・
-SSO・IAMロール)に委譲。trikedbは認証情報を一切保存せず、バケットポリシー
-がそのままアクセス制御になる。同時書き込みはlast-write-wins — 書き込みは
-単一のMCP/serveプロセスかgitレビュー経由のバッチに寄せること。
+storage層より上は「文書1本まるごと」しか要求しないので、置き場所は差し替え
+可能で、それ以外は何も変わらない。SPARQL・MCPツール・SHACL・`to_networkx`
+は、バイトがどこにあっても同じように振る舞う。
+
+**オブジェクトストレージ** — `TrikeDB("s3://bucket/kg/graph.yaml")` は
+fsspec経由で読み書きする(`[remote]` extra)。認証はAWS標準の認証チェーン
+(環境変数・プロファイル・SSO・IAMロール)に委譲。trikedbは認証情報を一切
+保存せず、バケットポリシーがそのままアクセス制御になる。`gs://` `az://`
+読み取り専用の `https://` も、対応するfsspecバックエンドを入れれば同じ仕組み
+で動く。
+
+**ウェアハウスのテーブル** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
+はグラフを1行として保持する(`[snowflake]` extra)。1つのテーブルが多数の
+グラフを持つので、導入コストは「グラフごとに1テーブル」ではなく「1テーブル」:
+
+| カラム | |
+|---|---|
+| `name` | グラフ名。テーブル名の後ろのパスがそのまま入る |
+| `doc` | YAML文書そのもの(1バイトも変えない) |
+| `version` | 保存を条件付きにするためのトークン |
+| `updated_at` | 最終更新時刻 |
+
+ローカルにコピーは作られず、同期するものも無い — **その行がグラフそのもの**。
+開くときに文書全体を読み、保存で全体を書く。数MB程度までのグラフに向く
+（数十MB級には向かない）。
+
+テーブルは事前に作る。trikedbが勝手にウェアハウスへDDLを打つことはない:
+
+```bash
+trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # DDLを表示
+trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # 実行
+```
+
+接続設定は環境変数から読む — `SNOWFLAKE_ACCOUNT`・`SNOWFLAKE_USER` と、
+`SNOWFLAKE_PRIVATE_KEY_PATH`(PKCS#8 PEM)または `SNOWFLAKE_PASSWORD`、
+任意で `SNOWFLAKE_ROLE`・`SNOWFLAKE_WAREHOUSE`・`SNOWFLAKE_DATABASE`・
+`SNOWFLAKE_SCHEMA`・`SNOWFLAKE_AUTHENTICATOR`。組織で既に
+`connections.toml` にSnowflakeアクセスを標準化しているなら、その名前を
+指すだけでよく、あとはそちらに委譲される:
+
+```bash
+export SNOWFLAKE_CONNECTION_NAME=analytics
+```
+
+ウェアハウスのDMLはテーブル単位で直列化されるので、同じテーブル内の
+**別のグラフ**への書き込みも直列化される。エージェントが編集する程度の
+頻度では見えない差だが、本格的な書き込みスループットを通すならテーブルを
+分けること。
+
+テーブル名はパラメータにできないため、URL内のテーブル名は引用符で囲むの
+ではなく識別子として検証する(`DATABASE.SCHEMA.TABLE`、最大3階層)。
+それ以外は文を組み立てる前に弾かれる。
+
+バックエンドの追加は `storage.py` / `storage_sql.py` だけで完結する。
+ウェアハウス1つは `_Dialect` — SQLテンプレート4本とconnect関数だけ。
 
 ## 検証と推論
 
@@ -463,6 +521,7 @@ flowchart LR
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` 等 | fsspec, s3fs |
+| `[snowflake]` | `snowflake://` グラフ | snowflake-connector-python |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |
