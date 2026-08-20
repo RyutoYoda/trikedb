@@ -481,12 +481,80 @@ There is no local copy and nothing to synchronise — the row *is* the
 graph. The whole document is read on open and written on save, so this
 suits graphs up to a few MB rather than tens.
 
+`doc` holds JSON here, where a file holds YAML. That is the one place the
+stored format differs, and it buys the next section: SQL has no YAML
+parser, so a YAML string in a column would be a graph nothing but trikedb
+could read. JSON is a subset of YAML, so the loader is unchanged and
+neither is anything above it.
+
+### Reading the graph from SQL
+
+`sql-init` creates four views beside the table, and they are what make a
+warehouse graph worth choosing: the same graph answers SPARQL from memory
+and SQL from the warehouse, with no second copy to keep in step.
+
+| View | Columns |
+|---|---|
+| `KG_NODE` | `GRAPH`, `NODE_ID`, `NODE_TYPE`, `NAME`, `PROPS`, `TS_UPDATED` |
+| `KG_EDGE` | `GRAPH`, `EDGE_ID`, `SRC_ID`, `DST_ID`, `EDGE_TYPE`, `PROPS`, `TS_UPDATED` |
+| `KG_PREDICATE` | `GRAPH`, `PREDICATE`, `DESCRIPTION` |
+| `KG_TRIPLE` | `GRAPH`, `S`, `P`, `O`, `ATTRS` |
+
+`KG_NODE` and `KG_EDGE` follow the node/edge column shape conventionally
+used for property graphs on Snowflake — the same layout as the
+[Snowflake-Labs knowledge-graph reference implementation][kg-ref] — so a
+Cortex Analyst semantic model or query pattern written against that shape
+applies here too. The SQL is generated from trikedb's own model; trikedb
+is not affiliated with or endorsed by Snowflake.
+
+[kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
+
+The projection is the one `to_networkx()` already performs — triples to
+nodes and edges — pointed at SQL instead of networkx. `KG_PREDICATE` has
+no counterpart there: a property graph's edge type is a bare label, while
+a predicate here is a first-class name the ontology describes, and
+dropping it would change what the graph means. `KG_TRIPLE` is the RDF view
+of the same rows, for anyone who thinks in triples.
+
+Node properties land in `PROPS` and edge attributes in the edge's `PROPS`,
+both as VARIANT, so adding a predicate or an attribute never needs a DDL
+change. `type` and `label` are lifted into `NODE_TYPE` and `NAME` because
+they already carry meaning in the workbench, which makes
+`WHERE NODE_TYPE = 'table'` the natural filter. `EDGE_ID` is an MD5 of
+`s|p|o`: a triple is unique on those three, so re-reading the view never
+renames an edge that did not change.
+
+This is what the whole arrangement is for — asking whether the graph still
+matches reality:
+
+```sql
+SELECT k.NODE_ID, t.TABLE_NAME
+FROM MYDB.PUBLIC.KG_NODE k
+LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
+WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- claimed, but gone
+```
+
+Views rather than tables on purpose: nothing is stored twice, nothing can
+drift, and the cost is zero. Snowflake pushes `AT(TIMESTAMP => ...)` down
+to the base table, so a view reads the past as happily as the present:
+
+```sql
+SELECT * FROM MYDB.PUBLIC.KG_TRIPLE AT(TIMESTAMP => '2026-08-20 01:21:03-07:00');
+```
+
+The trade is that a view cannot prune. Snowflake's own guidance is to
+flatten into relational columns once that starts to cost you, so
+materialize then — `CLUSTER BY (NODE_TYPE)` on nodes,
+`(EDGE_TYPE, SRC_ID, DST_ID)` on edges — and not before. `--no-views`
+skips them entirely.
+
 Create the table before first use; trikedb will not run DDL in your
 warehouse on its own:
 
 ```bash
 trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # show the DDL
 trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # or run it
+trikedb sql-init … --no-views                                    # table only
 ```
 
 Connection settings come from the environment — `SNOWFLAKE_ACCOUNT`,

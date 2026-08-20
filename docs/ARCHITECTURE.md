@@ -29,7 +29,7 @@ flowchart LR
         direction TB
         LOCAL("pathlib<br/>a local file")
         FS("fsspec<br/>s3:// gs:// az:// https://")
-        SQL("storage_sql.py<br/>snowflake:// — a graph is a row")
+        SQL("storage_sql.py<br/>snowflake:// — a graph is a row<br/>+ KG_NODE / KG_EDGE views")
     end
 
     SERVE --> MCP
@@ -74,7 +74,13 @@ pipeline, and nothing is stored twice.
   Optimistic locking lands more cleanly here than on object storage: the
   condition goes inside the statement (`UPDATE ... WHERE version = ?`)
   and a conflict comes back as an affected-row count of zero rather than
-  an error to pattern-match.
+  an error to pattern-match. The document is JSON here rather than YAML —
+  see `storage.serialization` — because the projection views below need
+  SQL to be able to see inside it, and SQL has no YAML parser. This is
+  also the one module that knows about *projection*: views that expose the
+  stored document as ordinary node/edge/triple tables. That is a read-side
+  convenience, generated from the same model `to_networkx()` projects, and
+  it never changes what is stored.
 - **`semantics.py` — optional semantic layers.** OWL declarations +
   OWL-RL materialization (owlrl) and SHACL validation (pySHACL). The
   core must stay useful without these extras installed, so they are

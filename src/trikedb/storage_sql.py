@@ -163,6 +163,80 @@ SNOWFLAKE = _Dialect(
 DIALECTS = {"snowflake": SNOWFLAKE}
 
 
+# ------------------------------------------------------------------- projection
+
+#: Views that make the stored document queryable as ordinary tables.
+#:
+#: The graph is one JSON document in ``doc``; on its own that is a string SQL
+#: cannot see into, which would leave the graph readable only by trikedb.
+#: These views crack it open, so the same graph answers SPARQL from memory and
+#: SQL from the warehouse — and Cortex, dbt, BI and a SQL-speaking MCP all see
+#: plain tables with no extra copy to keep in step.
+#:
+#: Views rather than tables on purpose: nothing is stored twice, nothing can
+#: drift, and the cost is zero. Snowflake pushes ``AT(TIMESTAMP => ...)`` down
+#: to the base table, so a view reads the past as happily as the present. The
+#: trade is that a view cannot prune; materialize (``CLUSTER BY NODE_TYPE`` on
+#: nodes, ``EDGE_TYPE, SRC_ID, DST_ID`` on edges) if a graph ever grows big
+#: enough for that to matter.
+#:
+#: KG_NODE and KG_EDGE follow the node/edge column shape conventionally used
+#: for property graphs on Snowflake, so a semantic model or query written
+#: against that shape works here too. The SQL is generated from trikedb's own
+#: model; the projection is the one ``to_networkx()`` already performs, pointed
+#: at SQL instead of networkx. KG_PREDICATE has no counterpart there — a
+#: property graph's edge type is a bare label, while a predicate here is a
+#: first-class name that the ontology describes, and dropping it would change
+#: what the graph means.
+_SNOWFLAKE_VIEWS = {
+    "KG_NODE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       n.key AS NODE_ID,\n"
+        "       n.value:type::string  AS NODE_TYPE,\n"
+        "       n.value:label::string AS NAME,\n"
+        "       OBJECT_DELETE(n.value, 'type', 'label') AS PROPS,\n"
+        "       g.updated_at AS TS_UPDATED\n"
+        "FROM {table} g,\n"
+        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):nodes) n"
+    ),
+    "KG_EDGE": (
+        # A triple is unique on (s, p, o), so hashing those three gives a
+        # stable id without storing one — re-running the view never renames
+        # an edge that did not change.
+        "SELECT g.name AS GRAPH,\n"
+        "       MD5(t.value:s::string || '|' || t.value:p::string || '|' ||"
+        " t.value:o::string) AS EDGE_ID,\n"
+        "       t.value:s::string AS SRC_ID,\n"
+        "       t.value:o::string AS DST_ID,\n"
+        "       t.value:p::string AS EDGE_TYPE,\n"
+        "       OBJECT_DELETE(t.value, 's', 'p', 'o') AS PROPS,\n"
+        "       g.updated_at AS TS_UPDATED\n"
+        "FROM {table} g,\n"
+        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):triples) t"
+    ),
+    "KG_PREDICATE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       p.key AS PREDICATE,\n"
+        "       p.value::string AS DESCRIPTION\n"
+        "FROM {table} g,\n"
+        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):ontology:predicates) p"
+    ),
+    # The RDF view of the same rows, for anyone who thinks in triples.
+    "KG_TRIPLE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       t.value:s::string AS S,\n"
+        "       t.value:p::string AS P,\n"
+        "       t.value:o::string AS O,\n"
+        "       OBJECT_DELETE(t.value, 's', 'p', 'o') AS ATTRS\n"
+        "FROM {table} g,\n"
+        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):triples) t"
+    ),
+}
+
+#: dialect name -> {view name: SELECT body}
+VIEWS = {"snowflake": _SNOWFLAKE_VIEWS}
+
+
 # -------------------------------------------------------------------- url parsing
 
 #: The table name is interpolated into SQL — parameters cannot carry an
@@ -200,10 +274,24 @@ def _split(url: str):
     return dialect, ".".join(segments), name
 
 
-def ddl_for(url: str) -> str:
-    """The CREATE TABLE this URL's table needs, for review before running."""
+def ddl_for(url: str, views: bool = True) -> str:
+    """Every statement this URL's table needs, for review before running.
+
+    The table, then the projection views beside it. Views cost nothing to
+    keep and are what makes the graph readable from SQL at all, so they are
+    part of setting the table up rather than an extra step to remember.
+    """
     dialect, table, _ = _split(url)
-    return dialect.ddl.format(table=table)
+    statements = [dialect.ddl.format(table=table)]
+    if views:
+        schema = table.rsplit(".", 1)[0] if "." in table else ""
+        for name, body in VIEWS.get(dialect.name, {}).items():
+            qualified = f"{schema}.{name}" if schema else name
+            statements.append(
+                f"CREATE OR REPLACE VIEW {qualified} AS\n"
+                + body.format(table=table)
+            )
+    return ";\n\n".join(statements)
 
 
 def open_url(url: str) -> "SqlGraphStore":
@@ -372,5 +460,25 @@ class SqlGraphStore:
             )
         return bool(affected)
 
-    def create_table(self) -> None:
+    def create_table(self, views: bool = True) -> list:
+        """Create the table, and the projection views beside it.
+
+        One statement at a time: a warehouse driver runs one per call, and
+        naming the statement that failed beats reporting that "the setup"
+        did.
+        """
+        done = []
         self._run(self._dialect.ddl, (), want_rows=False)
+        done.append(self._table)
+        if not views:
+            return done
+        schema = self._table.rsplit(".", 1)[0] if "." in self._table else ""
+        for name, body in VIEWS.get(self._dialect.name, {}).items():
+            qualified = f"{schema}.{name}" if schema else name
+            self._run(
+                f"CREATE OR REPLACE VIEW {qualified} AS\n" + body,
+                (),
+                want_rows=False,
+            )
+            done.append(qualified)
+        return done

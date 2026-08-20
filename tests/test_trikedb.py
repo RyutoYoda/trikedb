@@ -1241,6 +1241,7 @@ class FakeWarehouse:
     def __init__(self):
         self.rows = {}        # graph name -> [doc, version]
         self.created = []     # tables sql-init made
+        self.views = []       # projection views sql-init made
         self.opens = 0
         self.fail_once_with = None
 
@@ -1269,6 +1270,9 @@ class FakeCursor:
         sql = " ".join(sql.split())
         if sql.startswith("CREATE TABLE"):
             self._wh.created.append(sql)
+            self.rowcount = 0
+        elif sql.startswith("CREATE OR REPLACE VIEW"):
+            self._wh.views.append(sql.split()[4])
             self.rowcount = 0
         elif sql.startswith("SELECT"):
             row = self._wh.rows.get(params[0])
@@ -1446,6 +1450,10 @@ def test_sql_init_creates_the_table(warehouse, capsys):
 
     assert main(["sql-init", URL]) == 0
     assert warehouse.created
+    assert warehouse.views == [
+        "MYDB.PUBLIC.KG_NODE", "MYDB.PUBLIC.KG_EDGE",
+        "MYDB.PUBLIC.KG_PREDICATE", "MYDB.PUBLIC.KG_TRIPLE",
+    ]
 
 
 def test_snowflake_missing_connector_error_keeps_the_real_cause(monkeypatch):
@@ -1532,3 +1540,71 @@ def test_html_refuses_to_overwrite_a_graph_row():
     db.add("a", "P", "b")
     with pytest.raises(ValueError, match="holds a graph, not a page"):
         db.to_html("snowflake://DB.PUBLIC.TRIKE_GRAPHS/sales/crm")
+
+
+def test_json_is_valid_yaml_so_the_loader_needs_no_change():
+    """The whole warehouse-JSON switch rests on this being true.
+
+    A warehouse row holds JSON so SQL can crack it open; the loader still
+    calls yaml.safe_load. If any document trikedb writes round-tripped
+    differently through the two parsers, graphs would quietly change meaning
+    on the way to the warehouse and back.
+    """
+    import json
+
+    db = TrikeDB(ontology={"P": "a predicate", "Q": ""})
+    db.add("a", "P", "b", schedule="hourly", deprecated=True, count=3)
+    db.add("x", "Q", "2025-04 API v3: units changed")       # free text, colon
+    db.add("日本語", "P", "値", note="改行なし")              # non-ascii
+    db.set_node("a", type="job", pii=False, level=2)
+    doc = {
+        "ontology": {"predicates": dict(db.ontology)},
+        "nodes": {k: dict(v) for k, v in db.nodes_meta.items()},
+        "triples": [t.to_dict() for t in db],
+    }
+    text = json.dumps(doc, ensure_ascii=False, indent=2)
+    assert yaml.safe_load(text) == json.loads(text) == doc
+
+
+def test_warehouse_graphs_are_written_as_json(warehouse):
+    """Files get YAML for humans; a warehouse row gets JSON for SQL."""
+    from trikedb import storage
+
+    assert storage.serialization("g.yaml") == "yaml"
+    assert storage.serialization("s3://b/g.yaml") == "yaml"
+    assert storage.serialization(URL) == "json"
+
+    db = TrikeDB(URL, autosave=False)
+    db.add("salesflow", "PROVIDES", "crm-sync-job", schedule="hourly")
+    db.set_node("crm-sync-job", type="job", owner="data-platform")
+    db.save()
+
+    import json
+
+    stored = warehouse.rows["sales/crm"][0]
+    doc = json.loads(stored)                       # really is JSON, not YAML
+    assert doc["triples"][0]["schedule"] == "hourly"
+    assert doc["nodes"]["crm-sync-job"]["owner"] == "data-platform"
+
+    # ...and it reads back through the unchanged loader
+    assert [(t.s, t.p, t.o) for t in TrikeDB(URL)] == [
+        ("salesflow", "PROVIDES", "crm-sync-job")
+    ]
+
+
+def test_sql_init_creates_the_projection_views(warehouse, capsys):
+    """The views are what make the graph readable from SQL at all, so they
+    are part of setting the table up rather than a step to remember."""
+    from trikedb.cli import main
+
+    assert main(["sql-init", URL, "--print"]) == 0
+    printed = capsys.readouterr().out
+    for view in ("KG_NODE", "KG_EDGE", "KG_PREDICATE", "KG_TRIPLE"):
+        assert f"CREATE OR REPLACE VIEW MYDB.PUBLIC.{view}" in printed
+    # KG_NODE / KG_EDGE carry the conventional property-graph column names
+    for column in ("NODE_ID", "NODE_TYPE", "PROPS", "SRC_ID", "DST_ID", "EDGE_TYPE"):
+        assert column in printed
+    assert "PARSE_JSON" in printed          # the doc is JSON now, so SQL can read it
+
+    assert main(["sql-init", URL, "--no-views"]) == 0
+    assert "CREATE OR REPLACE VIEW" not in capsys.readouterr().out

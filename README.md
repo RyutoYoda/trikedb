@@ -288,8 +288,7 @@ db = TrikeDB("snowflake://ANALYTICS.PUBLIC.TRIKE_GRAPHS/sales/crm")
 
 One graph is one row (`name`, `doc`, `version`, `updated_at`), and one
 table holds many graphs — adopting trikedb costs a company one table, not
-one per graph. There's no local copy and nothing to synchronise: the
-`doc` column holds the same YAML document, byte for byte, and the row
+one per graph. There's no local copy and nothing to synchronise: the row
 *is* the graph. Create the table first (trikedb won't run DDL in your
 warehouse on its own):
 
@@ -304,6 +303,28 @@ plus role/warehouse/database as needed), or name an entry in your
 `connections.toml` with `SNOWFLAKE_CONNECTION_NAME` and let your existing
 Snowflake tooling own it. Same as S3: trikedb stores no credentials, and
 your grants are the access control.
+
+**And the warehouse can read it back.** `sql-init` also creates four
+views, so the same graph answers SPARQL from memory *and* SQL from the
+warehouse — with no second copy to keep in step:
+
+```sql
+-- does the graph still match reality?
+SELECT k.NODE_ID
+FROM MYDB.PUBLIC.KG_NODE k
+LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
+WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- claimed, but gone
+```
+
+`KG_NODE` and `KG_EDGE` carry the node/edge column shape conventionally
+used for property graphs on Snowflake, so a Cortex Analyst semantic model
+or query written against that shape works here too; `KG_PREDICATE` exposes
+the ontology, and `KG_TRIPLE` the same rows as plain s/p/o. Node
+properties and edge attributes stay in VARIANT columns, so adding a
+predicate never needs a DDL change. They're views, not tables — nothing
+stored twice, nothing to drift, zero cost, and `AT(TIMESTAMP => …)` reads
+the past through them. (trikedb is not affiliated with or endorsed by
+Snowflake; the SQL is generated from trikedb's own model.)
 
 Concurrent writes are safe on both. A save is conditional on the stored
 graph still being the one it was read from, so a write that would clobber

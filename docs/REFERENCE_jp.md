@@ -458,11 +458,73 @@ fsspec経由で読み書きする(`[remote]` extra)。認証はAWS標準の認�
 開くときに文書全体を読み、保存で全体を書く。数MB程度までのグラフに向く
 （数十MB級には向かない）。
 
+ここでは `doc` にJSONが入る（ファイルの場合はYAML）。保存形式が変わるのは
+この1点だけで、その見返りが次節である。SQLにYAMLパーサは無いので、
+カラムにYAML文字列を入れると「trikedb以外の誰も読めないグラフ」になる。
+JSONはYAMLの部分集合なので、ローダーもその上の層も一切変わらない。
+
+### SQLからグラフを読む
+
+`sql-init` はテーブルの隣に4つのビューを作る。ウェアハウスを選ぶ価値は
+ここにある — **同じグラフが、メモリからSPARQLに答え、ウェアハウスからSQLに
+答える**。歩調を合わせるべき2つ目のコピーは存在しない。
+
+| ビュー | カラム |
+|---|---|
+| `KG_NODE` | `GRAPH`, `NODE_ID`, `NODE_TYPE`, `NAME`, `PROPS`, `TS_UPDATED` |
+| `KG_EDGE` | `GRAPH`, `EDGE_ID`, `SRC_ID`, `DST_ID`, `EDGE_TYPE`, `PROPS`, `TS_UPDATED` |
+| `KG_PREDICATE` | `GRAPH`, `PREDICATE`, `DESCRIPTION` |
+| `KG_TRIPLE` | `GRAPH`, `S`, `P`, `O`, `ATTRS` |
+
+`KG_NODE` と `KG_EDGE` は、Snowflake上でプロパティグラフに慣習的に使われる
+node/edge のカラム構成に合わせてある（[Snowflake-Labs の knowledge-graph
+参照実装][kg-ref]と同じ形）。そのため、その形に対して書かれた Cortex Analyst の
+セマンティックモデルやクエリパターンがそのまま通る。SQLはtrikedb自身のモデル
+から生成している。trikedbはSnowflakeと提携しておらず、その裏付けも受けていない。
+
+[kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
+
+この投影は `to_networkx()` が既に行っているもの（トリプル → ノード+エッジ）を、
+networkxではなくSQLに向けただけである。`KG_PREDICATE` にだけ対応物が無い —
+プロパティグラフのedge typeは単なるラベルだが、ここでの述語はオントロジーが
+説明する第一級の名前なので、落とすとグラフの意味が変わる。`KG_TRIPLE` は
+同じ行のRDF的な見え方で、トリプルで考える人向け。
+
+ノードプロパティは `PROPS`、エッジ属性はエッジ側の `PROPS` に入る。どちらも
+VARIANTなので、**述語や属性を増やしてもDDL変更は不要**。`type` と `label` は
+ワークベンチで既に意味を持つので `NODE_TYPE` / `NAME` に引き上げてある
+（`WHERE NODE_TYPE = 'table'` が自然に書けるように）。`EDGE_ID` は `s|p|o` の
+MD5 — トリプルはこの3つで一意なので、ビューを読み直しても変わっていない
+エッジの名前が変わることはない。
+
+この仕組み全体の目的はこれである。**グラフが現実と合っているかを問う**:
+
+```sql
+SELECT k.NODE_ID, t.TABLE_NAME
+FROM MYDB.PUBLIC.KG_NODE k
+LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
+WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- 主張されているが存在しない
+```
+
+テーブルではなくビューにしているのは意図的。二重に保存されず、ズレようがなく、
+コストがゼロ。Snowflakeは `AT(TIMESTAMP => ...)` を基底テーブルまで押し下げる
+ので、ビューは現在と同じ気軽さで過去を読む:
+
+```sql
+SELECT * FROM MYDB.PUBLIC.KG_TRIPLE AT(TIMESTAMP => '2026-08-20 01:21:03-07:00');
+```
+
+代償はビューでは pruning が効かないこと。Snowflake自身の推奨は「コストになり
+始めたらリレーショナル列にフラット化する」なので、実体化はそのとき行う
+（ノードは `CLUSTER BY (NODE_TYPE)`、エッジは `(EDGE_TYPE, SRC_ID, DST_ID)`）。
+それより前にやる必要はない。`--no-views` で作成を丸ごと省略できる。
+
 テーブルは事前に作る。trikedbが勝手にウェアハウスへDDLを打つことはない:
 
 ```bash
 trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # DDLを表示
 trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # 実行
+trikedb sql-init … --no-views                                    # テーブルのみ
 ```
 
 接続設定は環境変数から読む — `SNOWFLAKE_ACCOUNT`・`SNOWFLAKE_USER` と、

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ class OntologyError(ValueError):
 from .storage import exists as _exists
 from .storage import is_remote as _is_remote
 from .storage import read_text as _read_text
+from .storage import serialization as _serialization
 from .storage import version as _version_of
 from .storage import write_text as _write_text
 
@@ -179,13 +181,17 @@ class TrikeDB:
             )
 
     def save(self, path: Union[str, Path, None] = None):
-        """Write the graph back to YAML. Plain triples stay on one line.
+        """Write the graph back out. Plain triples stay on one line.
 
-        Works for local paths and remote URLs (s3://, ...) alike. On S3 the
-        write is conditional on the file still being the one this graph was
+        Works for local paths, remote URLs (s3://, ...) and warehouse rows
+        (snowflake://) alike. On S3 and in a warehouse the write is
+        conditional on the stored graph still being the one this copy was
         read from: if another writer got there first, nothing is written and
         ``ConcurrentWriteError`` is raised — call ``reload()`` and re-apply.
         Backends without conditional writes stay last-write-wins.
+
+        Files get YAML, because a person reads those. A warehouse row gets
+        JSON, so SQL can see inside it; see ``storage.serialization``.
         """
         self._guard_writable()
         if path is None:
@@ -200,13 +206,16 @@ class TrikeDB:
         if self.nodes_meta:
             doc["nodes"] = {k: dict(v) for k, v in self.nodes_meta.items()}
         doc["triples"] = [t.to_dict() for t in self._triples]
-        text = yaml.dump(
-            doc,
-            sort_keys=False,
-            allow_unicode=True,
-            default_flow_style=None,
-            width=120,
-        )
+        if _serialization(target) == "json":
+            text = json.dumps(doc, ensure_ascii=False, indent=2)
+        else:
+            text = yaml.dump(
+                doc,
+                sort_keys=False,
+                allow_unicode=True,
+                default_flow_style=None,
+                width=120,
+            )
         if target == self.path:
             # Same file we read: refuse to overwrite someone else's save.
             _write_text(target, text, expect=self._version)

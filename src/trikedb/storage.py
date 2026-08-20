@@ -40,6 +40,23 @@ def is_remote(path) -> bool:
     return isinstance(path, str) and path.startswith(REMOTE_PREFIXES)
 
 
+def serialization(path) -> str:
+    """"yaml" or "json" — how a graph should be written down for this target.
+
+    YAML everywhere a person might open the file, which is the whole point of
+    the format. JSON for a warehouse row, because SQL can crack JSON open
+    (`PARSE_JSON(doc):triples`) and there is no YAML parser in SQL to do the
+    same — a YAML string in a column is a graph nothing but trikedb can read.
+
+    Nothing is lost by the switch: JSON is a subset of YAML, so the loader
+    reads either without knowing which it got. The reader stays oblivious;
+    only the writer needs to ask.
+    """
+    from . import storage_sql
+
+    return "json" if storage_sql.is_sql_url(path) else "yaml"
+
+
 def _sql_store(path):
     """The SQL-table store for this URL, or None if it isn't one.
 

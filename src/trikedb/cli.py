@@ -184,6 +184,12 @@ def main(argv=None) -> int:
         "--print", dest="print_only", action="store_true",
         help="print the DDL instead of running it, to review or hand to a DBA",
     )
+    p_sql_init.add_argument(
+        "--no-views", action="store_true",
+        help="create only the table, without the KG_NODE / KG_EDGE / "
+             "KG_PREDICATE / KG_TRIPLE views that make the graph queryable "
+             "from SQL",
+    )
 
     args = parser.parse_args(argv)
     return _COMMANDS[args.command](args)
@@ -460,12 +466,13 @@ def _cmd_sql_init(args) -> int:
     """
     from . import storage_sql
 
-    ddl = storage_sql.ddl_for(args.url)
+    views = not args.no_views
     if args.print_only:
-        print(ddl + ";")
+        print(storage_sql.ddl_for(args.url, views=views) + ";")
         return 0
-    storage_sql.open_url(args.url).create_table()
-    print(f"table ready for {args.url}", file=sys.stderr)
+    created = storage_sql.open_url(args.url).create_table(views=views)
+    for name in created:
+        print(f"ready: {name}", file=sys.stderr)
     return 0
 
 
