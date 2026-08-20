@@ -2253,3 +2253,81 @@ def test_undefined_aggregates_are_not_compared_between_engines():
     sample = "SELECT (SAMPLE(?t) AS ?s) WHERE { ?j t:INGESTS_TO ?t }"
     assert db.sparql(sample)[0]["s"] in {"T1", "T2"}
     assert ref.sparql(sample)[0]["s"] in {"T1", "T2"}
+
+
+def test_add_does_not_scan_the_graph(tmp_path):
+    """add() is an upsert, so it has to look before appending.
+
+    Doing that with a scan made building a graph O(n^2) — 100k triples took
+    289 seconds and one add cost 2.9ms against 60us on a small graph. Loading
+    was never affected, so it only bit graphs being *built*, which is what an
+    agent does. This asserts the shape of the curve rather than a timing,
+    which would be flaky on a loaded machine.
+    """
+    import time
+
+    def build_ms(n):
+        db = TrikeDB(autosave=False)
+        start = time.perf_counter()
+        for i in range(n):
+            db.add(f"s{i}", "P", f"o{i}")
+        return (time.perf_counter() - start) * 1000
+
+    small, large = build_ms(2_000), build_ms(16_000)
+    per_add_ratio = (large / 16_000) / (small / 2_000)
+    # linear would be ~1x; the old scan was ~8x for this 8x size step
+    assert per_add_ratio < 3, (
+        f"cost per add grew {per_add_ratio:.1f}x for an 8x bigger graph — "
+        "add() is scanning again")
+
+
+def test_the_spo_index_never_answers_for_a_graph_that_moved(tmp_path):
+    """The index's failure mode is silent: add() decides a triple already
+    exists, updates an object no longer in the list, and drops the write.
+
+    reload() is the dangerous path because it replaces the list with one that
+    can coincidentally be the same length — which is exactly what happens
+    when recovering from a write conflict.
+    """
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=False).save()
+
+    db = TrikeDB(g, autosave=False)
+    db.add("a", "P", "b")
+    db.add("dropped", "P", "x")          # in this copy only
+    assert len(db) == 2
+
+    # someone else's graph, same length, different contents
+    other = TrikeDB(g, autosave=False)
+    other.add("a", "P", "b")
+    other.add("theirs", "P", "y")
+    other.save()
+
+    db.reload()
+    assert {t.s for t in db} == {"a", "theirs"}
+    db.add("dropped", "P", "x")          # must land: it is not in this graph
+    assert {t.s for t in db} == {"a", "theirs", "dropped"}
+
+    # remove() and SPARQL update replace the list too
+    db.remove(s="theirs")
+    db.add("theirs", "P", "y")
+    assert ("theirs", "P", "y") in db
+    db.update("DELETE WHERE { ?s t:P t:x }")
+    db.add("dropped", "P", "x")
+    assert ("dropped", "P", "x") in db
+
+    # upsert still merges attributes onto the existing triple
+    before = len(db)
+    db.add("a", "P", "b", note="merged")
+    assert len(db) == before
+    assert next(t for t in db if t.spo() == ("a", "P", "b")).attrs["note"] == "merged"
+
+    # a file with the same triple twice: first entry wins, as the scan did
+    dupes = tmp_path / "d.yaml"
+    dupes.write_text(
+        "triples:\n- {s: a, p: P, o: b, tag: first}\n- {s: a, p: P, o: b, tag: second}\n",
+        encoding="utf-8")
+    d = TrikeDB(dupes, autosave=False)
+    d.add("a", "P", "b", extra=1)
+    assert d._triples[0].attrs == {"tag": "first", "extra": 1}
+    assert d._triples[1].attrs == {"tag": "second"}

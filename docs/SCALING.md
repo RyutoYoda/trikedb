@@ -1,5 +1,9 @@
 # Scaling: where does one document stop being comfortable?
 
+Per-feature ceilings, and how many triples fit before git objects, live in
+[benchmarks/README.md](../benchmarks/README.md#where-is-the-ceiling) with a
+plot. This page covers the backends.
+
 Measured with `benchmarks/backend_bench.py` (synthetic pipeline-shaped
 graphs — vendors → jobs → tables, a third of the edges carrying note/prov
 attributes) on an Apple-silicon laptop, trikedb 0.26.0. Medians of three.

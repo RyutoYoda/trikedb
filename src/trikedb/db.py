@@ -164,6 +164,9 @@ class TrikeDB:
         #: (base, engine) -> a built query graph. sparql() used to rebuild one
         #: per call, which was two thirds of its cost; see _query_graph.
         self._rdf_cache: Optional[tuple] = None
+        #: (s, p, o) -> Triple, so add() does not scan; see _spo_index
+        self._index: Optional[dict] = None
+        self._index_len = -1
         #: which engine answers read queries: "oxigraph" when the extra is
         #: installed, else "rdflib". Pass sparql_engine="rdflib" to pin it —
         #: worth doing if you ever need to compare the two on a real query,
@@ -194,6 +197,10 @@ class TrikeDB:
         self.read_only = self._read_only_requested   # a reload must not grant writes
         self._version = None
         self._rdf_cache = None
+        # Not just for tidiness: the length check in _spo_index cannot see a
+        # replacement that happens to be the same length, and a stale entry
+        # would make add() think a triple is already there and drop it.
+        self._index = None
         if self.path is not None and _exists(self.path, self._connection):
             self._load()
         return self
@@ -230,6 +237,7 @@ class TrikeDB:
         for item in data.get("triples") or []:
             self._triples.append(Triple.from_dict(item))
         self._rdf_cache = None
+        self._index = None
 
     def _load_workspace(self, graphs: dict) -> None:
         """Union view over member graphs. The union is read-only — write to a
@@ -266,6 +274,7 @@ class TrikeDB:
                     merged.setdefault(k, v)
             for t in sub:
                 self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}))
+        self._index = None
 
     def _guard_writable(self) -> None:
         # Every method that can change the graph calls this first, which makes
@@ -356,13 +365,17 @@ class TrikeDB:
                 f"predicate {p!r} is not in the ontology "
                 f"(allowed: {sorted(self.ontology)})"
             )
-        for t in self._triples:
-            if t.spo() == (s, p, o):
-                t.attrs.update(attrs)
-                self._autosave()
-                return t
-        triple = Triple(str(s), str(p), str(o), dict(attrs))
+        key = (str(s), str(p), str(o))
+        index = self._spo_index()
+        existing = index.get(key)
+        if existing is not None:
+            existing.attrs.update(attrs)
+            self._autosave()
+            return existing
+        triple = Triple(*key, dict(attrs))
         self._triples.append(triple)
+        index.setdefault(key, triple)
+        self._index_len = len(self._triples)
         self._autosave()
         return triple
 
@@ -377,9 +390,33 @@ class TrikeDB:
         keep = [t for t in self._triples if not self._matches(t, s, p, o)]
         removed = len(self._triples) - len(keep)
         self._triples = keep
+        self._index = None
         if removed:
             self._autosave()
         return removed
+
+    def _spo_index(self) -> dict:
+        """(s, p, o) -> Triple, built on demand and reused.
+
+        ``add`` is an upsert, so it has to find an existing triple before
+        appending. Doing that with a scan made *building* a graph O(n^2):
+        100k triples took 289 seconds, and the cost of one add grew in
+        proportion to the graph — 60us at 2k, 2.9ms at 100k. Loading was
+        never affected (it appends without checking), so this only ever bit
+        graphs being built or imported, which is exactly what an agent does.
+
+        First entry wins, matching what the scan did when a hand-edited file
+        contains the same triple twice. Rebuilt whenever the list length no
+        longer matches what was indexed, which is how the index survives
+        ``_triples`` being replaced or edited from outside.
+        """
+        if self._index is None or self._index_len != len(self._triples):
+            index: dict = {}
+            for triple in self._triples:
+                index.setdefault(triple.spo(), triple)
+            self._index = index
+            self._index_len = len(self._triples)
+        return self._index
 
     def _autosave(self) -> None:
         if self.autosave and self.path:
@@ -767,6 +804,7 @@ class TrikeDB:
             old = old_by_spo.get((s, p, o))
             kept.append(Triple(s, p, o, old.attrs if old else {}))
         self._triples = kept
+        self._index = None
         if len(self._triples) != before or new_spos - existing:
             self._autosave()
         return len(self._triples) - before
