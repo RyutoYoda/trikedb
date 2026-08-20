@@ -43,9 +43,9 @@ but the file-shaped costs show:
 2. **One file, query access** (~1k–10k): agents use `trikedb query /
    sparql / search` or the stdio MCP server. Same file, no migration.
 3. **Served graph** (10k+, or many consumers): `trikedb serve` on the
-   file (local or `s3://`) — load is paid once, everyone queries over
-   REST/MCP. Still the same YAML underneath; still diffable, still
-   one file.
+   file (local, `s3://`, or a `snowflake://` row) — load is paid once,
+   everyone queries over REST/MCP. Still the same YAML underneath;
+   still diffable, still one document.
 
 The point of the design is that moving up a rung changes *how you
 read*, never *what you store* — there is no migration, only a different
