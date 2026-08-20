@@ -203,6 +203,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート(RDF/SPARQLビュー) |
 | `to_networkx(multigraph=True)` | プロパティグラフ投影(`[networkx]` extra): ノードのプロパティ＋エッジのlabel/属性を保持。同じファイルでnetworkxのアルゴリズム(最短経路・中心性)が使える |
 | `TrikeDB(path, read_only=True)` | 読み取り専用で開く。全ての変更が例外になる。`reload()` 後も維持される |
+| `TrikeDB(path, sparql_engine="rdflib")` | SPARQLエンジンを固定する。既定は `[oxigraph]` が入っていれば oxigraph |
 | `TrikeDB(url, connection=conn)` | 接続を作る代わりに、既存のウェアハウス接続かSnowparkセッションで実行する |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状態属性 |
@@ -638,6 +639,59 @@ db.add("x", "P", "y")                                             # ValueError
 バックエンドの追加は `storage.py` / `storage_sql.py` だけで完結する。
 ウェアハウス1つは `_Dialect` — SQLテンプレート4本とconnect関数だけ。
 
+## 速度
+
+グラフはメモリに載るので、時間を食うのは**開くこと**と**引くこと**の2つ。
+どちらも調整でき、グラフの書き方は変えなくてよい。
+
+40,800トリプルで `benchmarks/backend_bench.py` により実測、3回の中央値、
+Apple silicon:
+
+| バックエンド | 開く | 1ホップ | 2ホップ結合 | 1事実の書き込み |
+|---|---|---|---|---|
+| ローカル `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |
+| ローカル `.json` | **57 ms** | 0.04 ms | 55 ms | **148 ms** |
+| `snowflake://` の行 | 507 ms | 0.04 ms | 56 ms | 2,889 ms |
+
+ここから3つ分かる。**クエリはグラフの置き場所を気にしない** — 3つとも同一で、
+メモリ上で走るため。**形式の方が媒体より効く**: 同じグラフが `.json` なら
+`.yaml` の17倍速く開き、ウェアハウスの行はネットワークを越えるのにローカルの
+YAMLより速い（文書が既にJSONだから）。**ウェアハウスへの書き込みが高い操作** —
+読んで書き直して条件付き更新なので、ループに入れず `autosave=False` で
+まとめること。
+
+エンジン側は、構築済みの同じグラフで:
+
+| | 1ホップ | 2ホップ結合 | 全件カウント |
+|---|---|---|---|
+| rdflib | 0.90 ms | 342 ms | 432 ms |
+| oxigraph（既定） | **0.04 ms** | **52 ms** | **11 ms** |
+
+つまみは1つと、既に有効なものが1つ。どちらも保存されるものは変えない。
+
+**YAMLではなくJSONで保存する** — レビューされる回数より読まれる回数が
+ずっと多いグラフ向け。ファイル名を `graph.json` にするか、ウェアハウスの行に
+置く（そちらは既にJSON）。API・SPARQLは同じで、開くのが約30倍速い。代償は
+YAMLを選んだ理由そのもの — JSONのdiffを読みたい人はいない。
+
+**速いSPARQLエンジンは既に入っている。** 読み取りクエリは
+[Oxigraph](https://github.com/oxigraph/oxigraph)（実インデックスを持つRust実装）
+で走る。`pyoxigraph` はコア依存 — 測ったすべてのグラフサイズで、数百トリプルでも
+速かったため。どちらもSPARQL 1.1で、**両者が同一の答えを返すことをテストで固定**して
+いる — 一番危ういのは型付きリテラルで、`?x t:pii true` は文字列 `"true"` ではなく
+boolean に一致しなければならない。`TrikeDB(..., sparql_engine="rdflib")` で旧エンジンに固定できる —
+実際のクエリで2つを比べたいときに使う。pyoxigraph が無い環境
+（ファイルを部分的にvendorした場合、まだホイールが出ていないインタプリタ）では、
+失敗せず自動で rdflib に落ちる。
+
+更新（`INSERT`/`DELETE`）・OWL推論・SHACLは常に rdflib を使う。データを変える
+経路と、グラフを `owlrl`/`pyshacl` に渡す経路であり、2つ目の実装を挟む利点が
+ないため。
+
+**調整できないのは形の方**。開くときに文書全体を読み、保存で全体を書き直す。
+これはdiffでレビューできるグラフの代金であり、実用上の天井が数GBではなく
+数MBである理由でもある。
+
 ## 検証と推論
 
 - **SHACL**(`[shacl]`): 本物の形状制約(カーディナリティ・値域)を
@@ -731,7 +785,7 @@ flowchart LR
 
 | Extra | 追加されるもの | 依存 |
 |---|---|---|
-| *(コア)* | 上記すべて(↓以外) | PyYAML, rdflib |
+| *(コア)* | 上記すべて(↓以外) | PyYAML, rdflib, pyoxigraph |
 | `[mcp]` | `trikedb mcp`(stdio) | mcp (1.x) |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
@@ -741,3 +795,4 @@ flowchart LR
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |
 | `[networkx]` | `to_networkx`(プロパティグラフ投影) | networkx |
+| `[oxigraph]` | 何も追加しない（pyoxigraphはコア依存） | pyoxigraph |

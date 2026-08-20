@@ -1942,3 +1942,314 @@ def test_a_union_of_warehouse_members_inherits_the_connection(warehouse):
     assert props["type"] == "skill" and props["description"] == "only in two"
     with pytest.raises(ValueError):
         db.add("x", "P", "y")
+
+
+def test_json_documents_load_through_the_fast_parser(tmp_path):
+    """A warehouse row holds JSON; reading it with a YAML parser was ~400x slower.
+
+    Correct, which is why it went unnoticed for two releases. Both parsers
+    agree on JSON — it is a subset of YAML — so this is purely about which
+    one runs.
+    """
+    import json
+
+    from trikedb import db as db_module
+
+    doc = {
+        "ontology": {"predicates": {"P": "a -> b"}},
+        "nodes": {"n": {"type": "job", "pii": False, "label": "日本語"}},
+        "triples": [{"s": "a", "p": "P", "o": "b", "note": "x"},
+                    {"s": "c", "p": "P", "o": "2025-04 v3: units changed"}],
+    }
+    as_json = json.dumps(doc, ensure_ascii=False, indent=2)
+    as_yaml = yaml.dump(doc, sort_keys=False, allow_unicode=True,
+                        default_flow_style=None, width=120)
+
+    # the two forms must parse to exactly the same graph
+    assert db_module._parse_document(as_json) == db_module._parse_document(as_yaml) == doc
+    assert db_module._parse_document("") == {}
+    assert db_module._parse_document("   \n") == {}
+
+    # a flow-style YAML document starts with '{' but is not JSON — the
+    # fallback has to catch it rather than raising
+    assert db_module._parse_document("{triples: [{s: a, p: P, o: b}]}") == {
+        "triples": [{"s": "a", "p": "P", "o": "b"}]}
+
+    # end to end, both on disk
+    for name, text in (("g.yaml", as_yaml), ("g.json", as_json)):
+        p = tmp_path / name
+        p.write_text(text, encoding="utf-8")
+        loaded = TrikeDB(p)
+        assert len(loaded) == 2
+        assert loaded.node("n")["label"] == "日本語"
+        assert loaded.ontology == {"P": "a -> b"}
+
+
+def test_a_json_path_round_trips_as_json(tmp_path):
+    """`.json` is the escape hatch for a graph read far more than reviewed."""
+    from trikedb import storage
+
+    assert storage.serialization("g.yaml") == "yaml"
+    assert storage.serialization("g.json") == "json"
+    assert storage.serialization(tmp_path / "G.JSON") == "json"
+
+    p = tmp_path / "g.json"
+    db = TrikeDB(p)
+    db.add("a", "P", "b", note="x")
+    db.set_node("a", type="job")
+
+    import json
+
+    written = json.loads(p.read_text(encoding="utf-8"))   # really JSON, not YAML
+    assert written["triples"][0]["note"] == "x"
+    assert [t.s for t in TrikeDB(p)] == ["a"]             # and reads back
+
+
+def test_the_query_graph_is_reused_but_never_stale(tmp_path):
+    """Rebuilding per call was two thirds of a query's cost.
+
+    The danger of caching it is the opposite failure — answering from a graph
+    that no longer matches the store — so every mutation path has to drop it.
+    """
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.add("a", "P", "b")
+    Q = "SELECT ?o WHERE { t:a t:P ?o }"
+
+    assert db.sparql(Q) == [{"o": "b"}]
+    first = db._rdf_cache[1]
+    assert db.sparql(Q) == [{"o": "b"}]
+    assert db._rdf_cache[1] is first          # reused, not rebuilt
+
+    for mutate, expected in (
+        (lambda: db.add("a", "P", "c"), {"b", "c"}),
+        (lambda: db.remove(o="c"), {"b"}),
+        (lambda: db.set_node("a", type="job"), {"b"}),
+        (lambda: db.update("INSERT DATA { t:a t:P t:d }"), {"b", "d"}),
+        (lambda: db.save(), {"b", "d"}),
+    ):
+        mutate()
+        assert db._rdf_cache is None, "a mutation left the built graph in place"
+        assert {r["o"] for r in db.sparql(Q)} == expected
+
+    # a different base must not be served from the cache either: the URIs in
+    # the built graph depend on it, so a hit here would answer with the
+    # wrong vocabulary
+    assert {r["o"] for r in db.sparql(Q)} == {"b", "d"}
+    assert db._rdf_cache[0][0] == "urn:trikedb:"
+    # t: binds to whichever base was passed, so the answer is the same — but
+    # the graph behind it is a different one and must not be a cache hit
+    assert {r["o"] for r in db.sparql(Q, base="urn:other:")} == {"b", "d"}
+    assert db._rdf_cache[0][0] == "urn:other:"   # rebuilt for the new base
+
+
+# ------------------------------------------------- two SPARQL engines, one graph
+
+def _engines():
+    """rdflib always; oxigraph when the extra is installed."""
+    from trikedb.db import _oxigraph_available
+
+    return ["rdflib"] + (["oxigraph"] if _oxigraph_available() else [])
+
+
+@pytest.fixture(params=_engines())
+def engine(request):
+    return request.param
+
+
+def test_both_engines_answer_identically(engine, tmp_path):
+    """Two SPARQL implementations over one graph must not disagree.
+
+    This is the failure that would be hardest to catch, because either answer
+    looks plausible on its own. Typed literals are the sharp edge: `t:pii true`
+    matches a boolean, and an engine that stored it as a plain string returns
+    nothing at all — a silent empty result, not an error.
+    """
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False, sparql_engine=engine,
+                 ontology={"PROVIDES": "", "INGESTS_TO": "", "AFFECTED_BY": ""})
+    db.add("salesflow", "PROVIDES", "crm-sync-job")
+    db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM", schedule="hourly", prov="doc.md")
+    db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
+    db.set_node("RAW_CRM", type="table", pii=True, rows=1000, ratio=2.5,
+                label="生CRM")
+    db.set_node("crm-sync-job", type="job", pii=False)
+    assert db.sparql_engine == engine
+
+    # plain traversal and a two-hop join
+    assert db.sparql("SELECT ?o WHERE { t:salesflow t:PROVIDES ?o }") == [
+        {"o": "crm-sync-job"}]
+    assert db.sparql(
+        "SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }") == [
+        {"v": "salesflow", "t": "RAW_CRM"}]
+
+    # ASK
+    assert db.sparql("ASK { ?x t:PROVIDES ?y }") is True
+    assert db.sparql("ASK { ?x t:NOPE ?y }") is False
+
+    # typed literals — the sharp edge
+    assert db.sparql('SELECT ?x WHERE { ?x t:type "table" }') == [{"x": "RAW_CRM"}]
+    assert db.sparql("SELECT ?x WHERE { ?x t:pii true }") == [{"x": "RAW_CRM"}]
+    assert db.sparql("SELECT ?x WHERE { ?x t:pii false }") == [{"x": "crm-sync-job"}]
+    assert db.sparql("SELECT ?x WHERE { ?x t:rows 1000 }") == [{"x": "RAW_CRM"}]
+    # a float property is xsd:double, while a bare 2.5 in SPARQL is
+    # xsd:decimal — so it does not match, in either engine. Bind it or type it.
+    assert db.sparql("SELECT ?x WHERE { ?x t:ratio 2.5 }") == []
+    assert db.sparql(
+        'SELECT ?x WHERE { ?x t:ratio "2.5"^^'
+        "<http://www.w3.org/2001/XMLSchema#double> }") == [{"x": "RAW_CRM"}]
+    assert db.sparql("SELECT ?r WHERE { t:RAW_CRM t:ratio ?r }") == [{"r": "2.5"}]
+
+    # a free-text object is a literal, not a node
+    assert db.sparql("SELECT ?e WHERE { t:T t:AFFECTED_BY ?e }") == [
+        {"e": "2025-04 API v3: units changed"}]
+
+    # non-ascii names survive percent-encoding in both
+    assert db.sparql('SELECT ?x WHERE { ?x t:label "生CRM" }') == [{"x": "RAW_CRM"}]
+
+    # edge attributes via RDF reification
+    assert db.sparql(
+        "SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ;"
+        ' t:schedule "hourly" }') == [{"s": "crm-sync-job", "o": "RAW_CRM"}]
+
+    # FILTER, and a property path
+    assert db.sparql(
+        "SELECT ?t WHERE { ?j t:INGESTS_TO ?t ."
+        ' FILTER(STRSTARTS(STR(?t), "urn:trikedb:RAW")) }') == [{"t": "RAW_CRM"}]
+    assert db.sparql(
+        "SELECT ?t WHERE { t:salesflow t:PROVIDES/t:INGESTS_TO ?t }") == [
+        {"t": "RAW_CRM"}]
+
+    # OPTIONAL leaves the variable unbound rather than emitting an empty string
+    rows = db.sparql(
+        "SELECT ?j ?missing WHERE { ?v t:PROVIDES ?j ."
+        " OPTIONAL { ?j t:NOPE ?missing } }")
+    assert rows == [{"j": "crm-sync-job"}]
+
+
+def test_updates_and_reasoning_always_use_rdflib(tmp_path):
+    """Writes, OWL and SHACL stay on one engine on purpose.
+
+    update() diffs a built graph back onto the store, and owlrl/pyshacl take
+    rdflib graphs. Routing those through a second implementation would buy
+    nothing and risk the paths that change data.
+    """
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.add("a", "P", "b")
+    before = db.sparql_engine
+
+    assert db.sparql("INSERT DATA { t:c t:P t:d }") == 1
+    assert ("c", "P", "d") in db
+    assert db.sparql("DELETE WHERE { ?s t:P t:d }") == -1
+    assert db.sparql_engine == before          # unchanged by the write path
+
+
+def test_engine_can_be_pinned(tmp_path):
+    """Comparing the two on a real query has to be possible."""
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False, sparql_engine="rdflib")
+    db.add("a", "P", "b")
+    assert db.sparql_engine == "rdflib"
+    assert db.sparql("SELECT ?o WHERE { t:a t:P ?o }") == [{"o": "b"}]
+
+
+#: SPARQL 1.1 surface both engines must answer identically. Compiled from a
+#: run-off between rdflib and oxigraph: 25 of 26 forms agreed exactly, and the
+#: one that did not turned out to be a form SPARQL leaves undefined rather
+#: than a disagreement about the graph (see the test below).
+_AGREEMENT_QUERIES = {
+    "count": "SELECT (COUNT(?j) AS ?n) WHERE { ?v t:PROVIDES ?j }",
+    "group by": "SELECT ?v (COUNT(?j) AS ?n) WHERE { ?v t:PROVIDES ?j }"
+                " GROUP BY ?v ORDER BY ?v",
+    "having": "SELECT ?v (COUNT(?j) AS ?n) WHERE { ?v t:PROVIDES ?j }"
+              " GROUP BY ?v HAVING (COUNT(?j) > 1)",
+    "aggregates": "SELECT (SUM(?r) AS ?s) (AVG(?r) AS ?a) (MIN(?r) AS ?mn)"
+                  " (MAX(?r) AS ?mx) WHERE { ?t t:rows ?r }",
+    "distinct": "SELECT DISTINCT ?t WHERE { ?j t:INGESTS_TO ?t } ORDER BY ?t",
+    "order+limit": "SELECT ?j WHERE { ?v t:PROVIDES ?j } ORDER BY DESC(?j) LIMIT 2",
+    "offset": "SELECT ?j WHERE { ?v t:PROVIDES ?j } ORDER BY ?j OFFSET 1 LIMIT 1",
+    "bind": "SELECT ?j ?up WHERE { ?v t:PROVIDES ?j ."
+            " BIND(UCASE(STR(?j)) AS ?up) } ORDER BY ?j",
+    "values": "SELECT ?t WHERE { VALUES ?t { t:T1 t:T2 } ?t t:type ?x } ORDER BY ?t",
+    "union": 'SELECT ?x WHERE { { ?x t:type "table" } UNION'
+             ' { ?x t:type "saas" } } ORDER BY ?x',
+    "minus": 'SELECT ?t WHERE { ?t t:type "table" MINUS { ?t t:pii true } }',
+    "not exists": 'SELECT ?t WHERE { ?t t:type "table"'
+                  " FILTER NOT EXISTS { ?t t:pii true } }",
+    "subquery": "SELECT ?v WHERE { { SELECT ?v (COUNT(?j) AS ?n) WHERE"
+                " { ?v t:PROVIDES ?j } GROUP BY ?v } FILTER(?n > 1) }",
+    "regex": 'SELECT ?e WHERE { ?t t:AFFECTED_BY ?e FILTER(REGEX(?e, "^2025-04")) }',
+    "string functions": 'SELECT ?e WHERE { ?t t:AFFECTED_BY ?e'
+                        ' FILTER(CONTAINS(?e, "units") && STRLEN(?e) > 5) }',
+    "numeric filter": "SELECT ?t WHERE { ?t t:rows ?r FILTER(?r > 10) }",
+    "arithmetic": "SELECT (?r * 2 AS ?d) WHERE { t:T1 t:rows ?r }",
+    "lang": 'SELECT ?l WHERE { t:v1 t:label ?l FILTER(LANG(?l) = "") }',
+    "coalesce": 'SELECT (COALESCE(?missing, "none") AS ?c) WHERE { t:T1 t:rows ?r }',
+    "if": 'SELECT (IF(?p, "yes", "no") AS ?flag) WHERE { t:T1 t:pii ?p }',
+    "path star": "SELECT ?t WHERE { t:v1 t:PROVIDES/t:INGESTS_TO* ?t } ORDER BY ?t",
+    "path alternative": "SELECT ?o WHERE { t:j1 (t:INGESTS_TO|t:COSTS) ?o } ORDER BY ?o",
+    "optional": "SELECT ?j ?s WHERE { ?j t:INGESTS_TO ?t"
+                " OPTIONAL { ?st rdf:subject ?j ; t:schedule ?s } } ORDER BY ?j",
+    "ask false": "ASK { ?x t:NOPE ?y }",
+    "ask true": "ASK { ?x t:PROVIDES ?y }",
+}
+
+
+def _agreement_graph(engine):
+    db = TrikeDB(autosave=False, sparql_engine=engine,
+                 ontology={"PROVIDES": "", "INGESTS_TO": "", "COSTS": "",
+                           "AFFECTED_BY": ""})
+    db.add("v1", "PROVIDES", "j1")
+    db.add("v1", "PROVIDES", "j2")
+    db.add("v2", "PROVIDES", "j3")
+    db.add("j1", "INGESTS_TO", "T1", schedule="hourly")
+    db.add("j2", "INGESTS_TO", "T1")
+    db.add("j3", "INGESTS_TO", "T2")
+    db.add("j1", "COSTS", "100")
+    db.add("T1", "AFFECTED_BY", "2025-04 API v3: units changed")
+    db.set_node("T1", type="table", pii=True, rows=42)
+    db.set_node("T2", type="table", pii=False, rows=7)
+    db.set_node("v1", type="saas", label="ベンダー1")
+    return db
+
+
+@pytest.mark.parametrize("name", sorted(_AGREEMENT_QUERIES))
+def test_engines_agree_across_the_sparql_surface(name):
+    """The engines must not disagree about the same graph.
+
+    Basic traversal agreeing is not enough to make one of them the default:
+    aggregates, subqueries, property paths and the string functions are where
+    two implementations drift, and a drift here would look like a plausible
+    answer rather than an error.
+    """
+    from trikedb.db import _oxigraph_available
+
+    if not _oxigraph_available():
+        pytest.skip("pyoxigraph not installed")
+
+    query = _AGREEMENT_QUERIES[name]
+    assert (_agreement_graph("rdflib").sparql(query)
+            == _agreement_graph("oxigraph").sparql(query))
+
+
+def test_undefined_aggregates_are_not_compared_between_engines():
+    """GROUP_CONCAT ordering and SAMPLE's choice are undefined in SPARQL.
+
+    The engines do differ here, and neither is wrong: GROUP_CONCAT without an
+    ORDER BY has no defined order, and SAMPLE is specified as "some value".
+    Pinning either answer would be pinning an accident — so this documents the
+    boundary instead, which is also the one thing to know before switching a
+    graph from one engine to the other.
+    """
+    from trikedb.db import _oxigraph_available
+
+    if not _oxigraph_available():
+        pytest.skip("pyoxigraph not installed")
+
+    db = _agreement_graph("oxigraph")
+    ref = _agreement_graph("rdflib")
+
+    concat = "SELECT (GROUP_CONCAT(?l; SEPARATOR=\",\") AS ?g) WHERE { ?t t:label ?l }"
+    both = {db.sparql(concat)[0]["g"], ref.sparql(concat)[0]["g"]}
+    assert all(set(v.split(",")) == {"ベンダー1"} for v in both)   # same members
+
+    sample = "SELECT (SAMPLE(?t) AS ?s) WHERE { ?j t:INGESTS_TO ?t }"
+    assert db.sparql(sample)[0]["s"] in {"T1", "T2"}
+    assert ref.sparql(sample)[0]["s"] in {"T1", "T2"}

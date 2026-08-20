@@ -51,6 +51,57 @@ class Triple:
         return cls(s, p, o, d)
 
 
+#: libyaml if PyYAML was built with it, which is the usual case. Four to five
+#: times faster than the pure-Python parser on the same bytes, and — verified
+#: byte-for-byte on graphs up to a megabyte — the dumper emits exactly the
+#: same text, so switching cannot churn anyone's diffs.
+try:
+    _YamlLoader = yaml.CSafeLoader
+    _YamlDumper = yaml.CSafeDumper
+except AttributeError:  # pragma: no cover - PyYAML built without libyaml
+    _YamlLoader = yaml.SafeLoader
+    _YamlDumper = yaml.SafeDumper
+
+
+def _oxigraph_available() -> bool:
+    """Is the faster SPARQL engine installed?
+
+    Opt-in by installation: ``pip install 'trikedb[oxigraph]'`` (or
+    ``[all]``). Not a *core* dependency: pyoxigraph publishes per-Python
+    wheels, so requiring it would make installing trikedb at all fail on the
+    first interpreter it has not built for. Absent, reads fall back to rdflib.
+    """
+    try:
+        import pyoxigraph  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _parse_document(text: str) -> dict:
+    """Parse a stored graph, whichever of the two forms it is in.
+
+    JSON first, because a warehouse row holds JSON and ``json.loads`` reads
+    it about 400x faster than a YAML parser does — 12ms against 5s on 50k
+    triples. Feeding JSON to the YAML parser is *correct*, which is why it
+    went unnoticed; it is just enormously slower.
+
+    The fallback is free: JSON parsing of a YAML document fails on the first
+    key, in 8 microseconds. So the order costs nothing for files and saves
+    almost everything for rows. Both parsers agree on any JSON document —
+    JSON is a subset of YAML — so which one ran is not observable.
+    """
+    if not text or not text.strip():
+        return {}
+    stripped = text.lstrip()
+    if stripped[0] in "{[":
+        try:
+            return json.loads(text)
+        except ValueError:
+            pass                      # a YAML flow-style document, then
+    return yaml.load(text, Loader=_YamlLoader) or {}
+
+
 def _term_match(pattern: Optional[str], value: str) -> bool:
     """None is a wildcard; '*'/'?' in a pattern enables glob matching."""
     if pattern is None:
@@ -77,6 +128,7 @@ class TrikeDB:
         autosave: bool = True,
         read_only: bool = False,
         connection=None,
+        sparql_engine: Optional[str] = None,
     ):
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
@@ -109,6 +161,16 @@ class TrikeDB:
         self._triples: list = []
         #: storage token the in-memory graph was built from; see storage.version
         self._version = None
+        #: (base, engine) -> a built query graph. sparql() used to rebuild one
+        #: per call, which was two thirds of its cost; see _query_graph.
+        self._rdf_cache: Optional[tuple] = None
+        #: which engine answers read queries: "oxigraph" when the extra is
+        #: installed, else "rdflib". Pass sparql_engine="rdflib" to pin it —
+        #: worth doing if you ever need to compare the two on a real query,
+        #: since they are separate SPARQL 1.1 implementations. Updates, OWL
+        #: inference and SHACL always go through rdflib.
+        self.sparql_engine = sparql_engine or (
+            "oxigraph" if _oxigraph_available() else "rdflib")
         if ontology is not None:
             if isinstance(ontology, dict):
                 self.ontology = {str(k): str(v or "") for k, v in ontology.items()}
@@ -131,6 +193,7 @@ class TrikeDB:
         self.workspace = None
         self.read_only = self._read_only_requested   # a reload must not grant writes
         self._version = None
+        self._rdf_cache = None
         if self.path is not None and _exists(self.path, self._connection):
             self._load()
         return self
@@ -139,7 +202,7 @@ class TrikeDB:
         # Version first, content second — the other order can hand us a token
         # that belongs to bytes we never saw. See storage.version.
         self._version = _version_of(self.path, self._connection)
-        data = yaml.safe_load(_read_text(self.path, connection=self._connection)) or {}
+        data = _parse_document(_read_text(self.path, connection=self._connection))
         if not isinstance(data, dict):
             # Valid YAML that isn't a mapping — a bare string or list. Reaching
             # .get() on it blames whichever key we happened to ask for first,
@@ -166,6 +229,7 @@ class TrikeDB:
             self.nodes_meta[str(name)] = dict(props or {})
         for item in data.get("triples") or []:
             self._triples.append(Triple.from_dict(item))
+        self._rdf_cache = None
 
     def _load_workspace(self, graphs: dict) -> None:
         """Union view over member graphs. The union is read-only — write to a
@@ -204,6 +268,13 @@ class TrikeDB:
                 self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}))
 
     def _guard_writable(self) -> None:
+        # Every method that can change the graph calls this first, which makes
+        # it the one place a cache of the built RDF graph can be dropped
+        # without hunting for mutation sites. Over-invalidating (save() also
+        # passes through here) costs a rebuild; under-invalidating would
+        # answer queries from a graph that no longer exists, so the
+        # conservative side is the only safe one.
+        self._rdf_cache = None
         if not self.read_only:
             return
         if self.workspace is not None:
@@ -251,6 +322,7 @@ class TrikeDB:
         else:
             text = yaml.dump(
                 doc,
+                Dumper=_YamlDumper,
                 sort_keys=False,
                 allow_unicode=True,
                 default_flow_style=None,
@@ -500,26 +572,109 @@ class TrikeDB:
 
         g = Graph()
         g.bind("t", base)
+        for s, p, o, is_literal in self._statements(base, node_props, edge_attrs):
+            g.add((node(s), node(p), Literal(o) if is_literal else node(o)))
+        return g
+
+    def _statements(self, base: str, node_props: bool = True,
+                    edge_attrs: bool = True):
+        """Yield (subject, predicate, object, object_is_literal) — the RDF view.
+
+        The single source of truth for what this graph *means* in RDF: which
+        objects are URIs and which are literals, how edge attributes reify,
+        which node properties surface. Every query engine builds from this,
+        so two of them cannot drift into disagreeing about the same graph —
+        which is the failure that would be hardest to notice, because both
+        answers would look plausible.
+
+        Subjects and predicates are names to be resolved against `base`;
+        anything already absolute passes through untouched.
+        """
+        RDF_ = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         for i, t in enumerate(self._triples):
-            obj = Literal(t.o) if any(c.isspace() for c in t.o) else node(t.o)
-            g.add((node(t.s), node(t.p), obj))
+            o_is_literal = any(c.isspace() for c in t.o)
+            yield t.s, t.p, t.o, o_is_literal
             if edge_attrs and t.attrs:
-                st = URIRef(f"{base}stmt{i}")
-                g.add((st, RDF.type, RDF.Statement))
-                g.add((st, RDF.subject, node(t.s)))
-                g.add((st, RDF.predicate, node(t.p)))
-                g.add((st, RDF.object, obj))
+                st = f"{base}stmt{i}"
+                yield st, RDF_ + "type", RDF_ + "Statement", False
+                yield st, RDF_ + "subject", t.s, False
+                yield st, RDF_ + "predicate", t.p, False
+                yield st, RDF_ + "object", t.o, o_is_literal
                 for key, value in t.attrs.items():
-                    g.add((st, node(str(key)), Literal(value)))
+                    yield st, str(key), value, True
         if node_props:
             for name, props in self.nodes_meta.items():
                 for key, value in props.items():
-                    g.add((node(name), node(str(key)), Literal(value)))
-        return g
+                    yield name, str(key), value, True
 
     _UPDATE_KEYWORDS = frozenset(
         {"INSERT", "DELETE", "CLEAR", "DROP", "CREATE", "LOAD", "MOVE", "COPY", "ADD", "WITH"}
     )
+
+    def _oxigraph_store(self, base: str):
+        """The same statements, in an oxigraph store.
+
+        Oxigraph executes SPARQL roughly twenty times faster than rdflib on
+        the same graph — 21ms against 427ms on 50k triples — because it is a
+        Rust engine with real indexes rather than a Python dict of sets. The
+        statements come from ``_statements``, so the two engines answer
+        questions about the same graph and not about two similar ones.
+
+        Literal typing has to match rdflib's, because a query like
+        ``?x t:pii true`` matches a typed boolean and would silently return
+        nothing against a plain string.
+        """
+        from urllib.parse import quote
+
+        from pyoxigraph import DefaultGraph, Literal, NamedNode, Quad, Store
+
+        xsd = "http://www.w3.org/2001/XMLSchema#"
+
+        def node(name: str):
+            if name.startswith(("http://", "https://", "urn:")):
+                return NamedNode(name)
+            return NamedNode(base + quote(name, safe=""))
+
+        def literal(value):
+            # bool before int: in Python bool *is* an int, and a boolean
+            # typed as xsd:integer stops matching `true`.
+            if isinstance(value, bool):
+                return Literal("true" if value else "false",
+                               datatype=NamedNode(xsd + "boolean"))
+            if isinstance(value, int):
+                return Literal(str(value), datatype=NamedNode(xsd + "integer"))
+            if isinstance(value, float):
+                return Literal(repr(value), datatype=NamedNode(xsd + "double"))
+            return Literal(str(value))
+
+        store = Store()
+        default = DefaultGraph()
+        store.extend([
+            Quad(node(s), node(p), literal(o) if lit else node(o), default)
+            for s, p, o, lit in self._statements(base)
+        ])
+        return store
+
+    def _query_graph(self, base: str, engine: str = "rdflib"):
+        """The built RDF graph for read queries, reused between them.
+
+        Building it was two thirds of what a query cost — 769ms of 1200ms on
+        50k triples — because every call started from scratch. Reads dominate
+        in the shape that matters (a served graph answering agents), so the
+        second query onward now pays only for the query itself.
+
+        Any attempted mutation drops this; see ``_guard_writable``. Updates
+        deliberately do not come here: ``update()`` needs a graph without node
+        properties or reification so it can diff the result back, and it
+        builds its own.
+        """
+        key = (base, engine)
+        if self._rdf_cache is not None and self._rdf_cache[0] == key:
+            return self._rdf_cache[1]
+        graph = (self._oxigraph_store(base) if engine == "oxigraph"
+                 else self.to_rdflib(base))
+        self._rdf_cache = (key, graph)
+        return graph
 
     def sparql(self, query: str, base: str = "urn:trikedb:"):
         """Run real SPARQL 1.1 (via rdflib) against the graph — reads and writes.
@@ -537,11 +692,17 @@ class TrikeDB:
         if first in self._UPDATE_KEYWORDS:
             return self.update(query, base=base)
 
-        g = self.to_rdflib(base)
-        result = g.query(
+        prefixed = (
             f"PREFIX t: <{base}>\n"
             "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query
         )
+        if self.sparql_engine == "oxigraph":
+            rows = self._query_oxigraph(prefixed, base)
+            if rows is not NotImplemented:
+                return rows
+            # a CONSTRUCT or DESCRIBE: rdflib owns those, unchanged
+
+        result = self._query_graph(base).query(prefixed)
         if result.type == "ASK":
             return result.askAnswer
 
@@ -551,6 +712,32 @@ class TrikeDB:
             for var, value in zip(result.vars, binding):
                 if value is not None:
                     row[str(var)] = _shorten(value, base)
+            rows.append(row)
+        return rows
+
+    def _query_oxigraph(self, prefixed: str, base: str):
+        """Answer a SELECT or ASK through oxigraph, in the same shape.
+
+        Returns ``NotImplemented`` for query forms this path does not cover
+        (CONSTRUCT, DESCRIBE) so the caller can fall back rather than this
+        having to parse the query to find out which form it is.
+        """
+        result = self._query_graph(base, "oxigraph").query(prefixed)
+        if isinstance(result, bool):                       # ASK
+            return result
+        if not hasattr(result, "variables"):               # CONSTRUCT/DESCRIBE
+            return NotImplemented
+
+        # oxigraph terms stringify to N-Triples (`<urn:trikedb:a>`), so the
+        # raw value has to come off the term before _shorten sees it.
+        names = [str(v)[1:] if str(v).startswith("?") else str(v)
+                 for v in result.variables]
+        rows = []
+        for solution in result:
+            row = {}
+            for name, value in zip(names, solution):
+                if value is not None:
+                    row[name] = _shorten(value.value, base)
             rows.append(row)
         return rows
 

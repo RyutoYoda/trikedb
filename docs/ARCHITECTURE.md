@@ -121,5 +121,7 @@ pipeline, and nothing is stored twice.
 - Anything agents can do must exist in all three interfaces (Python API,
   CLI, MCP) — parity is a feature.
 - Heavy dependencies are always optional extras (`[remote]`,
-  `[snowflake]`, `[shacl]`, `[owl]`, `[mcp]`, `[serve]`); the core
-  stays PyYAML + rdflib.
+  `[snowflake]`, `[shacl]`, `[owl]`, `[mcp]`, `[serve]`). The core is
+  PyYAML, rdflib and pyoxigraph — the last one earned its place by being
+  faster at every graph size measured, and rdflib stays because owlrl and
+  pyshacl take rdflib graphs and updates diff through one.

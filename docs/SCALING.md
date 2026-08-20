@@ -1,14 +1,53 @@
-# Scaling: where does one YAML file stop being comfortable?
+# Scaling: where does one document stop being comfortable?
 
-Measured with `benchmarks/scale_bench.py` (synthetic pipeline-shaped
-graphs — vendors → jobs → tables, a third of the edges carrying
-note/prov attributes) on an Apple-silicon laptop, trikedb 0.13.0:
+Measured with `benchmarks/backend_bench.py` (synthetic pipeline-shaped
+graphs — vendors → jobs → tables, a third of the edges carrying note/prov
+attributes) on an Apple-silicon laptop, trikedb 0.26.0. Medians of three.
 
-| triples | file size | load | save | `query()` 2-hop join | `sparql()` | `search()` | `to_html()` | HTML size |
-|---|---|---|---|---|---|---|---|---|
-| 733 | 34 KB | 0.07s | 0.03s | 0.002s | 0.10s | 0.02s | 0.02s | 0.2 MB |
-| 7,333 | 352 KB | 0.72s | 0.31s | 0.02s | 0.09s | 0.14s | 0.15s | 1.6 MB |
-| 73,333 | 3.6 MB | 7.8s | 3.3s | 0.22s | 1.1s | 13.5s | 2.3s | 15.8 MB |
+| triples | backend | open | 1-hop | 2-hop join | count all | write 1 fact |
+|---|---|---|---|---|---|---|
+| 408 | local `.yaml` | 5 ms | 0.05 ms | 0.5 ms | 0.1 ms | 11 ms |
+| 408 | local `.json` | **0.3 ms** | 0.04 ms | 0.5 ms | 0.1 ms | **1 ms** |
+| 408 | `snowflake://` row | 189 ms | 0.04 ms | 0.5 ms | 0.1 ms | 761 ms |
+| 40,800 | local `.yaml` | 992 ms | 0.04 ms | 55 ms | 11 ms | 1,957 ms |
+| 40,800 | local `.json` | **57 ms** | 0.04 ms | 55 ms | 11 ms | **148 ms** |
+| 40,800 | `snowflake://` row | 507 ms | 0.04 ms | 56 ms | 11 ms | 2,889 ms |
+
+Three things fall out of this, and they are the whole story:
+
+**Queries do not care where the graph lives.** 0.04 ms and 55 ms, identical
+across all three backends. The graph is answered from memory, so the backend
+only decides what opening and saving cost. That is the architecture working
+as intended, and it is why "which backend" is an operations question rather
+than a performance one.
+
+**The format matters far more than the medium.** At 40,800 triples, a local
+`.json` file opens in 57 ms and a local `.yaml` in 992 ms — 17x, for the same
+graph, because `json.loads` is C and a YAML parser is not. A warehouse row
+sits between them at 507 ms: its document is already JSON, so it beats local
+YAML despite crossing a network.
+
+**Warehouse writes are the expensive operation.** 2.9 s to add one fact to a
+40,800-triple row — read the document, rewrite it, and land a conditional
+update over the network. Fine at the rate a human or an agent edits a graph;
+not something to put in a loop. Batch with `autosave=False` and one `save()`.
+
+Older releases were much slower to open: 0.13.0 took 7.8 s where 0.26.0 takes
+992 ms for the same YAML, and warehouse rows were parsed as YAML rather than
+JSON, which cost about 400x on its own.
+
+## The SPARQL engine
+
+| | 1-hop | 2-hop join | count all |
+|---|---|---|---|
+| rdflib | 0.90 ms | 342 ms | 432 ms |
+| oxigraph (default) | **0.04 ms** | **52 ms** | **11 ms** |
+
+40,800 triples, graph already built. `pyoxigraph` is a core dependency, so
+this is what you get; `TrikeDB(..., sparql_engine="rdflib")` pins the old
+engine. Aggregates gain the most (40x) and single lookups the most in
+relative terms (23x); a wide join gains least (6.4x) because most of its time
+goes into materialising rows either way.
 
 ## How to read this
 
@@ -16,22 +55,24 @@ note/prov attributes) on an Apple-silicon laptop, trikedb 0.13.0:
 was built for): everything is instant. Agents can read the whole file
 into context; humans can read the YAML diff in a PR.
 
-**Up to ~10k triples**: still comfortable. Sub-second everything except
-load (0.7s). The whole-file-in-agent-context pattern stops working
+**Up to ~10k triples**: still comfortable. Everything is sub-second,
+loading included. The whole-file-in-agent-context pattern stops working
 around here — switch agents to `query`/`sparql`/`search` (CLI or MCP)
 instead of reading the file.
 
 **~100k triples**: queries stay fast (`query()` 0.2s, `sparql()` 1.1s)
 but the file-shaped costs show:
 
-- **load is ~8s** — YAML parsing is the wall. Fine for a long-lived
-  process (`trikedb serve`, MCP server: pay it once), painful for
-  one-shot CLI calls.
-- **autosave costs 3.3s per mutation** — open with
+- **load is ~1s as YAML, ~60ms as JSON** — parsing is the wall, and
+  choosing the format moves it. Fine either way for a long-lived process
+  (`trikedb serve`, MCP server: pay it once); for one-shot CLI calls over a
+  big graph, name the file `.json`.
+- **autosave costs ~2s per mutation on YAML, ~150ms on JSON** — open with
   `TrikeDB(path, autosave=False)`, batch, `save()` once.
-- **semantic `search()` is 13.5s** — it re-embeds the whole graph per
-  query (the no-index design). Cheap to 10k; beyond that an embedding
-  cache is the fix (roadmap).
+- **semantic `search()` re-embeds the whole graph per query** (the
+  no-index design), so it is the one operation still measured in seconds at
+  this size. Cheap to 10k; beyond that an embedding cache is the fix
+  (roadmap).
 - **the HTML renders, but don't** — 15.8 MB with ~29k nodes will hurt
   in a browser. Split into a workspace and filter, or serve the graph
   and query it instead of looking at it.

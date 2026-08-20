@@ -211,6 +211,7 @@ call `save()` yourself.
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
+| `TrikeDB(path, sparql_engine="rdflib")` | Pin the SPARQL engine; the default is oxigraph when `[oxigraph]` is installed |
 | `TrikeDB(url, connection=conn)` | Run through an already-open warehouse connection or Snowpark session instead of building one |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
@@ -675,6 +676,62 @@ Adding a backend happens in `storage.py` / `storage_sql.py` and nowhere
 else. A warehouse is a `_Dialect` — four SQL templates and a connect
 function.
 
+## Speed
+
+The graph lives in memory, so what costs time is opening it and querying it.
+Both are tunable, and neither needs a change to how you write the graph.
+
+Measured on 40,800 triples with `benchmarks/backend_bench.py`, medians of
+three, Apple silicon:
+
+| backend | open | 1-hop | 2-hop join | write 1 fact |
+|---|---|---|---|---|
+| local `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |
+| local `.json` | **57 ms** | 0.04 ms | 55 ms | **148 ms** |
+| `snowflake://` row | 507 ms | 0.04 ms | 56 ms | 2,889 ms |
+
+Three things fall out of that. **Queries do not care where the graph lives** —
+identical across all three, because they run in memory. **The format matters
+more than the medium**: the same graph opens 17x faster as `.json` than as
+`.yaml`, and a warehouse row beats a local YAML file despite crossing a
+network, because its document is already JSON. **Warehouse writes are the
+expensive operation** — read, rewrite, conditional update — so batch with
+`autosave=False` rather than putting them in a loop.
+
+And the engine, on the same graph once built:
+
+| | 1-hop | 2-hop join | count all |
+|---|---|---|---|
+| rdflib | 0.90 ms | 342 ms | 432 ms |
+| oxigraph (default) | **0.04 ms** | **52 ms** | **11 ms** |
+
+One knob, and one thing that is already on — neither changes what is
+stored:
+
+**Store JSON instead of YAML** for a graph that is read far more often than
+it is reviewed — name the file `graph.json`, or keep it in a warehouse row,
+which is JSON already. Same API, same SPARQL, ~30x faster to open. The cost
+is the thing YAML was picked for: nobody enjoys reading a diff of JSON.
+
+**The fast SPARQL engine is already there.** Read queries run on
+[Oxigraph](https://github.com/oxigraph/oxigraph), a Rust engine with real
+indexes; `pyoxigraph` is a core dependency because it was faster at every
+graph size measured, down to a few hundred triples. Both are SPARQL 1.1 and
+the test suite asserts they answer identically — including the sharp edge,
+typed literals, where `?x t:pii true` has to match a boolean rather than the
+string `"true"`. `TrikeDB(..., sparql_engine="rdflib")` pins the old engine, which is worth
+doing if you ever want to compare the two on a real query. If pyoxigraph is
+ever absent — a vendored subset of the files, an interpreter it has no wheel
+for yet — reads fall back to rdflib on their own rather than failing.
+
+Updates (`INSERT`/`DELETE`), OWL inference and SHACL always use rdflib — those
+paths change data or hand the graph to `owlrl`/`pyshacl`, and a second
+implementation buys nothing there.
+
+What is *not* tunable is the shape: the whole document is read on open and
+rewritten on save. That is the price of a graph you can review in a diff, and
+it is why the practical ceiling is a few MB rather than a few GB.
+
 ## Validation & inference
 
 - **SHACL** (`[shacl]`): real shape constraints — cardinality, value
@@ -774,7 +831,7 @@ view, check, audit, act on findings. Only the gate at the end moves.
 
 | Extra | Adds | Dependencies |
 |---|---|---|
-| *(core)* | everything above except ↓ | PyYAML, rdflib |
+| *(core)* | everything above except ↓ | PyYAML, rdflib, pyoxigraph |
 | `[mcp]` | `trikedb mcp` (stdio) | mcp (1.x) |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
@@ -784,3 +841,4 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |
 | `[networkx]` | `to_networkx` (property-graph projection) | networkx |
+| `[oxigraph]` | nothing — pyoxigraph is a core dependency | pyoxigraph |

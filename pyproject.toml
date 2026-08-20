@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.25.0"
+version = "0.26.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Ryuto Yoda" }]
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0", "rdflib>=7"]
+dependencies = ["PyYAML>=6.0", "rdflib>=7", "pyoxigraph>=0.4"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -32,6 +32,9 @@ shacl = ["pyshacl>=0.25"]
 owl = ["owlrl>=6.0.2"]
 semantic = ["model2vec>=0.3", "numpy>=1.24"]
 networkx = ["networkx>=3"]
+# Kept as an extra name for anyone pinning it explicitly; pyoxigraph is a
+# core dependency, so this installs nothing new.
+oxigraph = ["pyoxigraph>=0.4"]
 serve = ["mcp>=1.2,<2", "uvicorn>=0.27", "starlette>=0.37"]
 oauth = ["mcp>=1.2,<2", "pyjwt[crypto]>=2.8"]
 all = [
@@ -40,7 +43,14 @@ all = [
     "pyshacl>=0.25", "owlrl>=6.0.2",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3",
     "pyjwt[crypto]>=2.8", "snowflake-connector-python>=3.0",
+    "pyoxigraph>=0.4",
 ]
+# pyoxigraph is core: it makes read queries 6-9x faster at every graph size
+# measured, has no dependencies of its own, and ships wheels for every
+# mainstream platform. rdflib stays too — owlrl and pyshacl take rdflib
+# graphs, and updates diff through one. If pyoxigraph is ever missing (a
+# vendored subset, an interpreter it has no wheel for yet), reads fall back
+# to rdflib on their own.
 # The Snowflake connector is deliberately absent: the storage tests drive the
 # SQL layer through a fake DB-API connection, so nothing here needs a
 # warehouse to be installed. Real-warehouse checks are run by hand.
@@ -48,6 +58,7 @@ dev = [
     "pytest>=7", "mcp>=1.2,<2", "fsspec>=2024.2", "pyshacl>=0.25",
     "owlrl>=6.0.2", "uvicorn>=0.27", "starlette>=0.37", "httpx>=0.27",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3", "pyjwt[crypto]>=2.8",
+    "pyoxigraph>=0.4",
 ]
 
 [project.scripts]

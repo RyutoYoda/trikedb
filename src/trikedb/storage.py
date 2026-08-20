@@ -68,8 +68,16 @@ def serialization(path) -> str:
     Nothing is lost by the switch: JSON is a subset of YAML, so the loader
     reads either without knowing which it got. The reader stays oblivious;
     only the writer needs to ask.
+
+    A path ending in ``.json`` gets JSON too, which is the escape hatch for
+    a graph that is read far more often than it is reviewed: the loader is
+    around 30x faster on JSON than on the same graph as YAML, because
+    ``json.loads`` is C and the YAML parser is not. The cost is the thing
+    YAML was chosen for — nobody enjoys reading a diff of it.
     """
-    return "json" if _scheme(path) in _SQL_SCHEMES else "yaml"
+    if _scheme(path) in _SQL_SCHEMES:
+        return "json"
+    return "json" if str(path).lower().endswith(".json") else "yaml"
 
 
 def _sql_store(path, connection=None):
