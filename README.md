@@ -323,8 +323,21 @@ the ontology, and `KG_TRIPLE` the same rows as plain s/p/o. Node
 properties and edge attributes stay in VARIANT columns, so adding a
 predicate never needs a DDL change. They're views, not tables — nothing
 stored twice, nothing to drift, zero cost, and `AT(TIMESTAMP => …)` reads
-the past through them. (trikedb is not affiliated with or endorsed by
-Snowflake; the SQL is generated from trikedb's own model.)
+the past through them. (That column shape is an intended byproduct, not a
+dependency: nothing is imported from anyone, the SQL is generated from
+trikedb's own model, and trikedb is not affiliated with or endorsed by
+Snowflake.)
+
+**Reading without a write path.** Pass `read_only=True` and every mutation
+raises, `reload()` included:
+
+```python
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
+```
+
+Use it when writes belong somewhere else — a reviewed file in git, say —
+and the warehouse is there for distribution and SQL access. An app that
+only reads shouldn't be holding a capability a bug could spend.
 
 Concurrent writes are safe on both. A save is conditional on the stored
 graph still being the one it was read from, so a write that would clobber

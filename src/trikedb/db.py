@@ -75,6 +75,7 @@ class TrikeDB:
         path: Union[str, Path, None] = None,
         ontology: Union[dict, Sequence[str], None] = None,
         autosave: bool = True,
+        read_only: bool = False,
     ):
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
@@ -86,8 +87,16 @@ class TrikeDB:
         self.autosave = autosave
         #: workspace member graphs ({name: path}) when this is a union view
         self.workspace: Optional[dict] = None
-        #: True for workspace unions — mutations are refused
-        self.read_only = False
+        #: asked for at construction, as opposed to implied by a workspace
+        #: union. Kept apart because reload() has to be able to restore it:
+        #: forgetting it there would silently hand back a writable graph.
+        self._read_only_requested = bool(read_only)
+        #: True for workspace unions and for read_only=True — mutations are
+        #: refused. A reader that cannot write is the point when the graph is
+        #: shared: an app serving a warehouse-backed graph has no business
+        #: holding a write path, and a bug or an agent cannot spend one it
+        #: does not have.
+        self.read_only = self._read_only_requested
         #: node name -> free-form properties (type, label, url, description, ...)
         self.nodes_meta: dict = {}
         #: predicate -> human description. Empty dict means free-form predicates.
@@ -115,7 +124,7 @@ class TrikeDB:
         self.nodes_meta = {}
         self._triples = []
         self.workspace = None
-        self.read_only = False
+        self.read_only = self._read_only_requested   # a reload must not grant writes
         self._version = None
         if self.path is not None and _exists(self.path):
             self._load()
@@ -174,11 +183,21 @@ class TrikeDB:
                 self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}))
 
     def _guard_writable(self) -> None:
-        if self.read_only:
+        if not self.read_only:
+            return
+        if self.workspace is not None:
             raise ValueError(
                 "this is a read-only workspace union — write to one of its "
                 f"member graphs instead: {self.workspace}"
             )
+        # Naming the reason matters: "read-only" on its own reads like a
+        # filesystem permission problem to go and fix, when in fact the caller
+        # asked for this and the fix is to stop writing here.
+        raise ValueError(
+            f"{self.path} was opened read_only=True — mutations are refused. "
+            "Open it without read_only to write, or write through whichever "
+            "path owns this graph"
+        )
 
     def save(self, path: Union[str, Path, None] = None):
         """Write the graph back out. Plain triples stay on one line.

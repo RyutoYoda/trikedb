@@ -171,6 +171,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `to_html(path, title=, event_predicates=, layout=)` | インタラクティブワークベンチ(後述) |
 | `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート(RDF/SPARQLビュー) |
 | `to_networkx(multigraph=True)` | プロパティグラフ投影(`[networkx]` extra): ノードのプロパティ＋エッジのlabel/属性を保持。同じファイルでnetworkxのアルゴリズム(最短経路・中心性)が使える |
+| `TrikeDB(path, read_only=True)` | 読み取り専用で開く。全ての変更が例外になる。`reload()` 後も維持される |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状態属性 |
 
@@ -479,8 +480,18 @@ JSONはYAMLの部分集合なので、ローダーもその上の層も一切変
 `KG_NODE` と `KG_EDGE` は、Snowflake上でプロパティグラフに慣習的に使われる
 node/edge のカラム構成に合わせてある（[Snowflake-Labs の knowledge-graph
 参照実装][kg-ref]と同じ形）。そのため、その形に対して書かれた Cortex Analyst の
-セマンティックモデルやクエリパターンがそのまま通る。SQLはtrikedb自身のモデル
-から生成している。trikedbはSnowflakeと提携しておらず、その裏付けも受けていない。
+セマンティックモデルやクエリパターンがそのまま通る。この整合は**意図した
+副産物であって依存ではない** — あちらから何も取り込んでおらず、SQLはtrikedb
+自身のモデルから生成している。trikedbはSnowflakeと提携しておらず、その裏付けも
+受けていない。
+
+「保存された文書をnode/edge/tripleのビューに展開する」という発想は完全に汎用で、
+方言依存なのはそれを書き下すSQLだけである（ここでは `TRY_PARSE_JSON` と
+`LATERAL FLATTEN`、Postgresなら `jsonb_to_recordset`、SQLiteなら `json_each`）。
+そのためビューは型やupsert構文と並んで `_Dialect` が持つ。2つ目のウェアハウスは
+モジュール全体に散らばる変更ではなく、`_Dialect` のリテラルが1つ増えるだけになる。
+`NODE_ID` / `SRC_ID` / `EDGE_TYPE` は一般的なプロパティグラフの用語なので
+そのまま通用する。
 
 [kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
 
@@ -527,6 +538,11 @@ trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # 実行
 trikedb sql-init … --no-views                                    # テーブルのみ
 ```
 
+**スキーマは意識して選ぶこと。** オブジェクトが5つ増える（テーブル1本 +
+ビュー4本）。環境側でスキーマ単位のオブジェクト数を数えているものがあると
+（総数を分母に使うデータ品質ダッシュボード、層プレフィックス規約など）
+そこに現れる。trikedb専用のスキーマを切ればこの問題は起きない。
+
 接続設定は環境変数から読む — `SNOWFLAKE_ACCOUNT`・`SNOWFLAKE_USER` と、
 `SNOWFLAKE_PRIVATE_KEY_PATH`(PKCS#8 PEM)または `SNOWFLAKE_PASSWORD`、
 任意で `SNOWFLAKE_ROLE`・`SNOWFLAKE_WAREHOUSE`・`SNOWFLAKE_DATABASE`・
@@ -545,6 +561,18 @@ CLIをループで回せず、CIのステップにもできない:
 
 ```bash
 pip install 'snowflake-connector-python[secure-local-storage]'
+```
+
+**読み取り専用で開く。** `TrikeDB(url, read_only=True)` は全ての変更を拒否する
+（`add`・`remove`・`set_node`・`save`・SPARQL update すべて）。`reload()` 後も
+拒否し続ける。読むだけのアプリが書き込み経路を握っている必要はない —
+与えられていない権能はバグもエージェントも使えない。書き込みはgitのレビュー済み
+ファイルが担い、ウェアハウスは配布とSQLアクセスのために置く、という構成で使う形。
+
+```python
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
+db.sparql("SELECT ?o WHERE { t:crm-sync-job t:INGESTS_TO ?o }")   # 通る
+db.add("x", "P", "y")                                             # ValueError
 ```
 
 ウェアハウスのDMLはテーブル単位で直列化されるので、同じテーブル内の

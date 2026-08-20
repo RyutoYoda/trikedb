@@ -178,6 +178,7 @@ call `save()` yourself.
 | `to_html(path, title=, event_predicates=, layout=)` | Interactive workbench (see below) |
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
+| `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
 
@@ -504,8 +505,18 @@ and SQL from the warehouse, with no second copy to keep in step.
 used for property graphs on Snowflake — the same layout as the
 [Snowflake-Labs knowledge-graph reference implementation][kg-ref] — so a
 Cortex Analyst semantic model or query pattern written against that shape
-applies here too. The SQL is generated from trikedb's own model; trikedb
-is not affiliated with or endorsed by Snowflake.
+applies here too. That alignment is an intended byproduct, not a
+dependency: nothing is imported from there, the SQL is generated from
+trikedb's own model, and trikedb is not affiliated with or endorsed by
+Snowflake.
+
+Projecting a stored document into node/edge/triple views is a generic
+idea; only the SQL that spells it is dialect-specific — `TRY_PARSE_JSON`
+and `LATERAL FLATTEN` here, `jsonb_to_recordset` on Postgres, `json_each`
+on SQLite. So the views live on the `_Dialect` alongside its types and
+upsert syntax, and a second warehouse is one more `_Dialect` literal
+rather than a change spread across the module. `NODE_ID`, `SRC_ID` and
+`EDGE_TYPE` are ordinary property-graph terms and carry over unchanged.
 
 [kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
 
@@ -557,6 +568,12 @@ trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # or run it
 trikedb sql-init … --no-views                                    # table only
 ```
 
+Pick the schema deliberately. Five objects appear — one table and four
+views — and if something in your environment counts objects per schema
+(a data-quality dashboard using the total as a denominator, a layer
+prefix convention), they will show up there. A schema of trikedb's own
+avoids the question.
+
 Connection settings come from the environment — `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_USER`, and either `SNOWFLAKE_PRIVATE_KEY_PATH` (a PKCS#8 PEM)
 or `SNOWFLAKE_PASSWORD`, plus optional `SNOWFLAKE_ROLE`,
@@ -576,6 +593,20 @@ makes the CLI unusable in a loop and a CI step impossible:
 
 ```bash
 pip install 'snowflake-connector-python[secure-local-storage]'
+```
+
+**Opening a graph read-only.** `TrikeDB(url, read_only=True)` refuses
+every mutation — `add`, `remove`, `set_node`, `save` and SPARQL updates
+alike — and keeps refusing after `reload()`. An app that only reads has no
+business holding a write path: a bug or an agent cannot spend a capability
+it was never given. This is the shape to use when writes belong to a
+reviewed file in git and the warehouse is there for distribution and SQL
+access.
+
+```python
+db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
+db.sparql("SELECT ?o WHERE { t:crm-sync-job t:INGESTS_TO ?o }")   # fine
+db.add("x", "P", "y")                                             # ValueError
 ```
 
 Warehouse DML serialises per table, so writers to *different* graphs in

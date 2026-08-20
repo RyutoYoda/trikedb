@@ -1648,3 +1648,99 @@ def test_write_retry_survives_heavy_contention_without_long_sleeps(tmp_path, mon
     assert slept, "backoff never ran"
     assert max(slept) <= 1.0, f"a single retry slept {max(slept)}s"
     assert sum(slept) < 10, f"total backoff {sum(slept):.1f}s is too long to wait"
+
+
+def test_read_only_refuses_every_mutation(tmp_path):
+    """An app that only reads should not be holding a write path.
+
+    The motivating case is a warehouse-backed graph served to a dashboard:
+    writes belong to whatever owns the graph (a reviewed file in git, say),
+    and a bug or an agent cannot spend a capability it was never given.
+    """
+    g = tmp_path / "g.yaml"
+    TrikeDB(g).add("a", "P", "b")
+
+    ro = TrikeDB(g, read_only=True)
+    assert len(ro) == 1                      # reading is the whole point
+    assert ro.sparql("ASK { ?s t:P ?o }") is True
+
+    for mutate in (
+        lambda: ro.add("x", "P", "y"),
+        lambda: ro.remove(p="P"),
+        lambda: ro.set_node("a", type="job"),
+        lambda: ro.save(),
+        lambda: ro.update("INSERT DATA { t:x t:P t:y }"),
+    ):
+        with pytest.raises(ValueError, match="read_only=True"):
+            mutate()
+
+    assert len(TrikeDB(g)) == 1               # nothing landed
+
+
+def test_read_only_survives_reload(tmp_path):
+    """reload() used to reset the flag, which would hand back a writable graph.
+
+    It runs on every conflict recovery, so losing read-only there would mean
+    the guarantee quietly expires exactly when the graph is contended.
+    """
+    g = tmp_path / "g.yaml"
+    TrikeDB(g).add("a", "P", "b")
+
+    ro = TrikeDB(g, read_only=True)
+    TrikeDB(g).add("c", "P", "d")             # someone else writes
+    ro.reload()
+    assert len(ro) == 2                       # it picked their change up
+    assert ro.read_only is True
+    with pytest.raises(ValueError, match="read_only=True"):
+        ro.add("x", "P", "y")
+
+
+def test_read_only_error_names_the_right_cause(tmp_path):
+    """A workspace union and an explicit read_only need different advice."""
+    member = tmp_path / "m.yaml"
+    TrikeDB(member).add("a", "P", "b")
+    ws = tmp_path / "ws.yaml"
+    ws.write_text(f"graphs:\n  m: {member.name}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="workspace union"):
+        TrikeDB(ws).add("x", "P", "y")
+    with pytest.raises(ValueError, match="read_only=True"):
+        TrikeDB(member, read_only=True).add("x", "P", "y")
+
+
+def test_read_only_works_on_a_warehouse_graph(warehouse):
+    """The case this was asked for: read the row, never write it."""
+    seed = TrikeDB(URL, autosave=False)               # seeded by someone else
+    seed.add("a", "P", "b")
+    seed.save()
+
+    ro = TrikeDB(URL, read_only=True)
+    assert [t.s for t in ro] == ["a"]
+    with pytest.raises(ValueError, match="read_only=True"):
+        ro.add("agent", "P", "wrote")
+    with pytest.raises(ValueError, match="read_only=True"):
+        ro.save()
+
+
+def test_a_new_dialect_is_one_literal():
+    """Everything warehouse-specific has to live in the dialect.
+
+    Projection SQL used to sit in a registry beside the dialects, keyed by
+    name. Two parallel places to update is how the second dialect gets
+    expensive, and the SQL is exactly what differs between warehouses —
+    `TRY_PARSE_JSON`/`FLATTEN` here, `jsonb_to_recordset` on Postgres,
+    `json_each` on SQLite.
+    """
+    import dataclasses
+
+    from trikedb import storage_sql
+
+    assert "views" in storage_sql.SNOWFLAKE.__dataclass_fields__
+    assert set(storage_sql.SNOWFLAKE.views) == {
+        "KG_NODE", "KG_EDGE", "KG_PREDICATE", "KG_TRIPLE"}
+    assert not hasattr(storage_sql, "VIEWS")     # no registry to forget
+
+    # A backend may store graphs without projecting them: views default empty
+    bare = dataclasses.replace(storage_sql.SNOWFLAKE, name="bare", views={})
+    store = storage_sql.SqlGraphStore(bare, "T", "g")
+    assert store._dialect.views == {}

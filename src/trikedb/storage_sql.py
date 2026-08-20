@@ -32,7 +32,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 from urllib.parse import urlsplit
 
@@ -65,6 +65,9 @@ class _Dialect:
     update: str
     insert_if_absent: str
     upsert: str
+    #: {view name: SELECT body} — the projection, see _SNOWFLAKE_VIEWS. Empty
+    #: is legitimate: a backend can store graphs without exposing them to SQL.
+    views: dict = field(default_factory=dict)
 
 
 def _snowflake_config_from_env() -> dict:
@@ -117,50 +120,6 @@ def _snowflake_connect(config: dict):
             "pip install 'trikedb[snowflake]'"
         ) from exc
     return snowflake.connector.connect(**config)
-
-
-#: Snowflake serialises UPDATE/MERGE on a table, so the affected-row count is
-#: a trustworthy compare-and-swap result: two writers cannot both see 1.
-SNOWFLAKE = _Dialect(
-    name="snowflake",
-    config_from_env=_snowflake_config_from_env,
-    connect=_snowflake_connect,
-    ddl=(
-        "CREATE TABLE IF NOT EXISTS {table} (\n"
-        "    name       STRING NOT NULL,\n"
-        "    doc        STRING,\n"
-        "    version    STRING NOT NULL,\n"
-        "    updated_at TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP()\n"
-        ")"
-    ),
-    select="SELECT doc, version FROM {table} WHERE name = %s",
-    update=(
-        "UPDATE {table} SET doc = %s, version = %s, "
-        "updated_at = CURRENT_TIMESTAMP() "
-        "WHERE name = %s AND version = %s"
-    ),
-    # MERGE rather than INSERT ... WHERE NOT EXISTS: the row count then says
-    # whether we were the one who created it, which is the whole point.
-    insert_if_absent=(
-        "MERGE INTO {table} AS t "
-        "USING (SELECT %s AS name, %s AS doc, %s AS version) AS s "
-        "ON t.name = s.name "
-        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
-        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
-    ),
-    upsert=(
-        "MERGE INTO {table} AS t "
-        "USING (SELECT %s AS name, %s AS doc, %s AS version) AS s "
-        "ON t.name = s.name "
-        "WHEN MATCHED THEN UPDATE SET doc = s.doc, version = s.version, "
-        "updated_at = CURRENT_TIMESTAMP() "
-        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
-        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
-    ),
-)
-
-#: scheme -> dialect. A new warehouse lands here and nowhere else.
-DIALECTS = {"snowflake": SNOWFLAKE}
 
 
 # ------------------------------------------------------------------- projection
@@ -240,8 +199,55 @@ _SNOWFLAKE_VIEWS = {
     ),
 }
 
-#: dialect name -> {view name: SELECT body}
-VIEWS = {"snowflake": _SNOWFLAKE_VIEWS}
+
+#: Snowflake serialises UPDATE/MERGE on a table, so the affected-row count is
+#: a trustworthy compare-and-swap result: two writers cannot both see 1.
+SNOWFLAKE = _Dialect(
+    name="snowflake",
+    config_from_env=_snowflake_config_from_env,
+    connect=_snowflake_connect,
+    ddl=(
+        "CREATE TABLE IF NOT EXISTS {table} (\n"
+        "    name       STRING NOT NULL,\n"
+        "    doc        STRING,\n"
+        "    version    STRING NOT NULL,\n"
+        "    updated_at TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP()\n"
+        ")"
+    ),
+    select="SELECT doc, version FROM {table} WHERE name = %s",
+    update=(
+        "UPDATE {table} SET doc = %s, version = %s, "
+        "updated_at = CURRENT_TIMESTAMP() "
+        "WHERE name = %s AND version = %s"
+    ),
+    # MERGE rather than INSERT ... WHERE NOT EXISTS: the row count then says
+    # whether we were the one who created it, which is the whole point.
+    insert_if_absent=(
+        "MERGE INTO {table} AS t "
+        "USING (SELECT %s AS name, %s AS doc, %s AS version) AS s "
+        "ON t.name = s.name "
+        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
+        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
+    ),
+    upsert=(
+        "MERGE INTO {table} AS t "
+        "USING (SELECT %s AS name, %s AS doc, %s AS version) AS s "
+        "ON t.name = s.name "
+        "WHEN MATCHED THEN UPDATE SET doc = s.doc, version = s.version, "
+        "updated_at = CURRENT_TIMESTAMP() "
+        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
+        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
+    ),
+    views=_SNOWFLAKE_VIEWS,
+)
+
+#: scheme -> dialect. A new warehouse lands here and nowhere else: everything
+#: it does differently — types, upsert syntax, how JSON is opened, how the
+#: projection is spelled — is inside its _Dialect. Nothing above this line
+#: mentions a warehouse by name.
+DIALECTS = {"snowflake": SNOWFLAKE}
+
+
 
 
 # -------------------------------------------------------------------- url parsing
@@ -292,7 +298,7 @@ def ddl_for(url: str, views: bool = True) -> str:
     statements = [dialect.ddl.format(table=table)]
     if views:
         schema = table.rsplit(".", 1)[0] if "." in table else ""
-        for name, body in VIEWS.get(dialect.name, {}).items():
+        for name, body in dialect.views.items():
             qualified = f"{schema}.{name}" if schema else name
             statements.append(
                 f"CREATE OR REPLACE VIEW {qualified} AS\n"
@@ -480,7 +486,7 @@ class SqlGraphStore:
         if not views:
             return done
         schema = self._table.rsplit(".", 1)[0] if "." in self._table else ""
-        for name, body in VIEWS.get(self._dialect.name, {}).items():
+        for name, body in self._dialect.views.items():
             qualified = f"{schema}.{name}" if schema else name
             self._run(
                 f"CREATE OR REPLACE VIEW {qualified} AS\n" + body,
