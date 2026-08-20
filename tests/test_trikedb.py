@@ -2331,3 +2331,43 @@ def test_the_spo_index_never_answers_for_a_graph_that_moved(tmp_path):
     d.add("a", "P", "b", extra=1)
     assert d._triples[0].attrs == {"tag": "first", "extra": 1}
     assert d._triples[1].attrs == {"tag": "second"}
+
+
+def test_no_version_number_drifts_out_of_date():
+    """Two files carry the version; everywhere else it goes stale silently.
+
+    A release bumps `pyproject.toml` and `__init__.py`. Any *other* place that
+    spells the current version out — a doc header, a chart title, a benchmark
+    caption — is a copy nobody remembers to update, and it keeps claiming a
+    version that shipped releases ago. Historical references are fine
+    ("`add()` was O(n^2) until 0.27.0"); a claim about *this* build is not.
+    """
+    import re
+    from pathlib import Path
+
+    import trikedb
+
+    root = Path(__file__).resolve().parent.parent
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'^version = "([^"]+)"', pyproject, re.M).group(1)
+    assert declared == trikedb.__version__, (
+        f"pyproject.toml says {declared}, __init__.py says "
+        f"{trikedb.__version__} — a release bumps both")
+
+    # Anything that pins the *current* version outside those two files is a
+    # copy that will rot. Phrase it as history, or point at the benchmark.
+    current = re.compile(r"\btrikedb[ @]?v?" + re.escape(declared) + r"\b")
+    checked = [
+        *(root / "docs").glob("*.md"),
+        *(root / "benchmarks").glob("*.md"),
+        *(root / "benchmarks").glob("*.py"),
+        root / "README.md",
+    ]
+    offenders = [
+        f.relative_to(root).as_posix()
+        for f in checked
+        if f.exists() and current.search(f.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, (
+        f"these spell out the current version and will go stale: {offenders}. "
+        "Say it as history, or let the badge/benchmark script carry it.")

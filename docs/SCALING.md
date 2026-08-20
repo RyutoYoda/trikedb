@@ -6,7 +6,9 @@ plot. This page covers the backends.
 
 Measured with `benchmarks/backend_bench.py` (synthetic pipeline-shaped
 graphs — vendors → jobs → tables, a third of the edges carrying note/prov
-attributes) on an Apple-silicon laptop, trikedb 0.26.0. Medians of three.
+attributes) on an Apple-silicon laptop. Medians of three. Re-run
+`benchmarks/backend_bench.py` to reproduce on your own hardware; the numbers
+below are a snapshot, not a guarantee.
 
 | triples | backend | open | 1-hop | 2-hop join | count all | write 1 fact |
 |---|---|---|---|---|---|---|
@@ -36,9 +38,9 @@ YAML despite crossing a network.
 update over the network. Fine at the rate a human or an agent edits a graph;
 not something to put in a loop. Batch with `autosave=False` and one `save()`.
 
-Older releases were much slower to open: 0.13.0 took 7.8 s where 0.26.0 takes
-992 ms for the same YAML, and warehouse rows were parsed as YAML rather than
-JSON, which cost about 400x on its own.
+Opening got much faster over time: an early release took 7.8 s where this one
+takes 992 ms for the same YAML, and warehouse rows were once parsed as YAML
+rather than JSON, which cost about 400x on its own.
 
 ## The SPARQL engine
 
