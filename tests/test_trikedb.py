@@ -1608,3 +1608,43 @@ def test_sql_init_creates_the_projection_views(warehouse, capsys):
 
     assert main(["sql-init", URL, "--no-views"]) == 0
     assert "CREATE OR REPLACE VIEW" not in capsys.readouterr().out
+
+
+def test_write_retry_survives_heavy_contention_without_long_sleeps(tmp_path, monkeypatch):
+    """Eight attempts with uncapped doubling was measurably too tight.
+
+    Ten concurrent writers against one warehouse row used all eight and
+    occasionally wanted a ninth — a warehouse serialises DML per table, so
+    writers to *different* graphs queue too, and collisions are the norm
+    rather than the exception. Raising the count alone does not fix it:
+    uncapped, attempt 11 would sleep for minutes. Cap the delay and the
+    extra attempts are affordable.
+    """
+    pytest.importorskip("mcp")
+    from trikedb import mcp_server
+    from trikedb.storage import ConcurrentWriteError
+
+    slept = []
+    monkeypatch.setattr(mcp_server.time if hasattr(mcp_server, "time") else __import__("time"),
+                        "sleep", lambda s: slept.append(s))
+
+    real_write = mcp_server.TrikeDB.save
+    losses = {"left": 9}          # more than the old budget of 8 allowed
+
+    def flaky_save(self, path=None):
+        if losses["left"] > 0:
+            losses["left"] -= 1
+            raise ConcurrentWriteError("someone else got there first")
+        return real_write(self, path)
+
+    monkeypatch.setattr(mcp_server.TrikeDB, "save", flaky_save)
+
+    import asyncio
+
+    server = mcp_server.build_server(tmp_path / "g.yaml")
+    asyncio.run(server.call_tool("add_triple", {"s": "a", "p": "P", "o": "b"}))
+
+    assert losses["left"] == 0                    # it kept going past 8
+    assert slept, "backoff never ran"
+    assert max(slept) <= 1.0, f"a single retry slept {max(slept)}s"
+    assert sum(slept) < 10, f"total backoff {sum(slept):.1f}s is too long to wait"

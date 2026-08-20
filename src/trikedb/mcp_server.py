@@ -80,7 +80,12 @@ def build_server(
     db = TrikeDB(path, autosave=True)
     settings, verifier = auth if auth else (None, None)
 
-    def write(mutate, attempts: int = 8):
+    #: Longest a single retry will sleep. The delay doubles up to here and
+    #: then stops: uncapped, the tries that actually matter get pushed out to
+    #: minutes, which is why raising the attempt count alone does not help.
+    BACKOFF_CAP = 1.0
+
+    def write(mutate, attempts: int = 14):
         """Apply one mutation, losing the race gracefully.
 
         With the graph on shared storage, another writer can land between our
@@ -92,6 +97,14 @@ def build_server(
         Retries back off with jitter. Contended writers all wake at the same
         moment otherwise, and collide again for the same reason they collided
         the first time.
+
+        The budget is generous because a warehouse needs it to be. On S3 the
+        contention is per object, so writers to different graphs never meet;
+        a warehouse serialises DML per *table*, and one table holds many
+        graphs, so they queue behind each other by design. Measured with ten
+        concurrent writers on one row, eight attempts was exactly enough and
+        sometimes one short — no margin at all. Capped backoff buys many more
+        tries for less total waiting than doubling ever could.
         """
         import random
         import time
@@ -102,7 +115,7 @@ def build_server(
             except ConcurrentWriteError:
                 if attempt == attempts - 1:
                     raise
-                time.sleep(random.uniform(0, 0.05 * 2**attempt))
+                time.sleep(random.uniform(0, min(0.05 * 2**attempt, BACKOFF_CAP)))
                 db.reload()  # their save won; re-apply ours on top of it
 
     server = FastMCP(

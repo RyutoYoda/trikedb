@@ -538,6 +538,15 @@ trikedb sql-init … --no-views                                    # テーブ�
 export SNOWFLAKE_CONNECTION_NAME=analytics
 ```
 
+アカウントがブラウザSSO(`authenticator = externalbrowser`)の場合は、
+コネクタの `secure-local-storage` エクストラも入れること。入れないと
+SSOトークンがキャッシュされず、**プロセスごとにブラウザが開く** —
+CLIをループで回せず、CIのステップにもできない:
+
+```bash
+pip install 'snowflake-connector-python[secure-local-storage]'
+```
+
 ウェアハウスのDMLはテーブル単位で直列化されるので、同じテーブル内の
 **別のグラフ**への書き込みも直列化される。エージェントが編集する程度の
 頻度では見えない差だが、本格的な書き込みスループットを通すならテーブルを

@@ -569,6 +569,15 @@ rest is deferred to it:
 export SNOWFLAKE_CONNECTION_NAME=analytics
 ```
 
+If your account uses browser-based SSO (`authenticator = externalbrowser`),
+install the connector's `secure-local-storage` extra as well. Without it
+the SSO token is not cached and *every process* opens a browser — which
+makes the CLI unusable in a loop and a CI step impossible:
+
+```bash
+pip install 'snowflake-connector-python[secure-local-storage]'
+```
+
 Warehouse DML serialises per table, so writers to *different* graphs in
 one table serialise too. That is invisible at agent-editing rates; shard
 into several tables if you ever push real write throughput through it.

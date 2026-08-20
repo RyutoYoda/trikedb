@@ -173,6 +173,13 @@ DIALECTS = {"snowflake": SNOWFLAKE}
 #: SQL from the warehouse — and Cortex, dbt, BI and a SQL-speaking MCP all see
 #: plain tables with no extra copy to keep in step.
 #:
+#: ``TRY_PARSE_JSON`` rather than ``PARSE_JSON``: a graph saved by an older
+#: trikedb still holds YAML, and plain PARSE_JSON raises on it — which would
+#: take down the view for *every* graph in the table, not just the one that
+#: has not been re-saved yet. TRY_ yields NULL instead, so an un-migrated row
+#: contributes no rows and everyone else keeps working. Re-saving the graph
+#: migrates it.
+#:
 #: Views rather than tables on purpose: nothing is stored twice, nothing can
 #: drift, and the cost is zero. Snowflake pushes ``AT(TIMESTAMP => ...)`` down
 #: to the base table, so a view reads the past as happily as the present. The
@@ -197,7 +204,7 @@ _SNOWFLAKE_VIEWS = {
         "       OBJECT_DELETE(n.value, 'type', 'label') AS PROPS,\n"
         "       g.updated_at AS TS_UPDATED\n"
         "FROM {table} g,\n"
-        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):nodes) n"
+        "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):nodes) n"
     ),
     "KG_EDGE": (
         # A triple is unique on (s, p, o), so hashing those three gives a
@@ -212,14 +219,14 @@ _SNOWFLAKE_VIEWS = {
         "       OBJECT_DELETE(t.value, 's', 'p', 'o') AS PROPS,\n"
         "       g.updated_at AS TS_UPDATED\n"
         "FROM {table} g,\n"
-        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):triples) t"
+        "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):triples) t"
     ),
     "KG_PREDICATE": (
         "SELECT g.name AS GRAPH,\n"
         "       p.key AS PREDICATE,\n"
         "       p.value::string AS DESCRIPTION\n"
         "FROM {table} g,\n"
-        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):ontology:predicates) p"
+        "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):ontology:predicates) p"
     ),
     # The RDF view of the same rows, for anyone who thinks in triples.
     "KG_TRIPLE": (
@@ -229,7 +236,7 @@ _SNOWFLAKE_VIEWS = {
         "       t.value:o::string AS O,\n"
         "       OBJECT_DELETE(t.value, 's', 'p', 'o') AS ATTRS\n"
         "FROM {table} g,\n"
-        "     LATERAL FLATTEN(input => PARSE_JSON(g.doc):triples) t"
+        "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):triples) t"
     ),
 }
 
