@@ -1479,3 +1479,56 @@ def test_a_file_that_isnt_a_graph_fails_clearly(tmp_path):
     empty = tmp_path / "empty.yaml"
     empty.write_text("", encoding="utf-8")
     assert len(TrikeDB(empty)) == 0        # empty is still a legitimate graph
+
+
+def test_html_output_location_is_independent_of_where_the_graph_lives():
+    """The workbench is a rendering, not part of the graph.
+
+    Deriving the page name by swapping the graph's extension breaks on any
+    URL: `snowflake://DB.PUBLIC.TRIKE_GRAPHS/sales/crm` became
+    `snowflake://DB.PUBLIC.html`, and even the s3 case produced a path that
+    could only ever fail to open.
+    """
+    from trikedb.cli import _default_html_out
+
+    assert _default_html_out("graph.yaml") == "graph.html"
+    assert _default_html_out("kg/graph.yaml") == "kg/graph.html"
+    assert _default_html_out("mygraph") == "mygraph.html"
+    # remote graphs render to the working directory, named after the graph
+    assert _default_html_out("s3://bucket/kg/graph.yaml") == "graph.html"
+    assert _default_html_out(
+        "snowflake://DB.PUBLIC.TRIKE_GRAPHS/sales/crm") == "crm.html"
+    assert _default_html_out("snowflake://T/g") == "g.html"
+
+
+def test_html_can_be_published_to_object_storage(tmp_path):
+    """`-o s3://...` used to raise FileNotFoundError on a local path that was
+    never going to exist. The page goes through the storage layer now."""
+    pytest.importorskip("fsspec")
+    db = TrikeDB()
+    db.add("a", "P", "b")
+
+    url = "memory://kg/workbench.html"
+    db.to_html(url)
+    from trikedb import storage
+
+    assert "vis-network" in storage.read_text(url)
+
+    # ...and `check --html` can verify a published page, not just a local file
+    from trikedb.cli import main
+
+    g = tmp_path / "g.yaml"
+    db.save(g)
+    db.to_html(url)
+    assert main(["check", str(g), "--html", url]) == 0
+    db.add("c", "P", "d")
+    db.save(g)
+    assert main(["check", str(g), "--html", url]) == 1   # now stale
+
+
+def test_html_refuses_to_overwrite_a_graph_row():
+    """A warehouse row holds a graph; writing a page into it would destroy it."""
+    db = TrikeDB()
+    db.add("a", "P", "b")
+    with pytest.raises(ValueError, match="holds a graph, not a page"):
+        db.to_html("snowflake://DB.PUBLIC.TRIKE_GRAPHS/sales/crm")

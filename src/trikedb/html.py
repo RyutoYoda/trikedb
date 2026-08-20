@@ -596,5 +596,17 @@ def to_html(
         .replace("__CONTENT_HASH__", db.content_hash())
     )
     if path is not None:
-        Path(path).write_text(html, encoding="utf-8")
+        from . import storage, storage_sql
+
+        if storage_sql.is_sql_url(path):
+            # A warehouse row holds a graph. Writing a page into one would
+            # replace the graph with HTML the loader cannot read.
+            raise ValueError(
+                f"{path}: a warehouse row holds a graph, not a page — write "
+                "the workbench to a file or an object URL instead"
+            )
+        # Through the storage layer, so -o s3://bucket/kg/graph.html
+        # publishes the workbench instead of failing on a local path that
+        # was never going to exist.
+        storage.write_text(path, html)
     return html

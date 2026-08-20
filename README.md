@@ -362,6 +362,41 @@ trikedb audit workspace.yaml            # exit 1 on errors; --strict fails on wa
 heuristics, hand the `--json` report to an LLM agent and let it propose
 merges as a reviewable PR.
 
+**The review gate depends on where the graph lives.** A file in git gives
+you the strongest story: every change is a diff, `check` and `audit` run
+in CI, history comes free. An `s3://` or `snowflake://` graph has no pull
+request — writes land immediately — so review moves to the ontology guard
+at the write boundary, `audit` on a schedule instead of per-change, and
+the backend's own history (object versions, warehouse time travel, the
+`updated_at` column). Some teams run both on purpose: the reviewed graph
+in git, a shared graph agents write to, unioned with a workspace file so
+curation and accumulation don't block each other.
+
+## Do you have to write YAML by hand?
+
+No — YAML is the storage format, not the authoring interface. It's what
+the graph is written down as, chosen so a human can read a diff. Every
+write path produces the same document and passes the same ontology check:
+
+| | |
+|---|---|
+| `db.add(s, p, o, **attrs)` | Python — scripts, notebooks, ETL |
+| `trikedb add FILE S P O -a k=v` | one fact from a shell |
+| `trikedb import FILE data.csv` | a spreadsheet or Markdown table already has the facts |
+| `db.sparql("INSERT DATA {...}")` | you think in SPARQL |
+| MCP `add_triple` / `set_node` | an agent is writing — the usual case |
+| `db.infer(apply=True)` | materialize what already follows |
+| editing the YAML | a text editor is a legitimate client too |
+
+The guard applies to all of them equally, so "an agent wrote it" and "a
+human wrote it" can't diverge in vocabulary.
+
+The HTML workbench is a *rendering*, and where the graph lives never
+decides where the page goes: a local graph renders next to itself, a
+remote one into the working directory, and `-o` takes a path or an object
+URL (`-o s3://site/kg.html` publishes it). It's one self-contained file —
+no build step, no server — so publishing is just putting it somewhere.
+
 ## Serving a graph (UI + REST + remote MCP)
 
 One process, three doors (`pip install 'trikedb[serve]'`):

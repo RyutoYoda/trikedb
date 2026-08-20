@@ -23,8 +23,14 @@ flowchart LR
         AUD("audit.py<br/>health findings")
     end
 
-    STORE("storage.py<br/>local · s3:// gs:// https://")
-    SQL("storage_sql.py<br/>snowflake:// — a graph is a row")
+    STORE("storage.py<br/>read_text · write_text · version<br/>one whole document at a time")
+
+    subgraph backends["Backends — a graph lives in exactly one"]
+        direction TB
+        LOCAL("pathlib<br/>a local file")
+        FS("fsspec<br/>s3:// gs:// az:// https://")
+        SQL("storage_sql.py<br/>snowflake:// — a graph is a row")
+    end
 
     SERVE --> MCP
     CLI --> CORE
@@ -33,11 +39,18 @@ flowchart LR
     HTML --> CORE
     IMP --> CORE
     CORE --> STORE
-    STORE --> SQL
+    STORE -->|"a path"| LOCAL
+    STORE -->|"an object URL"| FS
+    STORE -->|"a warehouse URL"| SQL
     CORE -.-> SEM
     CORE -.-> EMB
     CORE -.-> AUD
 ```
+
+`storage.py` dispatches on the scheme and exactly one branch runs. A
+`snowflake://` graph never touches fsspec or S3, and an `s3://` graph
+never opens a warehouse connection — they are alternatives, not a
+pipeline, and nothing is stored twice.
 
 ## Layers
 
@@ -45,12 +58,14 @@ flowchart LR
   CRUD with ontology enforcement, pattern matching, SPARQL (delegated to
   rdflib), workspace unions, exports. Depends only on `storage` and
   (lazily) `semantics`. No HTTP, no CLI, no HTML in here — ever.
-- **`storage.py` — storage backends.** `read_text` / `write_text` /
-  `exists` / `version` over local paths and remote URLs (fsspec).
-  Anything about *where bytes live* — new URL schemes, optimistic
-  locking, caching — belongs here and nowhere else. The interface is
-  deliberately one whole document at a time: that is what lets the
-  destination change without anything above noticing.
+- **`storage.py` — the storage interface and its dispatcher.**
+  `read_text` / `write_text` / `exists` / `version`, resolved to one
+  backend by the URL scheme: a bare path to `pathlib`, an object URL to
+  fsspec, a warehouse URL to `storage_sql`. Anything about *where bytes
+  live* — new schemes, optimistic locking, caching — belongs here and
+  nowhere else. The interface is deliberately one whole document at a
+  time: that is what lets the destination change without anything above
+  noticing.
 - **`storage_sql.py` — the same interface over a SQL table.** A
   warehouse is not a filesystem, so it does not reach fsspec: a graph is
   a row (`name`, `doc`, `version`), and one table holds many graphs.

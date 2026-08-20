@@ -332,9 +332,29 @@ def _cmd_stats(args) -> int:
     return 0
 
 
+def _default_html_out(graph: str) -> str:
+    """Where `trikedb html` writes when no -o is given.
+
+    A local graph gets its sibling: `graph.yaml` -> `graph.html`. A URL has
+    no sibling to speak of, and swapping the extension on one produced
+    nonsense — `snowflake://DB.PUBLIC.TRIKE_GRAPHS/sales/crm` became
+    `snowflake://DB.PUBLIC.html` — so the view lands in the working
+    directory, named after the graph. The workbench is a rendering of the
+    graph, not part of it; where the graph lives never decides where the
+    page goes.
+    """
+    from .storage import is_remote
+
+    if is_remote(graph):
+        last = graph.rstrip("/").rsplit("/", 1)[-1]
+        stem = last.rsplit(".", 1)[0] if "." in last else last
+        return f"{stem or 'graph'}.html"
+    return (graph.rsplit(".", 1)[0] if "." in graph else graph) + ".html"
+
+
 def _cmd_html(args) -> int:
     db = TrikeDB(args.file)
-    out = args.out or args.file.rsplit(".", 1)[0] + ".html"
+    out = args.out or _default_html_out(args.file)
     title = args.title or f"trikedb — {args.file}"
     events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
     db.to_html(out, title=title, event_predicates=events, layout=args.layout)
@@ -368,16 +388,19 @@ def _cmd_infer(args) -> int:
 
 def _cmd_check(args) -> int:
     import re
-    from pathlib import Path
 
     db = TrikeDB(args.file)
     print(f"parse OK: {db}")
     if args.html:
-        path = Path(args.html)
-        if not path.exists():
+        # Through the storage layer: a workbench published to a bucket has to
+        # be checkable the same way a local one is, or CI can only guard the
+        # copies that happen to sit on disk.
+        from . import storage
+
+        if not storage.exists(args.html):
             print(f"stale: {args.html} does not exist — generate it", file=sys.stderr)
             return 1
-        m = re.search(r"trikedb:hash:([0-9a-f]+)", path.read_text(encoding="utf-8"))
+        m = re.search(r"trikedb:hash:([0-9a-f]+)", storage.read_text(args.html))
         if not m:
             print(f"stale: {args.html} has no content hash (older trikedb?) — regenerate", file=sys.stderr)
             return 1

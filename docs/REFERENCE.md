@@ -524,20 +524,89 @@ function.
   ad-hoc transitivity, SPARQL property paths (`t:INHERITS+`) need no
   OWL at all.
 
+## Do you have to write YAML?
+
+No. YAML is the *storage* format, not the authoring interface — it is
+what the graph is written down as, chosen so a human can read a diff.
+Nothing requires you to type it. Every write path below goes through the
+same core, gets the same ontology check, and produces the same document:
+
+| Write path | Use it when |
+|---|---|
+| `db.add(s, p, o, **attrs)` | Python — scripts, notebooks, ETL |
+| `trikedb add FILE S P O -a k=v` | one fact from a shell or a Makefile |
+| `trikedb import FILE data.csv` | a spreadsheet, TSV, or Markdown table already holds the facts |
+| `db.sparql("INSERT DATA {...}")` | you think in SPARQL, or you're porting from a triple store |
+| MCP `add_triple` / `set_node` | an agent is writing — the usual case |
+| `db.infer(apply=True)` | let OWL-RL materialize what already follows |
+| editing the YAML by hand | reviewing or correcting a small graph; a text editor is a legitimate client |
+
+The ontology guard applies to all of them equally, so "an agent wrote it"
+and "a human wrote it" cannot diverge in vocabulary. That is the point of
+having a controlled predicate list at the write boundary rather than a
+linter after the fact.
+
+## Where the HTML workbench goes
+
+The workbench is a *rendering* of the graph, not part of it. Where the
+graph lives never decides where the page goes:
+
+```bash
+trikedb html graph.yaml                      # -> graph.html, next to it
+trikedb html s3://bucket/kg/graph.yaml       # -> graph.html in the working dir
+trikedb html snowflake://DB.SCHEMA.T/sales/crm   # -> crm.html in the working dir
+trikedb html graph.yaml -o docs/index.html   # or say where explicitly
+trikedb html graph.yaml -o s3://site/kg.html # publish it to a bucket
+```
+
+A remote graph renders to the working directory by default, named after
+the graph, because a URL has no sibling file to put it next to. `-o`
+accepts a local path or an object URL. It does not accept a warehouse
+URL — a row there holds a graph, and writing a page into it would replace
+the graph with markup the loader cannot read.
+
+The page is self-contained (one file, no build step, no server), so
+"publishing" it is just putting it somewhere: commit it for GitHub Pages,
+push it to a bucket, or attach it to a ticket. `trikedb check --html
+PATH_OR_URL` compares the content hash embedded in the page against the
+graph and fails when the page is stale, which is what makes it safe to
+keep a generated view in version control.
+
 ## Keeping a growing graph healthy
 
 ```mermaid
 flowchart LR
-    E("edit YAML<br/>any write path") --> G("trikedb html<br/>regenerate view")
+    E("write<br/>agent · CLI · API · import") --> G("trikedb html<br/>regenerate view")
     G --> C("trikedb check<br/>parse + freshness")
     C --> A("trikedb audit<br/>dupes · collisions · orphans")
-    A -->|clean| PR("commit / PR")
+    A -->|clean| PR("commit / PR — or the graph's own history")
     A -->|"findings (--json)"| LLM("hand the report to an agent<br/>merge proposals as a PR")
 ```
 
 `audit` is deterministic on purpose; semantic near-duplicates beyond its
 heuristics are an agent's job, with the ontology guard keeping whatever
 the agent writes inside your vocabulary.
+
+**How the review step works depends on where the graph lives**, and this
+is worth deciding before you pick a backend:
+
+- **A file in git** — the original story, and still the strongest one.
+  Every change is a reviewable diff; `audit` and `check` run in CI;
+  history and blame come free. Choose this whenever the graph is small
+  enough to review and the writers are few.
+- **An object or warehouse graph** — there is no pull request. Writes
+  land immediately, so review has to move somewhere else: the ontology
+  guard at the write boundary (which is why it exists), `audit` on a
+  schedule rather than per-change, and the backend's own history — S3
+  object versions, or a warehouse's time travel and the `updated_at`
+  column. Agents editing a shared graph is exactly the case this is for.
+- **Both, deliberately** — some teams keep the reviewed graph in git and
+  let agents write to a separate shared graph, then union the two with a
+  workspace file. Curation and accumulation stay separate, and neither
+  blocks the other.
+
+Whichever you pick, the loop is the same shape: write, regenerate the
+view, check, audit, act on findings. Only the gate at the end moves.
 
 ## Extras
 
