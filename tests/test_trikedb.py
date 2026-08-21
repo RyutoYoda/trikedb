@@ -2771,3 +2771,94 @@ def test_webqsp_metrics_follow_the_reference_implementation():
     assert f1("Jamaican English\nJamaican English", gold) == pytest.approx(0.5)
 
     assert f1("", gold) == 0.0 and f1("anything", []) == 0.0
+
+def test_translated_readmes_stay_structurally_in_step():
+    """A translation that silently falls behind is worse than no translation:
+    a reader trusts it and gets last month's instructions. Three copies of 700
+    lines will not stay in sync by good intentions, so pin the parts that can
+    be checked mechanically — the headings and the code.
+
+    Prose is not compared (it is a translation), but a section added to the
+    English README and forgotten elsewhere shows up as a missing heading, and
+    a changed command shows up as a changed code block. Both are the failures
+    that actually mislead people.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    english = (root / "README.md").read_text(encoding="utf-8")
+
+    def strip_comments(body):
+        """The code, without the prose attached to it.
+
+        Comments inside a code block *are* translated — they explain the line
+        above them and a reader in Japanese should get them in Japanese. What
+        must not differ is the command itself. So drop whole-line comments and
+        trailing ones, keeping the rest byte-identical.
+
+        A trailing comment is a marker with whitespace on *both* sides. That
+        is what separates ` # + snowflake:// graphs` from
+        `prov=https://runbook.example/crm#sync` and from
+        `22-rdf-syntax-ns#type` — matching a bare `#` would cut those in half
+        and let the test pass on a difference that matters.
+        """
+        out = []
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("#", "--")):
+                continue
+            line = re.sub(r"\s+(?:#|--)\s.*$", "", line).rstrip()
+            if line:
+                out.append(line)
+        return "\n".join(out)
+
+    def code_blocks(text):
+        # Language-tagged blocks only: the bash/python/json/sql a reader
+        # copies. Untagged blocks are output samples and translate freely.
+        return [strip_comments(body) for _, body in
+                re.findall(r"```(bash|python|json|sql)\n(.*?)```", text, re.S)]
+
+    def headings(text):
+        """Section headings, with fenced blocks removed first.
+
+        Without that removal a Python comment (`# Add facts.`) reads as an
+        h1 and the count is dominated by code, which is exactly the content
+        that *should* differ between languages.
+        """
+        prose = re.sub(r"```.*?```", "", text, flags=re.S)
+        return [line.split(" ")[0] for line in prose.splitlines()
+                if re.match(r"^#{1,3} ", line)]
+
+    for name in ("README_jp.md", "README_zh.md"):
+        path = root / name
+        assert path.exists(), f"{name} is missing"
+        translated = path.read_text(encoding="utf-8")
+
+        assert headings(translated) == headings(english), (
+            f"{name} has a different heading structure than README.md — "
+            "a section was added or removed on one side only"
+        )
+        assert code_blocks(translated) == code_blocks(english), (
+            f"{name} has different runnable code than README.md — the commands "
+            "a reader copies must not drift between languages"
+        )
+
+
+def test_readmes_link_to_every_translation():
+    """Each README must reach the other two, or a reader lands in a language
+    they cannot read with no way back."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    names = {"README.md": "English", "README_jp.md": "日本語",
+             "README_zh.md": "简体中文"}
+    for name, label in names.items():
+        text = (root / name).read_text(encoding="utf-8")
+        header = text[:600]
+        assert f"<b>{label}</b>" in header, f"{name} does not mark itself as current"
+        for other, other_label in names.items():
+            if other == name:
+                continue
+            assert other in header, f"{name} does not link to {other}"
+            assert other_label in header, f"{name} is missing the {other_label} label"

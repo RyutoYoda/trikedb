@@ -1,4 +1,10 @@
 <p align="center">
+  <b>English</b>
+  &nbsp;·&nbsp; <a href="https://github.com/RyutoYoda/trikedb/blob/main/README_jp.md">日本語</a>
+  &nbsp;·&nbsp; <a href="https://github.com/RyutoYoda/trikedb/blob/main/README_zh.md">简体中文</a>
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/logo.png" width="260" alt="TrikeDB — a triceratops carrying a knowledge graph on its frill">
 </p>
 
@@ -679,7 +685,7 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## What trikedb is not
 
-- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is loaded into [rdflib](https://github.com/RDFLib/rdflib) and queried/updated by rdflib's battle-tested engine. Mapping rule: subjects/predicates become URIs under `urn:trikedb:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
+- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is projected into a real engine: reads run on [Oxigraph](https://github.com/oxigraph/oxigraph), updates and OWL/SHACL on [rdflib](https://github.com/RDFLib/rdflib). Mapping rule: subjects/predicates become URIs under `urn:trikedb:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
 - **Not an extraction pipeline.** It won't turn your PDFs into a graph. Pair it with an extractor if you want that — then curate what comes out.
 - **Not for millions of triples.** Everything is in memory and scans are linear. The sweet spot is the hundreds-to-thousands range, where a curated graph is even possible.
 
@@ -697,7 +703,13 @@ The exported HTML is a small workbench, not just a picture: click a node for a r
 
 ## Benchmark
 
-On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same small LLM answers **60% alone vs 83% with a trikedb graph as context** — a +23-point delta under a deterministic, reproducible protocol. Scripts, method, and an honest scoring-sensitivity analysis live in [`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks).
+On [WebQSP](https://aclanthology.org/P16-2033/) (knowledge-graph QA), the same
+local model answers **42.7% alone vs 77.7% with a trikedb graph as context** —
+Hits@1 over 300 questions of the test split, a +35-point delta, paired McNemar
+p = 9e-20. Retrieval put the answer in front of the model for 89.3% of them,
+in 0.59 s per question. Scripts, the accuracy-versus-latency trade, and an
+honest scoring-sensitivity analysis live in
+[`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks).
 
 ## Documentation
 
