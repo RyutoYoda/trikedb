@@ -53,9 +53,11 @@ WITH_GRAPH = "#eb6834"
 #: axis at all.
 REACH = 89.3
 ROWS = [
-    ("ans_nograph_8b.jsonl", "baseline", False),
-    ("ans_hybrid_grounded_8b.jsonl", "reader", True),
-    (None, "reach", True),
+    ("ans_nograph_27b.jsonl", "alone_27b", "without"),
+    ("ans_hybrid_grounded_27b.jsonl", "graph_27b", "with"),
+    ("ans_nograph_8b.jsonl", "alone_8b", "without"),
+    ("ans_hybrid_grounded_8b.jsonl", "graph_8b", "with"),
+    (None, "reach", "trikedb"),
 ]
 
 #: A translated doc deserves a translated figure — a reader who chose 日本語
@@ -64,32 +66,36 @@ ROWS = [
 TEXT = {
     "en": {
         "title": "trikedb finds the answer for 89.3% of questions",
-        "sub": "300 WebQSP questions · the same 300 at every bar",
-        "reach": "trikedb found it<br>and put it in the context",
-        "reader": "the 8B reader<br>then said it",
-        "baseline": "the same reader<br>with no graph",
+        "sub": "WebQSP · every bar is the same 300 questions",
+        "reach": "<b>trikedb found it</b>",
+        "graph_8b": "qwen3:8b + graph", "alone_8b": "qwen3:8b alone",
+        "graph_27b": "qwen3.8:27b + graph", "alone_27b": "qwen3.8:27b alone",
         "delta": "{d:+.0f} points from the graph",
-        "loss": "−{d:.1f} the reader dropped",
+        "loss": "−{d:.1f}: the reader dropped what it was handed",
     },
     "jp": {
         "title": "trikedb は89.3%の質問で正解を見つける",
-        "sub": "WebQSP 300問 · どの棒も同じ300問",
-        "reach": "trikedb が見つけて<br>文脈に入れた",
-        "reader": "8Bのリーダーが<br>それを言えた",
-        "baseline": "同じリーダー<br>グラフなし",
+        "sub": "WebQSP · どの棒も同じ300問",
+        "reach": "<b>trikedb が見つけた</b>",
+        "graph_8b": "qwen3:8b + グラフ", "alone_8b": "qwen3:8b 単体",
+        "graph_27b": "qwen3.8:27b + グラフ", "alone_27b": "qwen3.8:27b 単体",
         "delta": "グラフで {d:+.0f} ポイント",
-        "loss": "−{d:.1f} リーダーが落とした",
+        "loss": "−{d:.1f}：渡したのにリーダーが落とした",
     },
     "zh": {
         "title": "trikedb 在 89.3% 的题目上找到了答案",
-        "sub": "300 道 WebQSP 题 · 每根柱子都是同一批 300 题",
-        "reach": "trikedb 找到了它<br>并放进上下文",
-        "reader": "8B 阅读模型<br>把它说出来了",
-        "baseline": "同一个阅读模型<br>没有图谱",
+        "sub": "WebQSP · 每根柱子都是同一批 300 题",
+        "reach": "<b>trikedb 找到了它</b>",
+        "graph_8b": "qwen3:8b + 图谱", "alone_8b": "qwen3:8b 单独",
+        "graph_27b": "qwen3.8:27b + 图谱", "alone_27b": "qwen3.8:27b 单独",
         "delta": "图谱带来 {d:+.0f} 个百分点",
-        "loss": "−{d:.1f} 被阅读模型丢掉",
+        "loss": "−{d:.1f}：递到手上却被阅读模型丢掉",
     },
 }
+
+#: trikedb's bar is a different *stage*, not a rival reader, so it gets its own
+#: darker treatment. Reader bars stay blue/orange for without/with a graph.
+TRIKEDB_BAR = "#1a4f8f"
 
 #: Two gaps, and they mean opposite things: what the graph added, and what the
 #: reader then lost. Both are differences a reader will not compute by eye.
@@ -99,33 +105,38 @@ def main(lang: str = "en") -> None:
     words = TEXT[lang]
     scored = {r["answers"]: r for r in json.loads((HERE / "accuracy_data.json").read_text())}
 
-    values = []
-    for name, key, graph in ROWS:
-        value = REACH if name is None else scored[name]["hits_at_1"]
-        values.append((words[key], value, graph))
+    COLOR = {"trikedb": TRIKEDB_BAR, "with": WITH_GRAPH, "without": WITHOUT_GRAPH}
+    values = [(words[key], REACH if name is None else scored[name]["hits_at_1"], kind)
+              for name, key, kind in ROWS]
 
     figure = go.Figure(go.Bar(
         y=[label for label, _, _ in values],
         x=[value for _, value, _ in values],
         orientation="h",
-        marker=dict(color=[WITH_GRAPH if g else WITHOUT_GRAPH for _, _, g in values],
+        marker=dict(color=[COLOR[kind] for _, _, kind in values],
                     line=dict(color=SURFACE, width=2)),
         text=[f"{value:.1f}%" for _, value, _ in values],
         textposition="outside", cliponaxis=False,
-        textfont=dict(size=17, color=INK),
+        textfont=dict(size=16, color=INK),
         hovertemplate="%{y}<br>%{x:.1f}% of 300 questions<extra></extra>",
     ))
 
-    reach, reader, baseline = REACH, values[1][1], values[0][1]
+    # Row indices, bottom-up as plotly draws them.
+    at = {key: i for i, (_, key, _) in enumerate(ROWS)}
+    for lower, upper, template, color, size in (
+        ("alone_8b", "graph_8b", words["delta"], WITH_GRAPH, 16),
+        ("alone_27b", "graph_27b", words["delta"], WITH_GRAPH, 16),
+    ):
+        gain = values[at[upper]][1] - values[at[lower]][1]
+        figure.add_annotation(
+            x=values[at[upper]][1], y=(at[lower] + at[upper]) / 2, xshift=150,
+            text=f"<b>{template.format(d=gain)}</b>", showarrow=False,
+            font=dict(size=size, color=color),
+        )
     figure.add_annotation(
-        x=reader, y=0.5, xshift=132, showarrow=False,
-        text=f"<b>{words['delta'].format(d=reader - baseline)}</b>",
-        font=dict(size=17, color=WITH_GRAPH),
-    )
-    figure.add_annotation(
-        x=reach, y=1.5, xshift=132, showarrow=False,
-        text=words["loss"].format(d=reach - reader),
-        font=dict(size=15, color=INK_MUTED),
+        x=REACH, y=(at["graph_8b"] + at["reach"]) / 2, xshift=150,
+        text=words["loss"].format(d=REACH - values[at["graph_8b"]][1]),
+        showarrow=False, font=dict(size=14, color=INK_MUTED),
     )
 
     figure.update_layout(
@@ -133,16 +144,16 @@ def main(lang: str = "en") -> None:
             text=(f"{words['title']}<br>"
                   f"<span style='font-size:14px;color:{INK_MUTED}'>"
                   f"{words['sub']}</span>"),
-            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.93,
+            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.94,
         ),
-        bargap=0.5,
+        bargap=0.42,
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=15),
         xaxis=dict(range=[0, 100], showgrid=False, zeroline=False,
                    showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, linecolor=SURFACE),
         showlegend=False,
-        margin=dict(l=10, r=290, t=100, b=16), width=1020, height=340,
+        margin=dict(l=10, r=330, t=100, b=16), width=1100, height=420,
     )
     out = HERE / ("accuracy.png" if lang == "en" else f"accuracy_{lang}.png")
     figure.write_image(out, scale=2)
