@@ -15,7 +15,7 @@ answer in the window", and read the accuracy numbers next to it.
 
 Run:
     uv run --with polars python benchmarks/retrieval_bench.py \\
-        --n 100 --seed 42 > benchmarks/retrieval_data.json
+        --n 100 --seed 42 > bench_out/retrieval_progress.jsonl
 
 Add `--budget 250` to change the cap. The dataset is downloaded at runtime and
 never stored in this repository.

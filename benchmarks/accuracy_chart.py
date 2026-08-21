@@ -1,8 +1,14 @@
-"""Render accuracy_data.json as a grouped bar chart.
+"""Render accuracy_data.json as the one bar chart the benchmark exists for.
 
     python benchmarks/webqsp_bench.py score bench_out/hybrid/eval_set.json \
         bench_out/ans_*.jsonl --json benchmarks/accuracy_data.json
     python benchmarks/accuracy_chart.py        # -> benchmarks/accuracy.png
+
+Deliberately austere. An earlier version carried both metrics, a sub-label per
+row, a reference line for retrieval reach, a legend and an axis — every item
+defensible on its own, and together they buried the finding. This one shows
+four bars, four labels and two deltas. F1, n and reach live in the tables in
+README.md, where a reader who wants them is already reading numbers.
 
 Needs plotly and kaleido:  pip install plotly kaleido
 """
@@ -19,83 +25,74 @@ HERE = Path(__file__).resolve().parent
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_MUTED = "#52514e"
-GRID = "#e6e5e1"
-RULE = "#c9c7c0"
 
-#: Two slots, in fixed order. Validated on the light surface: worst adjacent
-#: CVD dE 24.7 (protan), normal-vision dE 33.6, both above 3:1 against the
-#: surface. Same pair the ceiling chart uses, so the two figures in this
-#: directory do not disagree about what blue and orange mean.
-HITS = "#2a78d6"
-F1 = "#eb6834"
+#: One measure, so one hue — the blue Hits@1 wears in every figure here. The
+#: pale tint is the same hue lightened, not a second colour: rows without a
+#: graph are the baseline, and the eye should land on the rows with one.
+WITH_GRAPH = "#2a78d6"
+WITHOUT_GRAPH = "#a9c8ec"
 
-#: filename -> (row label, sub-label). Order here is the order of the chart,
-#: bottom to top, so the story reads upward: no graph, then the graph as it
-#: was, then the graph with the retrieval this benchmark ended up choosing.
+#: filename -> (label, has a graph). Bottom to top, paired by model so each
+#: model's before/after sits adjacent — interleaving the conditions put the two
+#: halves of the comparison four rows apart, and a jump you have to hunt for is
+#: a jump nobody sees.
 ROWS = [
-    ("ans_nograph_27b.jsonl", "no graph · qwen3.8:27b", "3.4x the parameters"),
-    ("ans_nograph_8b.jsonl", "no graph · qwen3:8b", "the model alone"),
-    ("ans_hybrid_grounded_27b.jsonl", "graph · qwen3.8:27b", "250 triples — abstains on 20%"),
-    ("ans_hybrid_grounded_8b.jsonl", "graph · qwen3:8b", "250 triples, grounded answers"),
+    ("ans_hybrid_grounded_27b.jsonl", "qwen3.8:27b + graph", True),
+    ("ans_nograph_27b.jsonl", "qwen3.8:27b alone", False),
+    ("ans_hybrid_grounded_8b.jsonl", "qwen3:8b + graph", True),
+    ("ans_nograph_8b.jsonl", "qwen3:8b alone", False),
 ]
 
-#: Answer-in-context for the retrieval the top row uses, on the same 300
-#: questions. It shares the axis with the bars because it is also a
-#: percentage-of-questions, but it is a *different quantity* — what retrieval
-#: put in front of the model, not what the model got right — and reading it as
-#: a taller bar is the mistake the line invites. Hence the wording: "reached",
-#: not a percentage score. The gap between it and the top bar is 38 questions
-#: whose answer was in the context and did not come out of the model.
-CEILING = 89.3
-CEILING_LABEL = "retrieval reached the answer for 89.3% of questions"
+#: (lower row, upper row) whose gap gets a delta callout. The number this
+#: benchmark exists to produce is a *difference*, and a difference the reader
+#: has to compute by eye is one they will not compute.
+DELTAS = [("ans_nograph_8b.jsonl", "ans_hybrid_grounded_8b.jsonl"),
+          ("ans_nograph_27b.jsonl", "ans_hybrid_grounded_27b.jsonl")]
 
 
 def main() -> None:
     scored = {r["answers"]: r for r in json.loads((HERE / "accuracy_data.json").read_text())}
-    rows = [(label, sub, scored[name]) for name, label, sub in ROWS if name in scored]
+    rows = [(label, graph, scored[name]) for name, label, graph in ROWS if name in scored]
     if not rows:
-        raise SystemExit("no rows matched accuracy_data.json — check the filenames in ROWS")
+        raise SystemExit("no rows matched accuracy_data.json — check ROWS")
 
-    # n per row, not one figure for the whole chart: a run stopped early is a
-    # smaller n, and hiding that behind a single number would overstate it.
-    y = [f"{label}<br><span style='font-size:11px;color:{INK_MUTED}'>{sub} · n={r['n']}</span>"
-         for label, sub, r in rows]
-    figure = go.Figure()
-    figure.add_vline(x=CEILING, line=dict(color=RULE, width=2, dash="dot"))
-    figure.add_annotation(
-        x=CEILING, y=1.015, xref="x", yref="paper",
-        text=CEILING_LABEL,
-        showarrow=False, font=dict(size=11, color=INK_MUTED),
-        xanchor="right", xshift=-6, yshift=1,
-    )
-    for key, name, color in (("hits_at_1", "Hits@1", HITS), ("f1", "F1", F1)):
-        values = [r[key] for _, _, r in rows]
-        figure.add_trace(go.Bar(
-            y=y, x=values, name=name, orientation="h",
-            marker=dict(color=color, line=dict(color=SURFACE, width=2)),
-            text=[f"{v:.1f}" for v in values], textposition="outside",
-            textfont=dict(size=12, color=INK_MUTED), cliponaxis=False,
-            hovertemplate="%{y}<br>" + name + " %{x:.1f}%<extra></extra>",
-        ))
+    figure = go.Figure(go.Bar(
+        y=[label for label, _, _ in rows],
+        x=[r["hits_at_1"] for _, _, r in rows],
+        orientation="h",
+        marker=dict(color=[WITH_GRAPH if g else WITHOUT_GRAPH for _, g, _ in rows],
+                    line=dict(color=SURFACE, width=2)),
+        text=[f"{r['hits_at_1']:.1f}%" for _, _, r in rows],
+        textposition="outside", cliponaxis=False,
+        textfont=dict(size=16, color=INK),
+        hovertemplate="%{y}<br>Hits@1 %{x:.1f}%<extra></extra>",
+    ))
+
+    index = {name: i for i, (name, _, _) in enumerate(ROWS) if name in scored}
+    for low, high in DELTAS:
+        if low in index and high in index:
+            gain = scored[high]["hits_at_1"] - scored[low]["hits_at_1"]
+            figure.add_annotation(
+                x=scored[high]["hits_at_1"], y=(index[low] + index[high]) / 2,
+                text=f"<b>{gain:+.0f} points</b>", showarrow=False, xshift=112,
+                font=dict(size=18, color=WITH_GRAPH),
+            )
 
     figure.update_layout(
         title=dict(
-            text=("Does a knowledge graph help the model answer?<br>"
-                  f"<span style='font-size:13px;color:{INK_MUTED}'>WebQSP test "
-                  "split, temperature 0 · Hits@1 and F1 per the RoG reference "
-                  "implementation · the graph is worth more than 3.4x the "
-                  "parameters</span>"),
-            font=dict(size=19, color=INK), x=0.008, xanchor="left", y=0.955,
+            text=("A knowledge graph beats 3.4x the parameters<br>"
+                  f"<span style='font-size:14px;color:{INK_MUTED}'>WebQSP · "
+                  "Hits@1</span>"),
+            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.93,
         ),
-        barmode="group", bargap=0.34, bargroupgap=0.12,
+        bargap=0.44,
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
-        font=dict(family="Helvetica, Arial, sans-serif", color=INK_MUTED, size=12),
-        xaxis=dict(range=[0, 100], gridcolor=GRID,
-                   zeroline=False, linecolor=GRID, ticksuffix="%"),
-        yaxis=dict(gridcolor=SURFACE, zeroline=False, linecolor=GRID),
-        legend=dict(orientation="h", y=-0.16, x=0, bgcolor="rgba(0,0,0,0)",
-                    font=dict(size=12)),
-        margin=dict(l=10, r=64, t=104, b=52), width=1000, height=104 + 92 * len(rows),
+        font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=16),
+        xaxis=dict(range=[0, 100], showgrid=False, zeroline=False,
+                   showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, linecolor=SURFACE),
+        showlegend=False,
+        margin=dict(l=10, r=210, t=100, b=16), width=960, height=360,
     )
     out = HERE / "accuracy.png"
     figure.write_image(out, scale=2)

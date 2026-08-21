@@ -6,15 +6,18 @@
 
 # Benchmarks
 
-Two questions, in the order they matter:
+**trikedb put the gold answer in front of the model for 89.3% of 300 WebQSP
+questions, taking 0.59 s each.** With a small local reader that becomes 77.7%
+answered correctly end to end — against 42.7% for the same model with no graph.
 
-1. **[Does the graph make an LLM more accurate?](#kgqa-does-the-graph-reduce-hallucination)**
-   — Hits@1 42.7% → 77.7% on 300 WebQSP questions, same model either way. The
-   protocol's own sensitivity is reported alongside it, because the headline
-   number moves depending on how you score.
-2. **[Where is the ceiling?](#where-is-the-ceiling)** — which operation stops
-   being usable first, and at what graph size. Not the same as "how many
-   triples fit", which nothing reaches.
+![Hits@1 by model and condition](accuracy.png)
+
+Tripling the reader's parameters, by contrast, changed nothing without a graph
+(44.0% against 42.7%, paired p = 1.0). Whatever moves accuracy here, it is not
+model size.
+
+Everything below is how those numbers were produced, what they do not say, and
+where the ceiling is.
 
 ## KGQA: does the graph reduce hallucination?
 
@@ -39,8 +42,6 @@ the way the RoG reference implementation computes them.
 | the model alone | 42.7% | 27.9% |
 | **the model + a trikedb graph** | **77.7%** | **57.4%** |
 | difference | **+35.0pt** | **+29.6pt** |
-
-![Hits@1 and F1 by condition](accuracy.png)
 
 Same model, same prompt, same questions. The only thing that changes is
 whether the retrieved triples are in the context.
@@ -166,8 +167,6 @@ context (below) made every gold answer reachable and accuracy did not move.
 **Almost all of that comes from the ranking, not the entity anchor.** Rebuilt
 at three budgets, hybrid and pure semantic search sit on top of each other:
 
-![Reach against context budget](retrieval.png)
-
 | retrieval | 100 triples | 150 | 250 |
 |---|---|---|---|
 | hybrid — entity anchor + semantic | 81.3% | 84.7% | **89.3%** |
@@ -234,8 +233,6 @@ condition and on any machine where prefill is not the wall.
 The graph costs prompt tokens, and prompt tokens are the run time. Measured
 alone on an idle machine, one request at a time — the latency a person asking
 one question actually waits:
-
-![Accuracy against seconds per question](frontier.png)
 
 | condition | median seconds | prompt | Hits@1 |
 |---|---|---|---|
