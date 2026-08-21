@@ -1,6 +1,83 @@
 # Architecture
 
-This document is about *why*, not what. For the API see
+## The whole thing, in one picture
+
+```mermaid
+flowchart TB
+    subgraph W["Who writes"]
+        direction LR
+        WA["an agent<br/>MCP tools"]
+        WC["a person<br/>CLI · editor"]
+        WP["a program<br/>Python API · import · SPARQL UPDATE"]
+    end
+
+    G{{"ontology guard<br/>an undeclared predicate never lands"}}
+
+    D["<b>ONE document</b><br/>triples · nodes · ontology<br/><i>data and meaning together</i>"]
+
+    subgraph S["Stored in exactly one place"]
+        direction LR
+        SF["a file<br/>graph.yaml<br/>graph.json"]
+        SO["an object<br/>s3:// gs://<br/>az:// https://"]
+        SW["a table row<br/>snowflake://<br/>bigquery://"]
+    end
+
+    M["opened once into memory<br/>Triple list + dicts"]
+
+    subgraph P["Projections — built on demand, never stored"]
+        direction LR
+        PO["oxigraph<br/>SPARQL reads"]
+        PR["rdflib<br/>writes · OWL · SHACL · exports"]
+        PN["networkx<br/>graph algorithms"]
+    end
+
+    V["SQL views<br/>KG_NODE · KG_EDGE · KG_PREDICATE · KG_TRIPLE"]
+
+    subgraph R["Who reads"]
+        direction LR
+        RA["agents<br/>MCP"]
+        RH["people<br/>HTML workbench"]
+        RP["apps<br/>REST · Python"]
+        RS["anything speaking SQL<br/>BI · dbt · notebooks"]
+    end
+
+    WA --> G
+    WC --> G
+    WP --> G
+    G --> D
+    D --> SF
+    D --> SO
+    D --> SW
+    SF --> M
+    SO --> M
+    SW --> M
+    M --> PO
+    M --> PR
+    M --> PN
+    SW -.->|"the document is JSON here,<br/>so SQL can open it"| V
+    PO --> RA
+    PO --> RP
+    PR --> RP
+    PN --> RP
+    M --> RH
+    V --> RS
+```
+
+Read it as four claims, each expanded below:
+
+1. **Every write goes through one guard.** A predicate that is not in the
+   ontology never reaches the document, whoever is writing — which is why an
+   agent and a person cannot drift apart in vocabulary.
+2. **There is one document, and it holds the meaning too.** The ontology and
+   the node properties are keys of the same file, not a registry beside it.
+3. **The document goes to exactly one destination**, and that choice changes
+   only what opening and saving cost. Queries are answered from memory, so
+   they do not care.
+4. **Everything else is a projection.** rdflib, oxigraph, networkx and the SQL
+   views are views of the same statements, built on demand. Nothing is stored
+   twice, so nothing can disagree.
+
+This document is about *why* it is shaped that way. For the API see
 [REFERENCE.md](REFERENCE.md); for measurements see
 [benchmarks/](../benchmarks/README.md).
 
@@ -109,30 +186,17 @@ whole graph is not.
 Three questions people ask in this order, so they are answered in that order:
 what is *stored*, where the *meaning* is kept, and what *executes a query*.
 
-```mermaid
-flowchart TB
-    subgraph doc["ONE document — the whole graph, and the whole truth"]
-        direction LR
-        T["triples<br/>s · p · o + edge attributes"]
-        N["nodes<br/>free-form properties"]
-        O["ontology<br/>the predicate whitelist"]
-    end
+```yaml
+# one file, three keys — this is the whole storage format
+ontology:                       # the meaning: which predicates may exist
+  predicates:
+    PROVIDES: "vendor -> job"
 
-    subgraph where["...written to exactly one of these"]
-        direction LR
-        F["a file<br/>graph.yaml / graph.json"]
-        B["an object<br/>s3:// gs:// az://"]
-        W["a row in a table<br/>snowflake:// bigquery://"]
-    end
+nodes:                          # what is known about an entity itself
+  crm-sync-job: {type: job, owner: data-platform}
 
-    subgraph mem["In the process, on open"]
-        direction LR
-        PY["Python objects<br/>Triple list + dicts"]
-        IDX["a built query index<br/>oxigraph · rdflib"]
-    end
-
-    doc --> where
-    where --> mem
+triples:                        # the facts, with attributes on the edge
+  - {s: salesflow, p: PROVIDES, o: crm-sync-job, prov: runbook.md}
 ```
 
 **Data and metadata are the same document.** The ontology is not a schema
