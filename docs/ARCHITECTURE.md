@@ -8,14 +8,16 @@ flowchart TB
     LG[" "]
     LB["<b>LAYER 2</b><br/>Core — exactly one"]
     LC["<b>LAYER 3</b><br/>Storage — pick exactly one"]
-    LD["<b>LAYER 4</b><br/>Projection — pick any, none is stored"]
+    LD["<b>LAYER 4</b><br/>Projection — never stored"]
     LE["<b>LAYER 1</b><br/>Interface — reading"]
     LA ~~~ LG ~~~ LB ~~~ LC ~~~ LD ~~~ LE
 
     WA("agent<br/>MCP")
     WC("person<br/>CLI · editor")
-    WP("program<br/>Python · SPARQL UPDATE")
-    G{{"the ontology guard — every write passes here"}}
+    WI("bulk import<br/>CSV · Markdown · YAML")
+    WP("program<br/>Python")
+    WU("program<br/>SPARQL UPDATE")
+    G{{"the ontology guard — every write passes here<br/>an undeclared predicate never lands"}}
     C("<b>ONE document</b><br/>triples · nodes · ontology")
     SF("file<br/>graph.yaml · graph.json")
     SO("object<br/>s3:// · gs:// · az://")
@@ -24,44 +26,49 @@ flowchart TB
     PR("rdflib.Graph<br/>owlrl · pyshacl · exports")
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
-    RH("person<br/>HTML workbench")
+    PD("no engine at all<br/>the document as JSON")
     RA("agent<br/>MCP")
     RP("app<br/>REST · Python")
+    RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
+    RH("person<br/>HTML workbench")
 
     WA --> G
     WC --> G
+    WI --> G
     WP --> G
+    WU --> G
     G --> C
     C <--> SF
     C <--> SO
     C <--> SW
     SF ~~~ PO
-    SO ~~~ PR
-    SW ~~~ PN
+    SF ~~~ PR
+    SO ~~~ PN
     SW -.-> PV
+    SW ~~~ PD
     C -.-> PO
     C -.-> PR
     C -.-> PN
+    C -.-> PD
     PO --> RA
-    PO --> RP
     PR --> RP
-    PN --> RP
+    PN --> RG
     PV --> RS
-    PO ~~~ RH
-    C -.-> RH
+    PD --> RH
 
-    classDef lbl fill:none,stroke:none,color:#8b8b8b,text-align:left
+    classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
     classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10
     classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
     classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
     class LA,LG,LB,LC,LD,LE lbl
-    class WA,WC,WP,RH,RA,RP,RS iface
+    class WA,WC,WI,WP,WU,RA,RP,RG,RS,RH iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV proj
+    class PO,PR,PN,PV,PD proj
 ```
+
 
 
 
@@ -69,7 +76,9 @@ flowchart TB
 
 Read it top to bottom: each row is one layer, colour-coded, with the layer's
 name on the left. Solid arrows move bytes; dotted arrows are *derived* — built
-on demand from the document and thrown away.
+on demand from the document and thrown away. Read a column downward and you
+have one real path end to end: `oxigraph → agent over MCP`,
+`SQL views → dbt`, `no engine at all → the HTML workbench`.
 
 **Four layers, and layer 1 is the bread on both ends** — the same interface
 layer, writing on the way in and reading on the way out. The core between them
