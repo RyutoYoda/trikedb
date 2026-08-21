@@ -41,66 +41,92 @@ WITH_GRAPH = "#eb6834"
 #: model's before/after sits adjacent — interleaving the conditions put the two
 #: halves of the comparison four rows apart, and a jump you have to hunt for is
 #: a jump nobody sees.
+#: Stages, not competitors. 89.3% and 77.7% are the same 300 questions at two
+#: points in one pipeline — what trikedb put in front of the model, and what
+#: the model then said. Drawing them as rival bars is what made an earlier
+#: version of this figure unreadable; drawing them as stages is what makes the
+#: loss legible, because the gap between the top two bars is the reader
+#: dropping answers it was handed.
+#:
+#: The bottom bar is the same reader with no graph. Every bar is over all 300
+#: questions with nothing excluded, which is the only reason they can share an
+#: axis at all.
+REACH = 89.3
 ROWS = [
-    ("ans_hybrid_grounded_27b.jsonl", "qwen3.8:27b", True),
-    ("ans_nograph_27b.jsonl", "qwen3.8:27b", False),
-    ("ans_hybrid_grounded_8b.jsonl", "qwen3:8b", True),
-    ("ans_nograph_8b.jsonl", "qwen3:8b", False),
+    ("ans_nograph_8b.jsonl", "baseline", False),
+    ("ans_hybrid_grounded_8b.jsonl", "reader", True),
+    (None, "reach", True),
 ]
 
 #: A translated doc deserves a translated figure — a reader who chose 日本語
 #: should not have to read the one image in English. Only the words move; every
 #: number and every colour is the same file of data.
 TEXT = {
-    "en": {"title": "A knowledge graph beats 3.4x the parameters",
-           "sub": "WebQSP · Hits@1", "with": "{m} + graph", "without": "{m} alone",
-           "delta": "{d:+.0f} points"},
-    "jp": {"title": "グラフはパラメータ3.4倍より効く",
-           "sub": "WebQSP · Hits@1", "with": "{m} + グラフ", "without": "{m} 単体",
-           "delta": "{d:+.0f} ポイント"},
-    "zh": {"title": "知识图谱胜过 3.4 倍的参数",
-           "sub": "WebQSP · Hits@1", "with": "{m} + 图谱", "without": "{m} 单独",
-           "delta": "{d:+.0f} 个百分点"},
+    "en": {
+        "title": "trikedb finds the answer for 89.3% of questions",
+        "sub": "300 WebQSP questions · the same 300 at every bar",
+        "reach": "trikedb found it<br>and put it in the context",
+        "reader": "the 8B reader<br>then said it",
+        "baseline": "the same reader<br>with no graph",
+        "delta": "{d:+.0f} points from the graph",
+        "loss": "−{d:.1f} the reader dropped",
+    },
+    "jp": {
+        "title": "trikedb は89.3%の質問で正解を見つける",
+        "sub": "WebQSP 300問 · どの棒も同じ300問",
+        "reach": "trikedb が見つけて<br>文脈に入れた",
+        "reader": "8Bのリーダーが<br>それを言えた",
+        "baseline": "同じリーダー<br>グラフなし",
+        "delta": "グラフで {d:+.0f} ポイント",
+        "loss": "−{d:.1f} リーダーが落とした",
+    },
+    "zh": {
+        "title": "trikedb 在 89.3% 的题目上找到了答案",
+        "sub": "300 道 WebQSP 题 · 每根柱子都是同一批 300 题",
+        "reach": "trikedb 找到了它<br>并放进上下文",
+        "reader": "8B 阅读模型<br>把它说出来了",
+        "baseline": "同一个阅读模型<br>没有图谱",
+        "delta": "图谱带来 {d:+.0f} 个百分点",
+        "loss": "−{d:.1f} 被阅读模型丢掉",
+    },
 }
 
-#: (lower row, upper row) whose gap gets a delta callout. The number this
-#: benchmark exists to produce is a *difference*, and a difference the reader
-#: has to compute by eye is one they will not compute.
-DELTAS = [("ans_nograph_8b.jsonl", "ans_hybrid_grounded_8b.jsonl"),
-          ("ans_nograph_27b.jsonl", "ans_hybrid_grounded_27b.jsonl")]
+#: Two gaps, and they mean opposite things: what the graph added, and what the
+#: reader then lost. Both are differences a reader will not compute by eye.
 
 
 def main(lang: str = "en") -> None:
     words = TEXT[lang]
     scored = {r["answers"]: r for r in json.loads((HERE / "accuracy_data.json").read_text())}
-    rows = [((words["with"] if graph else words["without"]).format(m=model),
-             graph, scored[name])
-            for name, model, graph in ROWS if name in scored]
-    if not rows:
-        raise SystemExit("no rows matched accuracy_data.json — check ROWS")
+
+    values = []
+    for name, key, graph in ROWS:
+        value = REACH if name is None else scored[name]["hits_at_1"]
+        values.append((words[key], value, graph))
 
     figure = go.Figure(go.Bar(
-        y=[label for label, _, _ in rows],
-        x=[r["hits_at_1"] for _, _, r in rows],
+        y=[label for label, _, _ in values],
+        x=[value for _, value, _ in values],
         orientation="h",
-        marker=dict(color=[WITH_GRAPH if g else WITHOUT_GRAPH for _, g, _ in rows],
+        marker=dict(color=[WITH_GRAPH if g else WITHOUT_GRAPH for _, _, g in values],
                     line=dict(color=SURFACE, width=2)),
-        text=[f"{r['hits_at_1']:.1f}%" for _, _, r in rows],
+        text=[f"{value:.1f}%" for _, value, _ in values],
         textposition="outside", cliponaxis=False,
-        textfont=dict(size=16, color=INK),
-        hovertemplate="%{y}<br>Hits@1 %{x:.1f}%<extra></extra>",
+        textfont=dict(size=17, color=INK),
+        hovertemplate="%{y}<br>%{x:.1f}% of 300 questions<extra></extra>",
     ))
 
-    index = {name: i for i, (name, _, _) in enumerate(ROWS) if name in scored}
-    for low, high in DELTAS:
-        if low in index and high in index:
-            gain = scored[high]["hits_at_1"] - scored[low]["hits_at_1"]
-            figure.add_annotation(
-                x=scored[high]["hits_at_1"], y=(index[low] + index[high]) / 2,
-                text=f"<b>{words['delta'].format(d=gain)}</b>",
-                showarrow=False, xshift=112,
-                font=dict(size=18, color=WITH_GRAPH),
-            )
+    reach, reader, baseline = REACH, values[1][1], values[0][1]
+    figure.add_annotation(
+        x=reader, y=0.5, xshift=132, showarrow=False,
+        text=f"<b>{words['delta'].format(d=reader - baseline)}</b>",
+        font=dict(size=17, color=WITH_GRAPH),
+    )
+    figure.add_annotation(
+        x=reach, y=1.5, xshift=132, showarrow=False,
+        text=words["loss"].format(d=reach - reader),
+        font=dict(size=15, color=INK_MUTED),
+    )
 
     figure.update_layout(
         title=dict(
@@ -109,14 +135,14 @@ def main(lang: str = "en") -> None:
                   f"{words['sub']}</span>"),
             font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.93,
         ),
-        bargap=0.44,
+        bargap=0.5,
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
-        font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=16),
+        font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=15),
         xaxis=dict(range=[0, 100], showgrid=False, zeroline=False,
                    showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, linecolor=SURFACE),
         showlegend=False,
-        margin=dict(l=10, r=210, t=100, b=16), width=960, height=360,
+        margin=dict(l=10, r=290, t=100, b=16), width=1020, height=340,
     )
     out = HERE / ("accuracy.png" if lang == "en" else f"accuracy_{lang}.png")
     figure.write_image(out, scale=2)

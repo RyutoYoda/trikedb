@@ -37,9 +37,12 @@ those had the answer in the context. Restrict to the 120 questions both
 answered and the difference disappears (88.3% against 84.2%, p = 0.27). Swap
 the reader and the abstention instruction needs retuning.
 
-**Retrieval reached the answer for 89.3% of questions**, so 77.7% end to end
-means the model converted 85.8% of what it was handed. The remaining gap is the
-reader, not the graph.
+The chart above reads as one pipeline: of the same 300 questions, trikedb put
+the answer in the context for 89.3%, and the reader turned 77.7% of them into a
+correct answer. The 11.6-point gap is 38 questions whose answer was in front of
+the model and did not come out of it — so a perfect reader on this same
+retrieval would score 89.3%, and the ceiling here belongs to the reader, not
+the graph.
 
 ## Speed
 
