@@ -3,9 +3,9 @@
 Two questions, in the order they matter:
 
 1. **[Does the graph make an LLM more accurate?](#kgqa-does-the-graph-reduce-hallucination)**
-   — 60% → 83% on WebQSP, with the measurement protocol's own sensitivity
-   reported alongside it, because the headline number moves depending on how
-   you score.
+   — Hits@1 42.7% → 77.7% on 300 WebQSP questions, same model either way. The
+   protocol's own sensitivity is reported alongside it, because the headline
+   number moves depending on how you score.
 2. **[Where is the ceiling?](#where-is-the-ceiling)** — which operation stops
    being usable first, and at what graph size. Not the same as "how many
    triples fit", which nothing reaches.
@@ -15,49 +15,70 @@ Two questions, in the order they matter:
 **Question:** if an LLM answers factual questions with a trikedb graph as
 context, how much more accurate is it than the same LLM answering alone?
 
-**Setup:** [WebQSP](https://aclanthology.org/P16-2033/) questions via the
-[RoG-WebQSP](https://huggingface.co/datasets/rmanluo/RoG-webqsp) repack
-(gold answers + Freebase subgraph per question, downloaded at runtime —
-no dataset content is stored in this repository). Per-question context is
-retrieved with trikedb's pattern API: the 1-hop neighborhood of the
-question entity, expanded through Freebase mediator (CVT) nodes, capped
-at 250 triples. Scoring is a case-insensitive containment match against
-the gold answers.
+**Setup:** 300 questions sampled (seed 42) from the full 1,628-question
+[WebQSP](https://aclanthology.org/P16-2033/) test split via the
+[RoG-WebQSP](https://huggingface.co/datasets/rmanluo/RoG-webqsp) repack — gold
+answers plus a Freebase subgraph per question, downloaded at runtime, no
+dataset content stored here. Each subgraph is loaded into an in-memory
+TrikeDB (median 5,088 triples) and the per-question context is retrieved with
+trikedb's own `search()` and `find()`: the question entity's neighbourhood
+anchored together with semantically ranked facts, capped at 250 triples.
+Reader model `qwen3:8b` via Ollama, temperature 0. Hits@1 and F1 are computed
+the way the RoG reference implementation computes them.
 
-**Pilot result** (N=30, seed 42, model: claude-haiku-4-5, 2026-08):
+**Result** (n=300, both conditions answered every question):
 
-| condition | accuracy |
-|---|---|
-| LLM alone | 18/30 (60%) |
-| LLM + trikedb context | **25/30 (83%)** |
+| condition | Hits@1 | F1 |
+|---|---|---|
+| the model alone | 42.7% | 27.9% |
+| **the model + a trikedb graph** | **77.7%** | **57.4%** |
+| difference | **+35.0pt** | **+29.6pt** |
 
-Retrieval ceiling for the graph condition: the gold answer was present in
-the retrieved context for 20/30 questions — the graph condition scores
-above the ceiling because the prompt allows falling back to model
-knowledge when the triples don't contain the answer. 4 of its 5 remaining
-misses are retrieval misses (answer deeper than the retrieved hops), not
-reasoning errors.
+![Hits@1 and F1 by condition](accuracy.png)
 
-Typical failures of the no-graph condition are classic hallucinations:
-confidently naming the wrong record label, the wrong Soviet leader for
-the asked time frame, or missing minority languages of a country — all of
-which the graph condition answers from triples.
+Same model, same prompt, same questions. The only thing that changes is
+whether the retrieved triples are in the context.
+
+Two numbers worth putting next to that:
+
+- **The graph converts most of what it finds.** The gold answer was present in
+  the retrieved context for 89.3% of questions, and Hits@1 landed at 77.7% —
+  so 87% of what retrieval found became a correct answer. The remaining gap is
+  the reader, not the graph.
+- **Reachability is not a ceiling.** 24 of the model's correct answers came on
+  questions whose context did *not* contain the answer — it knew them already.
+  A retrieval ceiling bounds what the graph can contribute, not what the
+  system can score.
 
 **Reproduce:**
 
 ```bash
-uv run --with pandas --with pyarrow --with trikedb \
-    python benchmarks/webqsp_bench.py prepare --n 30 --seed 42
-# run bench_out/prompts_*.json through your LLM of choice,
-# save [{"id", "answer"}] arrays as answers_nograph.json / answers_graph.json
-uv run --with trikedb python benchmarks/webqsp_bench.py score \
-    bench_out/eval_set.json answers_nograph.json answers_graph.json
+uv run --extra all --with polars --with model2vec \
+    python benchmarks/webqsp_bench.py prepare --n 300 --seed 42 \
+    --retrieval "hybrid (entity + semantic)" --cap 250 --out bench_out/hybrid
+
+for cond in nograph graph; do
+  uv run --extra all --with polars python benchmarks/webqsp_bench.py run \
+      bench_out/hybrid/eval_set.json --model qwen3:8b --condition $cond \
+      --style grounded --out bench_out/ans_$cond.jsonl --workers 8
+done
+
+uv run --extra all python benchmarks/webqsp_bench.py score \
+    bench_out/hybrid/eval_set.json bench_out/ans_*.jsonl \
+    --json benchmarks/accuracy_data.json
 ```
 
-Caveats: N=30 is a pilot, containment matching is generous to both
-conditions equally, and WebQSP subgraphs are larger than trikedb's
-intended sweet spot (they are loaded in-memory per question, which works
-fine — the YAML file is not the bottleneck here).
+The model is local and named on purpose: the score depends on it, so it has to
+be re-runnable by whoever reads the number. An API key behind a paid endpoint
+is neither nameable nor stable.
+
+**Caveats.** Containment matching is generous, equally to both conditions.
+WebQSP gold labels are noisy (below), which caps honest absolute scores. The
+reader is an 8B open model answering zero-shot — see
+[where published numbers sit](#where-published-numbers-sit) before comparing.
+An earlier pilot of this same setup on 30 questions with `claude-haiku-4-5`
+scored 60% → 83% under a plain containment protocol; it is superseded by the
+table above, which uses ten times the questions and a model anyone can run.
 
 ## What the retrieval method is worth
 
@@ -141,7 +162,12 @@ What matters when reading any of them against the numbers above:
 
 ## Scoring sensitivity (why we report the containment protocol)
 
-We also ran three variants and report them for transparency:
+*All numbers in this section and the next come from the earlier 30-question
+pilot with `claude-haiku-4-5`, not from the 300-question table above. They are
+kept because what they say about the protocol still holds, and because the
+findings are what led to the retrieval work above.*
+
+Three scoring variants, reported for transparency:
 
 | protocol | LLM alone | LLM + graph | delta |
 |---|---|---|---|
@@ -175,7 +201,10 @@ gated on HF) is the right target for high absolute numbers.
 
 ## Retrieval-depth experiment (does more context help?)
 
-Follow-up experiments on the same 30 questions:
+Follow-up experiments on the same 30 pilot questions. This is the section that
+turned into the retrieval work above: it establishes that *more* context is
+not the lever, which is why the fix was a better-chosen 250 triples rather
+than a larger cap.
 
 | retrieval | answer-reachable ceiling | accuracy |
 |---|---|---|
