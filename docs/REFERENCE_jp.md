@@ -188,7 +188,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `triples(s=, p=, o=, **attrs)` | パターンマッチ。`None`=ワイルドカード、`*`/`?` glob、attrsは完全一致フィルタ |
 | `query([patterns])` | `?変数` の複数パターン結合(SPARQL的BGP、依存ゼロ) |
 | `sparql(q)` | SPARQL 1.1フル。読み取りはOxigraph、書き込みはrdflibで実行（速度の節を参照）。SELECT→行、ASK→bool、INSERT/DELETE→増減数。`t:`/`rdf:` pre-bound |
-| `search(q, k=10)` | 意味検索(`[semantic]` extra): 綴りでなく意味で事実をランク付け — 「認証まわりの注意点」がキーワード共有ゼロのkeypair/MFA事実を見つける |
+| `search(q, k=10)` | 意味検索(`[semantic]` extra): 綴りでなく意味で事実をランク付け。`score`/`kind`/`node` はペイロード側の予約キーで、同名の属性は `attr_<名前>` として保持される — 「認証まわりの注意点」がキーワード共有ゼロのkeypair/MFA事実を見つける |
 | `find(question, where=None, k=10)` | ハイブリッド検索(`[semantic]` extra): 意味でのrecall→ハードな構造フィルタ(`where`: 必須ノードプロパティのdict、または `(name, props) -> bool` の関数)。`{node, props, facts}` のペイロードを返す |
 | `update(q)` | SPARQL Updateを明示実行(`sparql`が書き込み形を委譲する先) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |

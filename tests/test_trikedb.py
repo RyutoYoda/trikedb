@@ -2599,3 +2599,44 @@ def test_markdown_import_ignores_fenced_examples(tmp_path):
         "~~~markdown\n| s | p | o |\n|---|---|---|\n| ALSO_BAD | X | Y |\n~~~\n",
         encoding="utf-8")
     assert read_markdown(doc) == [{"s": "a", "p": "P", "o": "b"}]
+
+
+def test_audit_does_not_flag_properties_on_a_predicate():
+    """Attaching properties to a predicate is a documented pattern.
+
+    REFERENCE.md recommends `set_node("PROVIDES", since="2024")` — RDF treats
+    a predicate as an ordinary name — and `audit` reported it as an orphan,
+    so following the advice produced a warning.
+    """
+    db = TrikeDB(autosave=False)
+    db.add("a", "PROVIDES", "b")
+    db.set_node("PROVIDES", since="2024")
+    assert db.audit() == []
+
+    db.set_node("nobody-mentions-me", type="x")     # a real orphan still is one
+    assert [f["kind"] for f in db.audit()] == ["orphan-node"]
+
+
+def test_search_payload_keys_cannot_be_hijacked_by_attributes():
+    """`score` and `kind` are the payload's, and attributes keep their values.
+
+    A fact annotated `score=0.99` used to come back claiming that was its
+    similarity; one annotated `kind="mine"` was skipped by every caller
+    checking `kind == "triple"`. Making the reserved keys win then dropped
+    the attributes instead — so they are kept under `attr_<name>`.
+    """
+    pytest.importorskip("model2vec")
+    db = TrikeDB(autosave=False)
+    db.add("alpha", "PROVIDES", "beta", score=0.99, kind="mine", note="ok")
+    db.set_node("gamma", node="clash", type="thing")
+
+    hits = db.search("alpha PROVIDES beta", k=10)
+    triple = next(h for h in hits if h["kind"] == "triple")
+    node = next(h for h in hits if h["kind"] == "node")
+
+    assert triple["score"] != 0.99                  # the real similarity
+    assert (triple["s"], triple["p"], triple["o"]) == ("alpha", "PROVIDES", "beta")
+    assert triple["attr_score"] == 0.99             # nothing was dropped
+    assert triple["attr_kind"] == "mine"
+    assert triple["note"] == "ok"                   # ordinary attrs untouched
+    assert node["node"] == "gamma" and node["attr_node"] == "clash"

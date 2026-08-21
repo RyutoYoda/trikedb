@@ -29,17 +29,38 @@ def _load_model(name: str):
     return _MODELS[name]
 
 
+#: Keys the payload owns. An edge attribute or node property with one of
+#: these names would otherwise replace the field callers dispatch on — a
+#: fact annotated `score=0.99` came back claiming that was its similarity,
+#: and one annotated `kind="mine"` was skipped by every caller checking for
+#: `kind == "triple"`. Reserved keys win, and the colliding attribute is kept
+#: under `attr_<name>` so nothing is silently dropped either.
+_RESERVED = ("score", "kind", "node")
+
+
+def _payload(fields: dict, **reserved) -> dict:
+    out = {}
+    for key, value in fields.items():
+        out[f"attr_{key}" if key in _RESERVED else key] = value
+    out.update(reserved)
+    return out
+
+
 def sentences(db) -> list:
     """One searchable sentence per triple (attrs inlined) and per node
     with properties. Returns [(text, payload), ...]."""
     items = []
     for t in db:
         parts = [t.s, t.p, t.o] + [f"{k}: {v}" for k, v in t.attrs.items()]
-        items.append((" ".join(str(x) for x in parts), {"kind": "triple", **t.to_dict()}))
+        # kind last: an edge attribute genuinely called "kind" would
+        # otherwise overwrite the field callers branch on, and a caller
+        # checking `kind == "triple"` would silently skip the row.
+        items.append((" ".join(str(x) for x in parts),
+                      _payload(t.to_dict(), kind="triple")))
     for name, props in db.nodes_meta.items():
         if props:
             text = name + " " + " ".join(f"{k}: {v}" for k, v in props.items())
-            items.append((text, {"kind": "node", "node": name, **props}))
+            items.append((text, _payload(props, kind="node", node=name)))
     return items
 
 
@@ -63,5 +84,5 @@ def search(db, query: str, k: int = 10, model: str = DEFAULT_MODEL) -> list:
     scores = embs @ q
     order = scores.argsort()[::-1][: max(1, int(k))]
     return [
-        {"score": round(float(scores[i]), 4), **items[i][1]} for i in order
+        {**items[i][1], "score": round(float(scores[i]), 4)} for i in order
     ]

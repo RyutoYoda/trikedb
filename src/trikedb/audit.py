@@ -64,8 +64,12 @@ def audit(db) -> list:
                         "detail": f"{s} {p}: {texts[i][:50]!r} ≈ {texts[j][:50]!r}",
                     })
 
-    # 4. node properties for nodes no triple mentions
-    linked = {x for t in db for x in (t.s, t.o)}
+    # 4. node properties for nodes no triple mentions.
+    #    Predicates count as mentioned: attaching properties to a predicate
+    #    is a documented pattern (`set_node("PROVIDES", since="2024")` — RDF
+    #    treats a predicate as an ordinary name), and flagging it meant the
+    #    recommended usage produced a warning.
+    linked = {x for t in db for x in (t.s, t.p, t.o)}
     for n in db.nodes_meta:
         if n not in linked:
             findings.append({
