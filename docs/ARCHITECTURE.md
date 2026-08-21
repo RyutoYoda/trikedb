@@ -3,9 +3,9 @@
 ## The whole thing, in one picture
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph W["Who writes"]
-        direction LR
+        direction TB
         WA["an agent<br/>MCP tools"]
         WC["a person<br/>CLI · editor"]
         WP["a program<br/>Python API · import · SPARQL UPDATE"]
@@ -16,7 +16,7 @@ flowchart TB
     D["<b>ONE document</b><br/>triples · nodes · ontology<br/><i>data and meaning together</i>"]
 
     subgraph S["Stored in exactly one place"]
-        direction LR
+        direction TB
         SF["a file<br/>graph.yaml<br/>graph.json"]
         SO["an object<br/>s3:// gs://<br/>az:// https://"]
         SW["a table row<br/>snowflake://<br/>bigquery://"]
@@ -25,7 +25,7 @@ flowchart TB
     M["opened once into memory<br/>Triple list + dicts"]
 
     subgraph P["Projections — built on demand, never stored"]
-        direction LR
+        direction TB
         PO["oxigraph<br/>SPARQL reads"]
         PR["rdflib<br/>writes · OWL · SHACL · exports"]
         PN["networkx<br/>graph algorithms"]
@@ -34,7 +34,7 @@ flowchart TB
     V["SQL views<br/>KG_NODE · KG_EDGE · KG_PREDICATE · KG_TRIPLE"]
 
     subgraph R["Who reads"]
-        direction LR
+        direction TB
         RA["agents<br/>MCP"]
         RH["people<br/>HTML workbench"]
         RP["apps<br/>REST · Python"]
