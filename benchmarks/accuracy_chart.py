@@ -26,11 +26,16 @@ SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_MUTED = "#52514e"
 
-#: One measure, so one hue — the blue Hits@1 wears in every figure here. The
-#: pale tint is the same hue lightened, not a second colour: rows without a
-#: graph are the baseline, and the eye should land on the rows with one.
-WITH_GRAPH = "#2a78d6"
-WITHOUT_GRAPH = "#a9c8ec"
+#: Two hues, because the two conditions are what this figure compares — a light
+#: and a dark tint of one hue read as "more of the same thing" and the eye has
+#: to measure the bars to see which is which. Blue is the baseline, orange is
+#: with a graph, and orange is always the taller bar.
+#:
+#: Validated on this surface: CVD dE 24.7 (protan), normal-vision dE 33.6, both
+#: above 3:1 against the surface. Note these two carry *condition* here, not a
+#: metric — this figure plots one metric, so the hue is free for something else.
+WITHOUT_GRAPH = "#2a78d6"
+WITH_GRAPH = "#eb6834"
 
 #: filename -> (label, has a graph). Bottom to top, paired by model so each
 #: model's before/after sits adjacent — interleaving the conditions put the two
