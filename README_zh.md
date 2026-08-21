@@ -566,14 +566,14 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 
 ## 基准测试
 
-在 [WebQSP](https://aclanthology.org/P16-2033/)（知识图谱问答）上，同一个本地模型**单独作答 42.7%，而以 trikedb 图谱作为上下文时是 77.7%** — 测试集 300 个问题上的 Hits@1，相差 35 个百分点，配对 McNemar 检验 p = 9e-20。检索在其中 89.3% 的问题上把答案摆到了模型面前，每题耗时 0.59 秒。脚本、精度与延迟的取舍，以及一份诚实的评分敏感性分析都在 [`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks)。
+在 [WebQSP](https://aclanthology.org/P16-2033/)（知识图谱问答）上，同一个本地模型**单独作答 42.7%，而以 trikedb 图谱作为上下文时是 77.7%** — 测试集 300 个问题上的 Hits@1，相差 35 个百分点，配对 McNemar 检验 p = 9e-20。检索在其中 89.3% 的问题上把答案摆到了模型面前，每题耗时 0.59 秒。脚本、精度与延迟的取舍，以及一份诚实的评分敏感性分析都在 [`benchmarks/`](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_zh.md)。
 
 ## 文档
 
-- [docs/REFERENCE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md) — 每个功能及其用法（CLI、Python API、MCP、serve、附加项）· [日本語版](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)
-- [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE.md) — 分层结构，以及新代码该放在哪里
+- [docs/REFERENCE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)（英文） — 每个功能及其用法（CLI、Python API、MCP、serve、附加项）· [日本語版](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)
+- [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_zh.md) — 分层结构，以及新代码该放在哪里
 - [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — 在 1k/10k/100k 三元组上测出的极限，以及何时该从整文件读取转向一个被服务出去的图谱
-- [benchmarks/](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks) — WebQSP 的方法与结论
+- [benchmarks/](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_zh.md) — WebQSP 的方法与结论
 
 ## 开发
 

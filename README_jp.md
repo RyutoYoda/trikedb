@@ -566,14 +566,14 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 
 ## ベンチマーク
 
-[WebQSP](https://aclanthology.org/P16-2033/)（知識グラフQA）で、同じローカルモデルが**単体では 42.7%、trikedb のグラフを文脈として与えると 77.7%** 正解します — テスト分割の300問に対する Hits@1、+35ポイントの差、対応のある McNemar 検定で p = 9e-20。検索はそのうち 89.3% でモデルの目の前に正解を置いており、1問あたり 0.59 秒です。スクリプト、精度対レイテンシのトレードオフ、そして誠実な採点感度の分析は [`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks) にあります。
+[WebQSP](https://aclanthology.org/P16-2033/)（知識グラフQA）で、同じローカルモデルが**単体では 42.7%、trikedb のグラフを文脈として与えると 77.7%** 正解します — テスト分割の300問に対する Hits@1、+35ポイントの差、対応のある McNemar 検定で p = 9e-20。検索はそのうち 89.3% でモデルの目の前に正解を置いており、1問あたり 0.59 秒です。スクリプト、精度対レイテンシのトレードオフ、そして誠実な採点感度の分析は [`benchmarks/`](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_jp.md) にあります。
 
 ## ドキュメント
 
 - [docs/REFERENCE_jp.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md) — 全機能と使い方（CLI、Python API、MCP、serve、エクストラ）· [English](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)
-- [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE.md) — レイヤー構成と、新しいコードをどこに置くか
+- [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_jp.md) — レイヤー構成と、新しいコードをどこに置くか
 - [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — 1k/10k/100k トリプルでの測定された限界と、ファイル全体読み込みから配信されるグラフに移る時期
-- [benchmarks/](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks) — WebQSP の手法と結果
+- [benchmarks/](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_jp.md) — WebQSP の手法と結果
 
 ## 開発
 

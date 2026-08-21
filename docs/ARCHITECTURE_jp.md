@@ -98,7 +98,7 @@ diff に着地し、同期させるべきものが何もない。意味をデー
 両者の間で何もずれえない理由である。
 
 この文書は*なぜ*その形なのかについてのものである。API は
-[REFERENCE.md](REFERENCE.md)、測定値は
+[REFERENCE_jp.md](REFERENCE_jp.md)、測定値は
 [benchmarks/](../benchmarks/README_jp.md) を参照。
 
 ## 1つの決定と、そこから従うすべて
