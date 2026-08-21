@@ -2371,3 +2371,231 @@ def test_no_version_number_drifts_out_of_date():
     assert not offenders, (
         f"these spell out the current version and will go stale: {offenders}. "
         "Say it as history, or let the badge/benchmark script carry it.")
+
+
+def test_content_hash_is_stable_across_releases():
+    """`content_hash()` is a compatibility surface, not an implementation detail.
+
+    It is what `trikedb check --html` compares to decide an export is stale,
+    and consumers build CI gates on it — "does the copy in the warehouse still
+    match the file in git". Changing how it is computed would make every one
+    of those gates fire on the same unchanged data, and the failure would look
+    like a data problem rather than an upgrade.
+
+    So the value is pinned. Touching this test means deciding, deliberately,
+    to break everyone's cache and CI comparisons — which needs a major
+    version and a release note, not a refactor.
+    """
+    db = TrikeDB(autosave=False,
+                 ontology={"PROVIDES": "vendor -> job", "AFFECTED_BY": ""})
+    db.add("salesflow-crm", "PROVIDES", "crm-sync-job")
+    db.add("crm-sync-job", "AFFECTED_BY", "2025-04 API v3: units changed",
+           prov="doc.md", deprecated=True, n=3)
+    db.add("日本語", "PROVIDES", "値")
+    db.set_node("crm-sync-job", type="job", label="CRM同期", pii=False, level=2)
+
+    assert db.content_hash() == "cb3cf633dca7f002"
+
+    # Order of insertion must not change it — the hash is over content, not
+    # over the file, which is what lets two writers agree they hold the same
+    # graph after arriving at it differently.
+    other = TrikeDB(autosave=False,
+                    ontology={"AFFECTED_BY": "", "PROVIDES": "vendor -> job"})
+    other.add("日本語", "PROVIDES", "値")
+    other.set_node("crm-sync-job", label="CRM同期", level=2, type="job", pii=False)
+    other.add("crm-sync-job", "AFFECTED_BY", "2025-04 API v3: units changed",
+              n=3, deprecated=True, prov="doc.md")
+    other.add("salesflow-crm", "PROVIDES", "crm-sync-job")
+    assert other.content_hash() == db.content_hash()
+
+    # ...and the serialization it was written with must not change it either,
+    # or a graph would stop matching itself on the way to a warehouse.
+    import json
+    import tempfile
+    from pathlib import Path
+
+    tmp = Path(tempfile.mkdtemp())
+    as_yaml, as_json = tmp / "g.yaml", tmp / "g.json"
+    db.save(as_yaml)
+    db.save(as_json)
+    assert json.loads(as_json.read_text())          # really is JSON
+    assert TrikeDB(as_yaml).content_hash() == "cb3cf633dca7f002"
+    assert TrikeDB(as_json).content_hash() == "cb3cf633dca7f002"
+
+
+def test_the_running_code_is_the_code_on_disk():
+    """Guard against a stale bytecode cache answering for edited source.
+
+    This actually happened: a `.pyc` survived with a stamp matching the
+    current file but bytecode compiled from a different one, so an edit to
+    `content_hash` silently did not take effect and a verification run
+    reported the *old* behaviour as if it were the new one. `git diff` looked
+    right and `inspect.getsource` looked right — only the compiled constants
+    disagreed.
+
+    That failure mode is worse than a wrong answer, because it makes
+    "I measured it" untrue while everything looks fine. Compiling the file
+    again and comparing what the two code objects reference catches it
+    without having to reason about which names an import binds.
+    """
+    import importlib
+    import pathlib as _pathlib
+
+    def references(code, seen=None):
+        """Every global name the code object and its nested ones reach for."""
+        out = set(code.co_names)
+        for const in code.co_consts:
+            if hasattr(const, "co_names"):
+                out |= references(const)
+        return out
+
+    for name in ("db", "storage", "storage_sql", "cli", "audit", "importers",
+                 "semantics", "semantic", "html"):
+        module = importlib.import_module(f"trikedb.{name}")
+        path = _pathlib.Path(module.__file__)
+        fresh = compile(path.read_text(encoding="utf-8"), str(path), "exec")
+
+        loaded = set()
+        for obj in vars(module).values():
+            code = getattr(obj, "__code__", None)
+            if code is not None and code.co_filename == module.__file__:
+                loaded |= references(code)
+            for attr in vars(obj).values() if isinstance(obj, type) else ():
+                code = getattr(attr, "__code__", None)
+                if code is not None and code.co_filename == module.__file__:
+                    loaded |= references(code)
+
+        drift = sorted(loaded - references(fresh))
+        assert not drift, (
+            f"trikedb.{name}: the loaded module references {drift}, which "
+            f"recompiling {path.name} does not — the bytecode cache is stale. "
+            "Delete __pycache__ and rerun; any measurement taken in this "
+            "state was of the old code.")
+
+
+def test_serve_opens_the_graph_once(tmp_path):
+    """/sparql used to rebuild the whole graph on every request.
+
+    The MCP tools have always opened the graph once and shared it; /sparql
+    did not, so the same server answered the same question two orders of
+    magnitude apart depending on which door you came in — 320 ms against
+    1 ms on a 15,000-triple graph, and it never warmed up because the parsed
+    graph and the built query index were discarded between calls.
+    """
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g, autosave=False)
+    for i in range(300):
+        db.add(f"v{i % 20}", "PROVIDES", f"job{i}")
+    db.save()
+
+    client = TestClient(build_app(str(g), with_mcp=False))
+    query = {"query": "SELECT ?o WHERE { t:v0 t:PROVIDES ?o }"}
+    first = client.post("/sparql", json=query).json()["rows"]
+    assert first
+
+    # the second call must be served from the graph the first one built
+    import trikedb.db as db_module
+
+    reads = []
+    original = db_module._read_text
+    db_module._read_text = lambda *a, **k: (reads.append(1),
+                                            original(*a, **k))[1]
+    try:
+        assert client.post("/sparql", json=query).json()["rows"] == first
+        client.get("/")
+    finally:
+        db_module._read_text = original
+    assert not reads, "a request re-read the graph from storage"
+
+
+def test_a_rest_update_writes_once(tmp_path):
+    """One statement, one write.
+
+    The handler called save() on top of the autosave that had already run, so
+    every REST update wrote the document twice — two conditional writes on a
+    bucket or a warehouse, and two chances to lose a race for one change.
+    """
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    import trikedb.db as db_module
+    from trikedb.serve import build_app
+
+    g = tmp_path / "g.yaml"
+    TrikeDB(g, autosave=False).save()
+    client = TestClient(build_app(str(g), with_mcp=False))
+
+    writes = []
+    original = db_module._write_text
+    db_module._write_text = lambda *a, **k: (writes.append(1),
+                                             original(*a, **k))[1]
+    try:
+        body = client.post(
+            "/sparql", json={"query": "INSERT DATA { t:x t:P t:y }"}).json()
+    finally:
+        db_module._write_text = original
+
+    assert body["delta"] == 1
+    assert len(writes) == 1, f"one update caused {len(writes)} writes"
+    assert ("x", "P", "y") in TrikeDB(g)          # and it landed
+
+
+def test_the_static_token_is_compared_in_constant_time():
+    """`==` on a secret leaks it one character at a time under timing."""
+    import inspect
+    import secrets
+
+    from trikedb import serve
+
+    source = inspect.getsource(serve)
+    assert "secrets.compare_digest" in source
+    assert 'header == f"Bearer {token}"' not in source
+    assert secrets.compare_digest("a", "a")       # the import is real
+
+
+def test_import_does_not_rename_nodes_called_true_or_false(tmp_path):
+    """s/p/o name things, so they stay text.
+
+    Coercing them turned a node genuinely called "false" into the boolean
+    False, which the store then wrote back as the string "False" — the graph
+    quietly disagreed with the CSV it was built from, capital letter and all.
+    Attribute columns still coerce, which is where a boolean is wanted.
+    """
+    csv = tmp_path / "t.csv"
+    csv.write_text("s,p,o,flag\nfalse,IS,true,false\n", encoding="utf-8")
+
+    from trikedb.importers import read_csv
+
+    assert read_csv(csv) == [{"s": "false", "p": "IS", "o": "true", "flag": False}]
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g, autosave=False)
+    db.import_file(str(csv))
+    db.save()
+    triple = next(iter(TrikeDB(g)))
+    assert (triple.s, triple.p, triple.o) == ("false", "IS", "true")
+    assert triple.attrs == {"flag": False}
+
+
+def test_markdown_import_ignores_fenced_examples(tmp_path):
+    """A table inside a code fence is an example, not data.
+
+    Documenting "do not write this" imported exactly that, which is a nasty
+    way for a design doc to poison the graph it documents.
+    """
+    from trikedb.importers import read_markdown
+
+    doc = tmp_path / "doc.md"
+    doc.write_text(
+        "# real\n"
+        "| s | p | o |\n|---|---|---|\n| a | P | b |\n\n"
+        "an example of what not to write:\n\n"
+        "```\n| s | p | o |\n|---|---|---|\n| BAD | BAD | BAD |\n```\n\n"
+        "~~~markdown\n| s | p | o |\n|---|---|---|\n| ALSO_BAD | X | Y |\n~~~\n",
+        encoding="utf-8")
+    assert read_markdown(doc) == [{"s": "a", "p": "P", "o": "b"}]

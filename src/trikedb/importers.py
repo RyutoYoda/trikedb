@@ -41,7 +41,11 @@ def _rows_to_triples(header: List[str], rows: List[List[str]]) -> Optional[List[
     for row in rows:
         d = {}
         for col, val in zip(cols, row):
-            val = _coerce(val)
+            # s/p/o name things and stay text. Coercing them turned a node
+            # actually called "false" into the boolean False, which the store
+            # then wrote back as the string "False" — a silent rename.
+            val = val.strip() if col in ("s", "p", "o") and isinstance(val, str) \
+                else _coerce(val)
             if val == "" or val is None:
                 continue
             d[col] = val
@@ -71,7 +75,18 @@ def read_markdown(path: Union[str, Path]) -> List[dict]:
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     triples: List[dict] = []
     i = 0
+    fenced = False
     while i < len(lines):
+        stripped = lines[i].lstrip()
+        if stripped.startswith(("```", "~~~")):
+            # A fenced block is an example, not data. Documenting "do not
+            # write this" used to import exactly that.
+            fenced = not fenced
+            i += 1
+            continue
+        if fenced:
+            i += 1
+            continue
         if _is_table_row(lines[i]) and i + 1 < len(lines) and _is_separator(lines[i + 1]):
             header = _cells(lines[i])
             i += 2

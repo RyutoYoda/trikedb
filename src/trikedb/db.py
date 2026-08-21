@@ -66,10 +66,13 @@ except AttributeError:  # pragma: no cover - PyYAML built without libyaml
 def _oxigraph_available() -> bool:
     """Is the faster SPARQL engine installed?
 
-    Opt-in by installation: ``pip install 'trikedb[oxigraph]'`` (or
-    ``[all]``). Not a *core* dependency: pyoxigraph publishes per-Python
-    wheels, so requiring it would make installing trikedb at all fail on the
-    first interpreter it has not built for. Absent, reads fall back to rdflib.
+    A core dependency, so normally yes — it was faster at every graph size
+    measured, down to a few hundred triples. This is still a question rather
+    than an assumption because trikedb reaches places pip does not: hosts
+    that allow only a curated package channel (pyoxigraph is absent from
+    Snowflake's, for one), and hosts where trikedb is vendored as a subset of
+    its files. There, reads fall back to rdflib and everything keeps working,
+    slower.
     """
     try:
         import pyoxigraph  # noqa: F401

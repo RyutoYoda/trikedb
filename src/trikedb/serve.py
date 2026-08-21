@@ -22,6 +22,7 @@ serve read-only; write tools report the member graphs to write to instead.
 from __future__ import annotations
 
 import json
+import secrets
 
 
 def build_app(
@@ -39,6 +40,13 @@ def build_app(
     from starlette.routing import Mount, Route
 
     from .db import TrikeDB
+
+    #: Opened once, like the MCP tools do. Rebuilding it per request meant
+    #: re-reading and re-parsing the whole graph every time — 320ms on a
+    #: 15,000-triple file, and it never got faster because the parsed graph
+    #: and the built query index were thrown away between calls. /sparql and
+    #: /mcp served the same graph with two orders of magnitude between them.
+    graph = TrikeDB(path)
 
     auth = challenge = None
     if oauth_issuer:
@@ -70,7 +78,9 @@ def build_app(
         it), so one ``--required-scope`` covers all three doors alike.
         """
         header = request.headers.get("authorization", "")
-        if token is not None and header == f"Bearer {token}":
+        # compare_digest, not ==: a plain comparison leaks the token one
+        # character at a time to anyone who can time the response.
+        if token is not None and secrets.compare_digest(header, f"Bearer {token}"):
             return None
         if auth is None:
             return None if token is None else denied()
@@ -90,8 +100,7 @@ def build_app(
         if (refusal := await refuse(request)) is not None:
             return refusal
         try:
-            db = TrikeDB(path)
-            return HTMLResponse(db.to_html(title=f"trikedb — {path}"))
+            return HTMLResponse(graph.to_html(title=f"trikedb — {path}"))
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -103,16 +112,20 @@ def build_app(
             query = body["query"]
         except Exception:
             return JSONResponse({"error": 'expected {"query": "..."}'}, status_code=400)
-        db = TrikeDB(path)
         try:
-            result = db.sparql(query)
+            result = graph.sparql(query)
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if isinstance(result, bool):
             return JSONResponse({"ask": result})
-        if isinstance(result, int):  # update form — persist it
-            db.save()
-            return JSONResponse({"delta": result, "triples": len(db)})
+        if isinstance(result, int):
+            # An update form. autosave has already written it — calling save()
+            # here as well produced two writes for one statement, which on a
+            # bucket or a warehouse is two conditional writes and two chances
+            # to lose a race.
+            if not graph.autosave:
+                graph.save()
+            return JSONResponse({"delta": result, "triples": len(graph)})
         return JSONResponse({"rows": result})
 
     routes = [Route("/", home), Route("/sparql", sparql, methods=["POST"])]
@@ -140,7 +153,9 @@ def build_app(
         async def gate(scope, receive, send):
             if scope["type"] == "http":
                 headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
-                if headers.get("authorization") != f"Bearer {token}":
+                if not secrets.compare_digest(
+                    headers.get("authorization", ""), f"Bearer {token}"
+                ):
                     body = json.dumps({"error": "unauthorized"}).encode()
                     await send({"type": "http.response.start", "status": 401,
                                 "headers": [(b"content-type", b"application/json")]})
