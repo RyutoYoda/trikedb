@@ -1,0 +1,44 @@
+{
+  "dataset": "WebQSP (RoG repack), full test split",
+  "test_split_size": 1628,
+  "questions": 1628,
+  "budget": 250,
+  "median_graph_triples": 4376,
+  "methods": [
+    {
+      "method": "1-hop",
+      "reachable": 931,
+      "reachable_pct": 57.2,
+      "median_context_triples": 250,
+      "median_ms": 3.1
+    },
+    {
+      "method": "1-hop + CVT",
+      "reachable": 1145,
+      "reachable_pct": 70.3,
+      "median_context_triples": 250,
+      "median_ms": 157.1
+    },
+    {
+      "method": "2-hop",
+      "reachable": 1070,
+      "reachable_pct": 65.7,
+      "median_context_triples": 250,
+      "median_ms": 463.6
+    },
+    {
+      "method": "semantic search",
+      "reachable": 1374,
+      "reachable_pct": 84.4,
+      "median_context_triples": 250,
+      "median_ms": 229.3
+    },
+    {
+      "method": "hybrid (entity + semantic)",
+      "reachable": 1391,
+      "reachable_pct": 85.4,
+      "median_context_triples": 250,
+      "median_ms": 496.3
+    }
+  ]
+}

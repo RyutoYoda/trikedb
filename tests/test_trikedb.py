@@ -2729,3 +2729,45 @@ def test_named_parameters_are_read_off_the_statement():
         storage_sql.SNOWFLAKE, "x = %s", ("a",)) == ("a",)
     with pytest.raises(ValueError, match="binds"):
         storage_sql._named(bq, bq.update, ("only-one",))
+
+
+def test_webqsp_metrics_follow_the_reference_implementation():
+    """Hits@1 and F1 are the two metrics WebQSP results are published in.
+
+    They have to be computed the way the reference does or a score here
+    cannot go next to the literature — and a number that *looks* comparable
+    and is not is worse than no number. The reference normalises (lowercase,
+    strip punctuation, drop articles) and matches by substring, which is
+    looser than exact match.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmarks"))
+    from webqsp_bench import _normalize, f1, hits_at_1
+
+    assert _normalize("The  Beatles, (band)!") == "beatles band"
+    assert _normalize("<pad> A Hard Day's Night") == "hard days night"
+
+    gold = ["Jamaican English", "Jamaican Creole English Language"]
+
+    # substring, not exact: prose around the answer still counts
+    assert hits_at_1("Jamaican English is spoken there", gold) == 1
+    assert hits_at_1("I do not know", gold) == 0
+
+    # one gold answer is enough for Hits@1, and both are needed for F1 == 1
+    assert hits_at_1("Jamaican English", gold) == 1
+    assert f1("Jamaican English", gold) == pytest.approx(2 / 3)
+    assert f1("Jamaican English\nJamaican Creole English Language",
+              gold) == pytest.approx(1.0)
+
+    # listing everything scores Hits@1 but is punished by precision — the
+    # reason published Hits@1 sits well above published F1
+    shotgun = "A\nB\nC\nD\nJamaican English"
+    assert hits_at_1(shotgun, gold) == 1
+    assert f1(shotgun, gold) == pytest.approx(2 * 0.2 * 0.5 / 0.7, rel=1e-3)
+
+    # a gold answer credited once, so repeating it cannot inflate recall
+    assert f1("Jamaican English\nJamaican English", gold) == pytest.approx(0.5)
+
+    assert f1("", gold) == 0.0 and f1("anything", []) == 0.0

@@ -14,7 +14,7 @@ the bottleneck moved to attention. So read this as "which method can put the
 answer in the window", and read the accuracy numbers next to it.
 
 Run:
-    uv run --with pandas --with pyarrow python benchmarks/retrieval_bench.py \\
+    uv run --with polars python benchmarks/retrieval_bench.py \\
         --n 100 --seed 42 > benchmarks/retrieval_data.json
 
 Add `--budget 250` to change the cap. The dataset is downloaded at runtime and
@@ -44,16 +44,20 @@ TEST_SHARDS = (
 
 
 def load_test_split():
-    """The full 1,628-question test split as a DataFrame.
+    """The full 1,628-question test split.
+
+    Polars rather than pandas: it reads the parquet over HTTPS directly, with
+    no pyarrow to install, and does it several times faster — which matters
+    because every benchmark run in this directory starts by loading it.
 
     RoG-WebQSP ships a pre-retrieved Freebase subgraph per question, so this
     measures retrieval *within* that subgraph — the same basis the RoG line of
     work reports on, and not retrieval from all of Freebase.
     """
-    import pandas as pd
+    import polars as pl
 
-    return pd.concat([pd.read_parquet(BASE + s) for s in TEST_SHARDS],
-                     ignore_index=True)
+    frames = [pl.read_parquet(BASE + shard) for shard in TEST_SHARDS]
+    return pl.concat(frames)
 
 
 def _is_cvt(name: str) -> bool:
@@ -159,8 +163,8 @@ def main() -> None:
     args = parser.parse_args()
 
     df = load_test_split()
-    rows = (df.to_dict("records") if args.n <= 0 or args.n >= len(df)
-            else df.sample(args.n, random_state=args.seed).to_dict("records"))
+    rows = (df if args.n <= 0 or args.n >= df.height
+            else df.sample(args.n, seed=args.seed)).to_dicts()
 
     # A full-split run is over an hour, and it used to hold every result in
     # memory until the end — so a closed laptop, a killed session or one bad
