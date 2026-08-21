@@ -2787,7 +2787,6 @@ def test_translated_readmes_stay_structurally_in_step():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    english = (root / "README.md").read_text(encoding="utf-8")
 
     def strip_comments(body):
         """The code, without the prose attached to it.
@@ -2830,19 +2829,28 @@ def test_translated_readmes_stay_structurally_in_step():
         return [line.split(" ")[0] for line in prose.splitlines()
                 if re.match(r"^#{1,3} ", line)]
 
-    for name in ("README_jp.md", "README_zh.md"):
-        path = root / name
-        assert path.exists(), f"{name} is missing"
-        translated = path.read_text(encoding="utf-8")
+    # Every document that has translations, and the suffixes they use.
+    # Mermaid blocks are deliberately *not* compared: their labels are prose a
+    # reader should get in their own language, and they are untagged as far as
+    # code_blocks is concerned.
+    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md"):
+        english_path = root / source
+        english = english_path.read_text(encoding="utf-8")
+        stem = english_path.parent / english_path.stem
+        for suffix in ("_jp", "_zh"):
+            path = Path(f"{stem}{suffix}.md")
+            assert path.exists(), f"{path.relative_to(root)} is missing"
+            translated = path.read_text(encoding="utf-8")
+            where = path.relative_to(root)
 
-        assert headings(translated) == headings(english), (
-            f"{name} has a different heading structure than README.md — "
-            "a section was added or removed on one side only"
-        )
-        assert code_blocks(translated) == code_blocks(english), (
-            f"{name} has different runnable code than README.md — the commands "
-            "a reader copies must not drift between languages"
-        )
+            assert headings(translated) == headings(english), (
+                f"{where} has a different heading structure than {source} — "
+                "a section was added or removed on one side only"
+            )
+            assert code_blocks(translated) == code_blocks(english), (
+                f"{where} has different runnable code than {source} — the "
+                "commands a reader copies must not drift between languages"
+            )
 
 
 def test_readmes_link_to_every_translation():
@@ -2851,14 +2859,17 @@ def test_readmes_link_to_every_translation():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    names = {"README.md": "English", "README_jp.md": "日本語",
-             "README_zh.md": "简体中文"}
-    for name, label in names.items():
-        text = (root / name).read_text(encoding="utf-8")
-        header = text[:600]
-        assert f"<b>{label}</b>" in header, f"{name} does not mark itself as current"
-        for other, other_label in names.items():
-            if other == name:
-                continue
-            assert other in header, f"{name} does not link to {other}"
-            assert other_label in header, f"{name} is missing the {other_label} label"
+    labels = {"": "English", "_jp": "日本語", "_zh": "简体中文"}
+    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md"):
+        stem = (root / source).parent / Path(source).stem
+        for suffix, label in labels.items():
+            path = Path(f"{stem}{suffix}.md")
+            header = path.read_text(encoding="utf-8")[:700]
+            where = path.relative_to(root)
+            assert f"<b>{label}</b>" in header, f"{where} does not mark itself as current"
+            for other_suffix, other_label in labels.items():
+                if other_suffix == suffix:
+                    continue
+                target = f"{Path(source).stem}{other_suffix}.md"
+                assert target in header, f"{where} does not link to {target}"
+                assert other_label in header, f"{where} is missing the {other_label} label"

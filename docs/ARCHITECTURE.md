@@ -1,3 +1,9 @@
+<p align="center">
+  <b>English</b>
+  &nbsp;·&nbsp; <a href="https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_jp.md">日本語</a>
+  &nbsp;·&nbsp; <a href="https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_zh.md">简体中文</a>
+</p>
+
 # Architecture
 
 ```mermaid
