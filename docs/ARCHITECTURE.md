@@ -67,27 +67,16 @@ flowchart TB
     class PO,PR,PN,PV,PD proj
 ```
 
+Dotted arrows are derived — built on demand and thrown away. Each column is one
+real path end to end: `oxigraph → agent over MCP`, `SQL views → dbt`,
+`no engine at all → the HTML workbench`.
 
-
-
-
-
-Read it top to bottom: each row is one layer, colour-coded, with the layer's
-name on the left. Solid arrows move bytes; dotted arrows are *derived* — built
-on demand from the document and thrown away. Read a column downward and you
-have one real path end to end: `oxigraph → agent over MCP`,
-`SQL views → dbt`, `no engine at all → the HTML workbench`.
-
-**Four layers, and layer 1 is the bread on both ends** — the same interface
-layer, writing on the way in and reading on the way out. The core between them
-is single. Storage and projection are sets you choose from.
-
-| Layer | How many | Owns | Does *not* own |
-|---|---|---|---|
-| **1 · Interface** | one per medium | translating CLI / MCP / REST / HTML into core calls | any graph logic |
-| **2 · Core** | **exactly one** | the document, the guard, and what the graph *means* | where bytes go, how queries run |
-| **3 · Storage** | **pick one** | which destination, and the conditional write protecting it | anything about meaning |
-| **4 · Projection** | **pick any** | views of the same statements — RDF, property graph, SQL | storing anything |
+| Layer | Owns | Does *not* own |
+|---|---|---|
+| **1 · Interface** | translating CLI / MCP / REST / HTML into core calls | any graph logic |
+| **2 · Core** | the document, the guard, and what the graph *means* | where bytes go, how queries run |
+| **3 · Storage** | which destination, and the conditional write protecting it | anything about meaning |
+| **4 · Projection** | views of the same statements — RDF, property graph, SQL | storing anything |
 
 Two things about that stack are worth saying out loud, because both are
 choices and not omissions.
