@@ -239,12 +239,44 @@ does not answer the question is a wrong answer.
 """
 
 
+#: ``--style precise``: ``grounded`` plus one rule, and deliberately not two.
+#:
+#: The rule: a bare Freebase identifier is never the answer. Measured over the
+#: first 81 answers of the grounded run, 6 named one and 3 of those were wrong
+#: — the model had reached a mediator node and stopped there instead of
+#: following it to the thing on the other side. It is a near-truth rather than
+#: a truth: 14 of the 3,902 gold answers in this eval set *are* identifiers
+#: (0.36%), so the rule costs at most those. Stated here rather than left
+#: implicit, because an unwritten rule like this is how a score stops being
+#: reproducible.
+#:
+#: The rule that is *not* here: a cap on how many answers to give. One answer
+#: had run to 32 lines against a median of 2, which looked like it had to be
+#: hurting F1. Truncating the actual predictions says otherwise — on 113
+#: answers, capping at 10 moved F1 by +0.4pt, and capping at 5 bought +1.0pt
+#: of F1 while giving up 1.7pt of Hits@1. The long answer is a rare outlier
+#: and the cap costs more correct answers than it saves precision. Recorded so
+#: the idea does not get re-added on the same intuition.
+#:
+#: A separate style, not an edit to ``grounded``, so the number already
+#: measured with ``grounded`` stays reproducible from this file.
+_PRECISE = """
+Answer with names copied exactly from those facts. Do not reword them.
+Identifiers like m.0abc123 or g.1xyz are internal nodes, never answers — if
+the fact you need points at one, follow it to the name on the other side.
+Give only what the question asks for. A name you saw that does not answer the
+question is a wrong answer.
+"""
+
+
 def _ask(client, model: str, question: str, triples=None, style: str = "plain") -> str:
     body = _PROMPT
     if triples:
         body += _WITH_GRAPH.format(triples="\n".join(triples))
         if style == "grounded":
             body += _GROUNDED
+        elif style == "precise":
+            body += _PRECISE
     body += f"\nQuestion: {question}\nAnswer:"
     return client(model, body)
 
@@ -385,7 +417,7 @@ def main() -> None:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--host", default="http://localhost:11434")
     r.add_argument("--limit", type=int, default=0)
-    r.add_argument("--style", choices=("plain", "grounded"), default="plain",
+    r.add_argument("--style", choices=("plain", "grounded", "precise"), default="plain",
                    help="grounded constrains the answer to names present in "
                         "the retrieved facts (graph condition only)")
     s = sub.add_parser("score")
