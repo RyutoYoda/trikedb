@@ -3,79 +3,92 @@
 ## The whole thing, in one picture
 
 ```mermaid
-flowchart LR
-    subgraph W["Who writes"]
-        direction TB
-        WA["an agent<br/>MCP tools"]
-        WC["a person<br/>CLI · editor"]
-        WP["a program<br/>Python API · import · SPARQL UPDATE"]
+flowchart TB
+    subgraph I1["LAYER 1 · Interface — one per medium, no graph logic"]
+        direction LR
+        WA["agent<br/>MCP"]
+        WC["person<br/>CLI · editor"]
+        WP["program<br/>Python · import · SPARQL UPDATE"]
     end
 
-    G{{"ontology guard<br/>an undeclared predicate never lands"}}
+    G{{"the ontology guard — every write passes here"}}
 
-    D["<b>ONE document</b><br/>triples · nodes · ontology<br/><i>data and meaning together</i>"]
+    C["<b>LAYER 2 · Core — exactly one</b><br/>ONE document: triples · nodes · ontology<br/><i>the data and its meaning, in the same file</i>"]
 
-    subgraph S["Stored in exactly one place"]
-        direction TB
-        SF["a file<br/>graph.yaml<br/>graph.json"]
-        SO["an object<br/>s3:// gs://<br/>az:// https://"]
-        SW["a table row<br/>snowflake://<br/>bigquery://"]
+    subgraph ST["LAYER 3 · Storage — pick one"]
+        direction LR
+        SF["file<br/>graph.yaml · graph.json"]
+        SO["object<br/>s3:// gs:// az://"]
+        SW["table row<br/>snowflake:// bigquery://"]
     end
 
-    M["opened once into memory<br/>Triple list + dicts"]
-
-    subgraph P["Projections — built on demand, never stored"]
-        direction TB
-        PO["oxigraph<br/>SPARQL reads"]
-        PR["rdflib<br/>writes · OWL · SHACL · exports"]
+    subgraph PJ["LAYER 4 · Projection — pick any, none is stored"]
+        direction LR
+        PO["oxigraph<br/>runs SPARQL"]
+        PR["rdflib.Graph<br/>for owlrl · pyshacl · exports"]
         PN["networkx<br/>graph algorithms"]
+        PV["SQL views<br/>KG_NODE · KG_EDGE · …"]
     end
 
-    V["SQL views<br/>KG_NODE · KG_EDGE · KG_PREDICATE · KG_TRIPLE"]
-
-    subgraph R["Who reads"]
-        direction TB
-        RA["agents<br/>MCP"]
-        RH["people<br/>HTML workbench"]
-        RP["apps<br/>REST · Python"]
-        RS["anything speaking SQL<br/>BI · dbt · notebooks"]
+    subgraph I2["LAYER 1 · Interface — the same layer, reading"]
+        direction LR
+        RA["agent<br/>MCP"]
+        RH["person<br/>HTML workbench"]
+        RP["app<br/>REST · Python"]
+        RS["anything with SQL<br/>BI · dbt · notebook"]
     end
 
     WA --> G
     WC --> G
     WP --> G
-    G --> D
-    D --> SF
-    D --> SO
-    D --> SW
-    SF --> M
-    SO --> M
-    SW --> M
-    M --> PO
-    M --> PR
-    M --> PN
-    SW -.->|"the document is JSON here,<br/>so SQL can open it"| V
+    G --> C
+
+    C --> SF
+    C --> SO
+    C --> SW
+    SF --> C
+    SO --> C
+    SW --> C
+
+    C --> PO
+    C --> PR
+    C --> PN
+    SW -.->|"JSON in the row,<br/>so SQL can open it"| PV
+
     PO --> RA
     PO --> RP
     PR --> RP
     PN --> RP
-    M --> RH
-    V --> RS
+    C --> RH
+    PV --> RS
 ```
 
-Read it as four claims, each expanded below:
 
-1. **Every write goes through one guard.** A predicate that is not in the
-   ontology never reaches the document, whoever is writing — which is why an
-   agent and a person cannot drift apart in vocabulary.
-2. **There is one document, and it holds the meaning too.** The ontology and
-   the node properties are keys of the same file, not a registry beside it.
-3. **The document goes to exactly one destination**, and that choice changes
-   only what opening and saving cost. Queries are answered from memory, so
-   they do not care.
-4. **Everything else is a projection.** rdflib, oxigraph, networkx and the SQL
-   views are views of the same statements, built on demand. Nothing is stored
-   twice, so nothing can disagree.
+**Four layers, and the interface is one of them appearing twice** — writing
+on the way in, reading on the way out. The core is single; storage and
+projection are sets you choose from.
+
+| Layer | How many | Owns | Does *not* own |
+|---|---|---|---|
+| **1 · Interface** | one per medium | translating CLI / MCP / REST / HTML into core calls | any graph logic |
+| **2 · Core** | **exactly one** | the document, the guard, and what the graph *means* | where bytes go, how queries run |
+| **3 · Storage** | **pick one** | which destination, and the conditional write protecting it | anything about meaning |
+| **4 · Projection** | **pick any** | views of the same statements — RDF, property graph, SQL | storing anything |
+
+Two things about that stack are worth saying out loud, because both are
+choices and not omissions.
+
+**There is no separate metadata layer.** The ontology is not a registry
+beside the data; it is a key of the same document as the triples. So a change
+to the vocabulary and a change to the facts land in the same diff, and there
+is nothing to keep in sync. A system that puts meaning in a layer above the
+data gets to change it without touching the data — that is the better trade
+when the data is too large to move, and the worse one when you want the whole
+change reviewable at once.
+
+**There is no query layer that owns state.** Layer 4 is built from layer 2 on
+demand and thrown away. That is what makes two SPARQL engines possible at all
+and why nothing can drift between them.
 
 This document is about *why* it is shaped that way. For the API see
 [REFERENCE.md](REFERENCE.md); for measurements see
@@ -229,17 +242,22 @@ SPARQL from memory and SQL from the warehouse, with no second copy.
 The most common question about the internals, because there are two RDF
 engines and they are not interchangeable.
 
+The split is **not** read versus write — that was a mislabel, and it confuses
+more than it explains. `validate()` and `to_rdflib()` write nothing;
+`infer(apply=False)` writes nothing either. The real question is what the
+operation *needs*:
+
 ```mermaid
 flowchart LR
     ST["_statements()<br/>the one source of<br/>what the graph means"]
 
-    subgraph reads["Reads"]
+    subgraph q["needs a query run, fast"]
         OX["oxigraph<br/>Rust, real indexes"]
     end
-    subgraph writes["Writes & reasoning"]
-        RD["rdflib<br/>+ owlrl, pyshacl"]
+    subgraph o["needs an rdflib.Graph<br/>object to hand somewhere"]
+        RD["rdflib<br/>→ owlrl · pyshacl · serializers"]
     end
-    subgraph plain["No engine at all"]
+    subgraph plain["needs neither"]
         PP["pure Python<br/>dict + list"]
     end
 
@@ -248,16 +266,26 @@ flowchart LR
     ST --> PP
 ```
 
-| Operation | Engine | Why that one |
-|---|---|---|
-| `sparql()` — SELECT, ASK | **oxigraph** | 6–40x faster on the same graph |
-| `sparql()` — INSERT, DELETE | rdflib | `update()` diffs the result back onto the store |
-| `infer()` — OWL-RL | rdflib | `owlrl` takes an rdflib graph |
-| `validate()` — SHACL | rdflib | `pyshacl` takes an rdflib graph |
-| `to_rdflib()`, `to_jsonld()` | rdflib | interop exports; rdflib *is* the format |
-| `triples()`, `query()` | none | pattern matching over a Python list |
-| `search()`, `find()` | none | static embeddings; no SPARQL involved |
-| `to_networkx()` | none | a projection into networkx objects |
+`owlrl` and `pyshacl` are third-party libraries whose API takes an
+`rdflib.Graph`. `to_rdflib()` and `to_jsonld()` are exports where rdflib *is*
+the format. And `update()` runs the SPARQL update on an rdflib graph and then
+diffs the result back onto the store — it needs the object, not just an
+answer. None of that is something a query engine can do for us, which is why
+rdflib stays no matter how fast the alternative gets.
+
+| Operation | Engine | Changes the graph? | Why that engine |
+|---|---|---|---|
+| `sparql()` — SELECT, ASK | **oxigraph** | no | only an answer is needed, and it is 6–40x faster |
+| `sparql()` — INSERT, DELETE | rdflib | **yes** | runs the update on a graph, then diffs it back |
+| `infer()` — OWL-RL | rdflib | only with `apply=True` | `owlrl` takes an `rdflib.Graph` |
+| `validate()` — SHACL | rdflib | no | `pyshacl` takes an `rdflib.Graph` |
+| `to_rdflib()`, `to_jsonld()` | rdflib | no | exports; rdflib *is* the format |
+| `triples()`, `query()` | none | no | pattern matching over a Python list |
+| `search()`, `find()` | none | no | static embeddings; no SPARQL involved |
+| `to_networkx()` | none | no | a projection into networkx objects |
+
+Only one row in that table writes. Grouping the rest as "writes" was simply
+wrong.
 
 Two things worth knowing about that split.
 
