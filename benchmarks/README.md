@@ -113,19 +113,25 @@ same model, same prompt, **same 250-triple budget** — so the only variable is
 Same amount of context, 18.6 points more of it useful. That figure is a count
 over all 300 questions, not an estimate.
 
-Downstream, the accuracy it buys is a weaker claim than the reachability it
-buys, and the intervals say so:
+The accuracy it buys, tested on the questions both runs answered:
 
-| retrieval | Hits@1 | Wilson 95% CI | n |
-|---|---|---|---|
-| 1-hop + CVT | 68.6% | 62.5 – 74.1 | 245 |
-| hybrid | 77.7% | 72.6 – 82.0 | 300 |
+| retrieval | Hits@1 | n |
+|---|---|---|
+| 1-hop + CVT | 68.6% | 245 |
+| hybrid | 77.7% | 300 |
 
-Those overlap. The 9-point gap is the right direction and consistent with the
-reachability difference, but at this sample size it is **not** separated the
-way the graph-versus-no-graph gap is. Read it as "the better retrieval is
-worth having and the mechanism is measured", not as a significant result.
-Confirming it needs the full 1,628-question split.
+Paired, hybrid is right on 36 questions the other got wrong and wrong on 19 it
+got right — exact McNemar **p = 0.03**. Real, but a long way from the
+graph-versus-no-graph result (125 against 20, p = 9e-20), and worth treating
+as the weaker of the two claims.
+
+A note on how that was tested, because the obvious way is wrong here. These
+runs answer the *same* questions with the *same* model, so the pairing is the
+whole point; comparing their two Wilson intervals (62.5–74.1 against
+72.6–82.0) makes the difference look unresolved purely because the intervals
+touch. `compare` does the paired test instead — only the questions the two
+runs disagree on carry information, and the question is how lopsided that
+split is.
 
 The retrieval is
 trikedb's own `search()` and `find()`, and the comparison harness is

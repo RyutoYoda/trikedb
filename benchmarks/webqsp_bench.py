@@ -415,6 +415,54 @@ def _wilson(hits: int, n: int, z: float = 1.96):
     return 100 * (centre - half), 100 * (centre + half)
 
 
+def _mcnemar(wins_b: int, wins_a: int) -> float:
+    """Two-sided exact p-value for a paired win/loss count.
+
+    The right test for these comparisons, and not the obvious one. Every pair
+    of runs here answers the *same* questions with the *same* model, so the
+    only thing that varies is the condition. Comparing two independent
+    confidence intervals on that data throws away the pairing and with it most
+    of the power — it called a real 9-point retrieval difference
+    "not separated" purely because the intervals happened to touch.
+
+    What matters is only the questions the two runs disagree on: of those, how
+    lopsided is the split? Exact binomial rather than the chi-square
+    approximation because the disagreement counts here are small enough for
+    the approximation to matter.
+    """
+    import math
+
+    n = wins_b + wins_a
+    if n == 0:
+        return 1.0
+    tail = sum(math.comb(n, k) for k in range(0, min(wins_a, wins_b) + 1))
+    return min(1.0, 2 * tail / 2 ** n)
+
+
+def compare(eval_path: Path, baseline: Path, candidate: Path) -> None:
+    """Paired comparison of two answer files on the questions both answered."""
+    gold = {e["id"]: e["answers"] for e in json.load(open(eval_path))}
+
+    def load(path):
+        return {r["id"]: r["answer"]
+                for r in (json.loads(line) for line in path.read_text().splitlines()
+                          if line.strip())
+                if r["id"] in gold}
+
+    a, b = load(baseline), load(candidate)
+    shared = [i for i in a if i in b]
+    wins_b = sum(1 for i in shared
+                 if hits_at_1(b[i], gold[i]) and not hits_at_1(a[i], gold[i]))
+    wins_a = sum(1 for i in shared
+                 if hits_at_1(a[i], gold[i]) and not hits_at_1(b[i], gold[i]))
+    p = _mcnemar(wins_b, wins_a)
+    print(f"paired on {len(shared)} questions both answered")
+    print(f"  {candidate.name} only correct: {wins_b}")
+    print(f"  {baseline.name} only correct: {wins_a}")
+    print(f"  exact McNemar p = {p:.3g}  -> "
+          f"{'significant' if p < 0.05 else 'not significant'} at 0.05")
+
+
 def latency(eval_path: Path, model: str, condition: str, style: str,
             host: str = "http://localhost:11434", n: int = 20,
             workers: int = 1) -> None:
@@ -529,6 +577,10 @@ def main() -> None:
     latency_parser.add_argument("--host", default="http://localhost:11434")
     latency_parser.add_argument("--n", type=int, default=20)
     latency_parser.add_argument("--workers", type=int, default=1)
+    c = sub.add_parser("compare", help="paired significance test of two runs")
+    c.add_argument("eval_set", type=Path)
+    c.add_argument("baseline", type=Path)
+    c.add_argument("candidate", type=Path)
     s = sub.add_parser("score")
     s.add_argument("eval_set", type=Path)
     s.add_argument("answers", type=Path, nargs="+")
@@ -540,6 +592,8 @@ def main() -> None:
     elif args.cmd == "run":
         run(args.eval_set, args.model, args.out, args.condition,
             args.host, args.limit, args.style, args.workers)
+    elif args.cmd == "compare":
+        compare(args.eval_set, args.baseline, args.candidate)
     elif args.cmd == "latency":
         latency(args.eval_set, args.model, args.condition, args.style,
                 args.host, args.n, args.workers)
