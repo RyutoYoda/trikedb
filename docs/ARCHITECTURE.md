@@ -104,6 +104,121 @@ The one thing that does *not* degrade is the diff: a one-fact change is one
 line at any size, which is what keeps review possible even when reading the
 whole graph is not.
 
+## Where does everything actually live?
+
+Three questions people ask in this order, so they are answered in that order:
+what is *stored*, where the *meaning* is kept, and what *executes a query*.
+
+```mermaid
+flowchart TB
+    subgraph doc["ONE document — the whole graph, and the whole truth"]
+        direction LR
+        T["triples<br/>s · p · o + edge attributes"]
+        N["nodes<br/>free-form properties"]
+        O["ontology<br/>the predicate whitelist"]
+    end
+
+    subgraph where["...written to exactly one of these"]
+        direction LR
+        F["a file<br/>graph.yaml / graph.json"]
+        B["an object<br/>s3:// gs:// az://"]
+        W["a row in a table<br/>snowflake:// bigquery://"]
+    end
+
+    subgraph mem["In the process, on open"]
+        direction LR
+        PY["Python objects<br/>Triple list + dicts"]
+        IDX["a built query index<br/>oxigraph · rdflib"]
+    end
+
+    doc --> where
+    where --> mem
+```
+
+**Data and metadata are the same document.** The ontology is not a schema
+registry, the node properties are not a side table: `triples`, `nodes` and
+`ontology` are three keys of one YAML/JSON document, saved and loaded
+together. That is why a change to the vocabulary and a change to the facts
+arrive in the *same* diff, and why there is no migration step when either
+moves.
+
+**The backend decides nothing except where those bytes sit.** Opening and
+saving differ; everything after that is identical, because the graph is
+answered from memory. A `snowflake://` row and a local file give the same
+answer to the same query in the same time — measured, see
+[benchmarks](../benchmarks/README.md#where-is-the-ceiling).
+
+| | Where the document is | What changes |
+|---|---|---|
+| `graph.yaml` | a file on disk | reviewable in a diff; slowest to open |
+| `graph.json` | a file on disk | ~17x faster to open; a diff nobody enjoys |
+| `s3://` `gs://` `az://` | an object in a bucket | shared, and S3 gets conditional writes |
+| `snowflake://` `bigquery://` | one row of one table | shared, conditional writes, **and readable by SQL** |
+
+Only the last row adds a genuinely new capability: the document is stored as
+JSON, and `sql-init` creates views (`KG_NODE`, `KG_EDGE`, `KG_PREDICATE`,
+`KG_TRIPLE`) that project it as ordinary tables. So the same graph answers
+SPARQL from memory and SQL from the warehouse, with no second copy.
+
+## Which engine does what
+
+The most common question about the internals, because there are two RDF
+engines and they are not interchangeable.
+
+```mermaid
+flowchart LR
+    ST["_statements()<br/>the one source of<br/>what the graph means"]
+
+    subgraph reads["Reads"]
+        OX["oxigraph<br/>Rust, real indexes"]
+    end
+    subgraph writes["Writes & reasoning"]
+        RD["rdflib<br/>+ owlrl, pyshacl"]
+    end
+    subgraph plain["No engine at all"]
+        PP["pure Python<br/>dict + list"]
+    end
+
+    ST --> OX
+    ST --> RD
+    ST --> PP
+```
+
+| Operation | Engine | Why that one |
+|---|---|---|
+| `sparql()` — SELECT, ASK | **oxigraph** | 6–40x faster on the same graph |
+| `sparql()` — INSERT, DELETE | rdflib | `update()` diffs the result back onto the store |
+| `infer()` — OWL-RL | rdflib | `owlrl` takes an rdflib graph |
+| `validate()` — SHACL | rdflib | `pyshacl` takes an rdflib graph |
+| `to_rdflib()`, `to_jsonld()` | rdflib | interop exports; rdflib *is* the format |
+| `triples()`, `query()` | none | pattern matching over a Python list |
+| `search()`, `find()` | none | static embeddings; no SPARQL involved |
+| `to_networkx()` | none | a projection into networkx objects |
+
+Two things worth knowing about that split.
+
+**Nothing was removed when oxigraph arrived.** OWL and SHACL never went
+through the query path — they take rdflib graphs from `to_rdflib()`, which is
+untouched. Verified rather than assumed: both engines produce identical
+inference and identical SHACL verdicts
+(`test_engines_agree_across_the_sparql_surface` covers 25 SPARQL forms; the
+26th is a case the spec leaves undefined).
+
+**Inference happens at write time, not query time.** `infer(apply=True)` runs
+OWL-RL and writes the derived facts into the document, tagged
+`inferred: true`. After that they are ordinary triples, and the query engine
+never reasons about anything. That is why swapping the engine could not cost
+any inference accuracy — and it is also the trade: materialised facts are a
+snapshot, so adding a fact that would imply more means running `infer()`
+again. Reviewability was chosen over automatic freshness.
+
+Both stay core dependencies for that reason: rdflib because `owlrl` and
+`pyshacl` need it and updates diff through it, pyoxigraph because it was
+faster at every graph size measured. Where pyoxigraph is unavailable — a
+curated package channel, a vendored subset of the files — reads fall back to
+rdflib and everything keeps working, slower.
+
+
 ## The layers
 
 Dependencies point inward only.
@@ -132,9 +247,9 @@ flowchart LR
 
     subgraph backends["Backends — a graph lives in exactly one"]
         direction TB
-        LOCAL("pathlib<br/>a local file")
-        FS("fsspec<br/>object storage")
-        SQL("storage_sql.py<br/>a graph is a row in a table")
+        LOCAL("pathlib<br/>graph.yaml · graph.json")
+        FS("fsspec<br/>s3:// gs:// az:// https://")
+        SQL("storage_sql.py<br/>snowflake:// · bigquery://<br/>a graph is a row in a table")
     end
 
     SERVE --> MCP
@@ -159,25 +274,39 @@ stored twice.
 
 - **`db.py` — core.** The `Triple` model and the `TrikeDB` store: CRUD with
   ontology enforcement, pattern matching, SPARQL, workspace unions, and
-  `_statements()` — the projection source above. Depends only on `storage`
-  and (lazily) `semantics`. No HTTP, no CLI, no HTML in here, ever.
+  `_statements()` — the projection source above. It also decides *which
+  engine* answers a read and *which serialization* a destination wants;
+  see "Which engine does what". Depends only on `storage` and (lazily)
+  `semantics`. No HTTP, no CLI, no HTML in here, ever.
 - **`storage.py` — the interface and its dispatcher.** Anything about *where
   bytes live* — new schemes, optimistic locking, caching, which
   serialization a destination wants — belongs here and nowhere else.
 - **`storage_sql.py` — the same interface over a SQL table.** A database is
   not a filesystem, so it does not reach fsspec: a graph is a row
-  (`name`, `doc`, `version`), and one table holds many graphs, so adopting
-  trikedb costs an organisation one table rather than one per graph.
-  Everything a given engine does differently — its types, its upsert syntax,
-  how it opens a JSON document, how the projection views are spelled — lives
-  in a `_Dialect`, which is *data*. A second engine is one more literal, not
-  a refactor.
+  (`name`, `doc`, `version`, `updated_at`), and one table holds many graphs,
+  so adopting trikedb costs an organisation one table rather than one per
+  graph. Two engines are implemented — `snowflake://` and `bigquery://` —
+  and everything either does differently lives in a `_Dialect`, which is
+  *data*:
+
+  | | Snowflake | BigQuery |
+  |---|---|---|
+  | opening JSON | `TRY_PARSE_JSON` + `LATERAL FLATTEN` | `SAFE.PARSE_JSON` + `JSON_QUERY_ARRAY` + `UNNEST` |
+  | parameters | positional `%s` | named `%(name)s` |
+  | identifiers | `A-Za-z0-9_$`, unquoted | hyphens allowed, backtick-quoted |
+  | hashing | `MD5(...)` | `TO_HEX(MD5(...))` |
+
+  Adding BigQuery cost one `_Dialect` literal plus three things the shared
+  code had assumed were universal — one identifier rule, one place to quote,
+  and one parameter order. All three failed *silently* rather than raising,
+  which is why they are the interesting part of that changelog.
 
   Two things land more cleanly here than on object storage. Optimistic
   locking goes inside the statement (`UPDATE ... WHERE version = ?`), so a
   conflict is an affected-row count of zero rather than an error message to
-  pattern-match. And the document can be *read by other tools*: stored as
-  JSON, views project it as ordinary node/edge/triple tables, so anything
+  pattern-match — verified identical on both engines. And the document can be
+  *read by other tools*: stored as JSON, four views project it as ordinary
+  tables (`KG_NODE`, `KG_EDGE`, `KG_PREDICATE`, `KG_TRIPLE`), so anything
   that speaks SQL can query the graph without knowing trikedb exists.
 
   The trade to know: a database typically serialises writes per *table*, where

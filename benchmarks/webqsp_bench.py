@@ -201,7 +201,7 @@ def _ask(client, model: str, question: str, triples=None) -> str:
     return client(model, body)
 
 
-def _ollama_client(host: str):
+def _ollama_client(host: str, timeout: int = 120):
     """A callable (model, prompt) -> text, against a local Ollama.
 
     Local on purpose: the score depends on the model, so the model has to be
@@ -216,15 +216,22 @@ def _ollama_client(host: str):
             "model": model,
             "prompt": prompt,
             "stream": False,
-            # deterministic, and no chain-of-thought: the metric reads the
-            # answer text, and thinking tokens only crowd the context
-            "options": {"temperature": 0, "num_ctx": 16384},
+            "options": {
+                "temperature": 0,
+                "num_ctx": 16384,
+                # A hard ceiling on generation. The metric reads a short
+                # answer, and a reasoning model that ignores `think: false`
+                # will otherwise run until the request times out — one
+                # question stalling for ten minutes and taking the whole run
+                # down with it.
+                "num_predict": 128,
+            },
             "think": False,
         }).encode()
         request = urllib.request.Request(
             f"{host}/api/generate", data=payload,
             headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=600) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return _json.load(response).get("response", "").strip()
 
     return call
@@ -253,18 +260,32 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
     out.parent.mkdir(parents=True, exist_ok=True)
     log = out.open("a")
 
+    failed = 0
     for i, item in enumerate(eval_set, 1):
         if item["id"] in done:
             continue
         triples = item["triples"] if condition == "graph" else None
-        answer = _ask(client, model, item["question"], triples)
+        try:
+            answer = _ask(client, model, item["question"], triples)
+        except Exception as exc:                        # noqa: BLE001
+            # One question must never end the run. An empty answer scores
+            # zero, which is the honest outcome, and it is recorded so a
+            # rerun does not retry it forever.
+            failed += 1
+            print(f"  {item['id']}: {type(exc).__name__} — recorded as empty",
+                  file=sys.stderr, flush=True)
+            answer = ""
         log.write(json.dumps({"id": item["id"], "answer": answer},
                              ensure_ascii=False) + "\n")
         log.flush()
         if i % 25 == 0:
-            print(f"  {i}/{len(eval_set)}", file=sys.stderr)
+            print(f"  {i}/{len(eval_set)}"
+                  + (f"  ({failed} failed)" if failed else ""),
+                  file=sys.stderr, flush=True)
     log.close()
-    print(f"wrote {out}", file=sys.stderr)
+    print(f"wrote {out}"
+          + (f" — {failed} question(s) recorded empty after an error" if failed else ""),
+          file=sys.stderr)
 
 
 def score(eval_path: Path, *answer_paths: Path) -> None:

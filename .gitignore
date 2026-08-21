@@ -11,3 +11,4 @@ build/
 *.local.md
 .env
 benchmarks/retrieval_progress.jsonl
+bench_out/
