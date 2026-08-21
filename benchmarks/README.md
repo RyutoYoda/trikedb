@@ -240,6 +240,43 @@ config — because eight requests were in flight and each was waiting behind the
 others. That figure is the right one for throughput planning and the wrong one
 for "how long until I see an answer", so the two are kept apart.
 
+## Which part of this is trikedb?
+
+Worth separating, because the two halves of the pipeline are measured
+separately here and they do not have the same limits.
+
+**trikedb's job is to put the answer in front of the model.** On these 300
+questions it did that for **89.3%** of them, and the work took **0.59 s** per
+question — building the whole 4,640-triple subgraph into a graph (effectively
+instant) and running the hybrid retrieval over it. That is 2.6% of the 22.5 s
+a question takes end to end; the other 21.9 s is the model reading the
+context. No server, no index to build, no second store: `search()` and
+`find()` over one document.
+
+**The model's job is to turn that into an answer**, and it is the half that
+falls short. It converted 85.8% of what it was handed and dropped 38 questions
+whose answer was in front of it — 12.7 points of the total.
+
+| | reach / conversion | time per question |
+|---|---|---|
+| trikedb — find the facts | 89.3% of questions | 0.59 s |
+| `qwen3:8b` — use them | 85.8% of those | 21.9 s |
+| end to end | **77.7%** | 22.5 s |
+
+Two things follow, and both are worth saying plainly:
+
+- **The retrieval side is not the bottleneck, and it improved by a lot.**
+  Swapping the retrieval method took reach from 70.7% to 89.3% at an identical
+  context budget, using nothing but trikedb's own primitives. 89.3% sits
+  inside the band that published end-to-end methods report on this benchmark
+  — a ceiling is not a score, but it does mean the facts being supplied are
+  not what is holding the number down.
+- **The end-to-end number tracks the reader.** 77.7% is what an 8B open model
+  answering zero-shot does with this context. Published leaders run GPT-4-class
+  or task-fine-tuned readers, and the 38 dropped questions are exactly where
+  a stronger one would score. Swapping the reader is a one-flag change
+  (`--model`), which is the point of keeping the two halves separable.
+
 ## Where published numbers sit
 
 Published WebQSP leaders report Hits@1 in the mid-to-high 80s and F1 around
