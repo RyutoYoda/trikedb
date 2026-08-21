@@ -64,36 +64,58 @@ def load_test_split():
     return pl.concat(frames)
 
 
-def _is_cvt(x: str) -> bool:
-    return x.startswith("m.") or x.startswith("g.")
+#: The retrieval methods live in ``retrieval_bench`` and are imported, not
+#: copied. Two implementations of "which triples are the context" is the one
+#: duplication that would make these two benchmarks silently disagree about
+#: the same question — and the retrieval numbers are what the accuracy numbers
+#: are supposed to be explained by.
+def _methods():
+    import retrieval_bench
+
+    return retrieval_bench.METHODS
 
 
-def prepare(n: int, seed: int, out: Path) -> None:
+#: Answer-in-context is not the same quantity as Hits@1 and must not be read
+#: as a cap on it: a model also answers from what it already knows. Measured
+#: on the 300-question set, 24 of its correct answers were not in the
+#: retrieved context at all.
+DEFAULT_RETRIEVAL = "1-hop + CVT"
+DEFAULT_CAP = 250
+
+
+def prepare(n: int, seed: int, out: Path, retrieval: str = DEFAULT_RETRIEVAL,
+            cap: int = DEFAULT_CAP, like: Path = None) -> None:
+    """Sample questions, retrieve a context for each, write the eval set.
+
+    ``like`` reuses the exact questions of an existing eval set instead of
+    sampling. Changing the retrieval method and the question set at the same
+    time would make the two runs incomparable, and the whole point of a second
+    run is to attribute the difference to the method.
+    """
     from trikedb import TrikeDB
 
+    retrieve = _methods()[retrieval]
     df = load_test_split()
-    rows = (df if n <= 0 or n >= df.height
-            else df.sample(n, seed=seed)).to_dicts()
+    if like:
+        wanted = [e["id"] for e in json.load(open(like))]
+        import polars as pl
+
+        rows_by_id = {r["id"]: r for r in df.filter(pl.col("id").is_in(wanted)).to_dicts()}
+        rows = [rows_by_id[i] for i in wanted if i in rows_by_id]
+        if len(rows) != len(wanted):
+            raise SystemExit(f"only {len(rows)}/{len(wanted)} of {like} found in the split")
+    else:
+        rows = (df if n <= 0 or n >= df.height
+                else df.sample(n, seed=seed)).to_dicts()
 
     eval_set = []
-    for r in rows:
+    for i, r in enumerate(rows, 1):
+        if i % 25 == 0:
+            print(f"  retrieved {i}/{len(rows)}", file=sys.stderr, flush=True)
         db = TrikeDB()
         for s, p, o in r["graph"]:
             db.add(str(s), str(p), str(o))
-        ctx = []
-        for e in list(r["q_entity"]):
-            hop1 = list(db.triples(s=str(e))) + list(db.triples(o=str(e)))
-            ctx += hop1
-            for t in hop1:  # CVT nodes carry no names — always expand them
-                for mid in (t.o, t.s):
-                    if _is_cvt(mid):
-                        ctx += list(db.triples(s=mid))
-        seen, uniq = set(), []
-        for t in ctx:
-            if t.spo() not in seen:
-                seen.add(t.spo())
-                uniq.append(t)
-        uniq = uniq[:CTX_CAP]
+        uniq = retrieve(db, r["question"], [str(e) for e in r["q_entity"]], cap)
         eval_set.append({
             "id": r["id"],
             "question": r["question"],
@@ -118,8 +140,9 @@ def prepare(n: int, seed: int, out: Path) -> None:
         any(any(a.lower() in t.lower() for t in e["triples"]) for a in e["answers"])
         for e in eval_set
     )
-    print(f"prepared {len(eval_set)} questions -> {out}/")
-    print(f"retrieval ceiling: answer present in context for {reachable}/{len(eval_set)}")
+    print(f"prepared {len(eval_set)} questions with {retrieval}, cap {cap} -> {out}/")
+    print(f"answer present in context for {reachable}/{len(eval_set)} "
+          f"({100 * reachable / len(eval_set):.1f}%)")
 
 
 #: The reference implementation's normalisation, reproduced so the numbers
@@ -192,11 +215,36 @@ Facts from a knowledge graph, as (subject, predicate, object):
 {triples}
 """
 
+#: Added to the graph condition by ``--style grounded``.
+#:
+#: The failures this exists to fix are not retrieval failures. At n=186 the
+#: retrieved subgraph contained the answer and the model still lost the point
+#: two ways: it paraphrased instead of naming the entity ("Short stories and
+#: novels, particularly satirical works" against a gold of "Novelist"), and it
+#: listed everything it saw ("Brazil Chile Argentina Paraguay Peru Amazon
+#: rainforest Andes ...", where the five countries are exactly right and the
+#: rest destroys precision, so F1 falls even though Hits@1 passes).
+#:
+#: Constraining the answer to labels present in the subgraph is what every
+#: published KGQA method on this dataset does — the answer is an entity of the
+#: graph, not free text. It applies only to the graph condition because there
+#: is nothing to copy from without it, so the nograph baseline is untouched
+#: and the delta between them credits the grounding to the graph. That is the
+#: honest reading: grounding the answer in retrieved facts *is* the technique
+#: being measured, not a prompt trick applied to one arm of an A/B.
+_GROUNDED = """
+Answer with names copied exactly from those facts. Do not reword them.
+List only what the question asks for and nothing else — a name you saw that
+does not answer the question is a wrong answer.
+"""
 
-def _ask(client, model: str, question: str, triples=None) -> str:
+
+def _ask(client, model: str, question: str, triples=None, style: str = "plain") -> str:
     body = _PROMPT
     if triples:
         body += _WITH_GRAPH.format(triples="\n".join(triples))
+        if style == "grounded":
+            body += _GROUNDED
     body += f"\nQuestion: {question}\nAnswer:"
     return client(model, body)
 
@@ -238,7 +286,8 @@ def _ollama_client(host: str, timeout: int = 120):
 
 
 def run(eval_path: Path, model: str, out: Path, condition: str,
-        host: str = "http://localhost:11434", limit: int = 0) -> None:
+        host: str = "http://localhost:11434", limit: int = 0,
+        style: str = "plain") -> None:
     """Answer every question in eval_set.json and append results as they land.
 
     Appended per question, not collected and written at the end: a full test
@@ -266,7 +315,7 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
             continue
         triples = item["triples"] if condition == "graph" else None
         try:
-            answer = _ask(client, model, item["question"], triples)
+            answer = _ask(client, model, item["question"], triples, style)
         except Exception as exc:                        # noqa: BLE001
             # One question must never end the run. An empty answer scores
             # zero, which is the honest outcome, and it is recorded so a
@@ -288,7 +337,7 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
           file=sys.stderr)
 
 
-def score(eval_path: Path, *answer_paths: Path) -> None:
+def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
     """Report Hits@1 and F1 — the two metrics WebQSP results are published in.
 
     Both are computed exactly as the reference implementation does, so a score
@@ -298,14 +347,24 @@ def score(eval_path: Path, *answer_paths: Path) -> None:
     """
     gold = {e["id"]: e["answers"] for e in json.load(open(eval_path))}
     print(f"{'answers':<34}{'Hits@1':>9}{'F1':>9}{'n':>7}")
+    rows = []
     for path in answer_paths:
         text = path.read_text()
         answers = ([json.loads(line) for line in text.splitlines() if line.strip()]
                    if path.suffix == ".jsonl" else json.loads(text))
+        # Score only what this eval set has gold for, so a partial or a
+        # differently-sampled answer file is a smaller n rather than a KeyError.
+        answers = [a for a in answers if a["id"] in gold]
         hit = sum(hits_at_1(a["answer"], gold[a["id"]]) for a in answers)
         f = sum(f1(a["answer"], gold[a["id"]]) for a in answers)
         n = len(answers)
         print(f"{path.name:<34}{100 * hit / n:>8.1f}%{100 * f / n:>8.1f}%{n:>7}")
+        rows.append({"answers": path.name, "hits_at_1": round(100 * hit / n, 1),
+                     "f1": round(100 * f / n, 1), "n": n})
+    if out_json:
+        # The chart reads this, so the picture and the table cannot disagree.
+        out_json.write_text(json.dumps(rows, indent=1) + "\n")
+        print(f"wrote {out_json}", file=sys.stderr)
 
 
 def main() -> None:
@@ -315,6 +374,10 @@ def main() -> None:
     p.add_argument("--n", type=int, default=30)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", type=Path, default=Path("bench_out"))
+    p.add_argument("--retrieval", default=DEFAULT_RETRIEVAL)
+    p.add_argument("--cap", type=int, default=DEFAULT_CAP)
+    p.add_argument("--like", type=Path,
+                   help="reuse the exact questions of an existing eval set")
     r = sub.add_parser("run", help="answer the questions with a local model")
     r.add_argument("eval_set", type=Path)
     r.add_argument("--model", required=True)
@@ -322,17 +385,22 @@ def main() -> None:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--host", default="http://localhost:11434")
     r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--style", choices=("plain", "grounded"), default="plain",
+                   help="grounded constrains the answer to names present in "
+                        "the retrieved facts (graph condition only)")
     s = sub.add_parser("score")
     s.add_argument("eval_set", type=Path)
     s.add_argument("answers", type=Path, nargs="+")
+    s.add_argument("--json", type=Path, dest="out_json",
+                   help="also write the scores as JSON, for the chart to read")
     args = ap.parse_args()
     if args.cmd == "prepare":
-        prepare(args.n, args.seed, args.out)
+        prepare(args.n, args.seed, args.out, args.retrieval, args.cap, args.like)
     elif args.cmd == "run":
         run(args.eval_set, args.model, args.out, args.condition,
-            args.host, args.limit)
+            args.host, args.limit, args.style)
     else:
-        score(args.eval_set, *args.answers)
+        score(args.eval_set, *args.answers, out_json=args.out_json)
 
 
 if __name__ == "__main__":
