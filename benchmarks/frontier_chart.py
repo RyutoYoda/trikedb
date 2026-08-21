@@ -35,27 +35,44 @@ HITS = "#2a78d6"
 F1 = "#eb6834"
 
 
+#: Marker shape carries the reader model, colour carries the metric. Two
+#: encodings rather than four colours: a reader is comparing Hits@1 to F1
+#: *within* a model far more often than across, and adding hues for models
+#: would make the metric harder to follow to answer a rarer question.
+SHAPES = {None: "circle", "qwen3:8b": "circle", "qwen3.8:27b": "diamond"}
+
+
 def main() -> None:
     rows = json.loads((HERE / "frontier_data.json").read_text())
     rows.sort(key=lambda r: r["secs"])
+    # Group by reader model, preserving first-seen order. A file with no
+    # "model" key is one model and draws exactly as it did before.
+    models = []
+    for r in rows:
+        if r.get("model") not in models:
+            models.append(r.get("model"))
 
     figure = go.Figure()
     for key, name, color in (("hits_at_1", "Hits@1", HITS), ("f1", "F1", F1)):
-        figure.add_trace(go.Scatter(
-            x=[r["secs"] for r in rows], y=[r[key] for r in rows],
-            name=name, mode="lines+markers",
-            line=dict(color=color, width=2),
-            marker=dict(size=11, color=color,
-                        line=dict(color=SURFACE, width=2)),  # 2px surface ring
-            hovertemplate=("%{customdata}<br>" + name +
-                           " %{y:.1f}%<br>%{x:.1f} s per question<extra></extra>"),
-            customdata=[r["label"] for r in rows],
-        ))
+        for model in models:
+            group = [r for r in rows if r.get("model") == model]
+            label = name if model is None else f"{name} · {model}"
+            figure.add_trace(go.Scatter(
+                x=[r["secs"] for r in group], y=[r[key] for r in group],
+                name=label, mode="lines+markers",
+                line=dict(color=color, width=2,
+                          dash="solid" if model == models[0] else "dot"),
+                marker=dict(size=11, color=color, symbol=SHAPES.get(model, "circle"),
+                            line=dict(color=SURFACE, width=2)),  # 2px surface ring
+                hovertemplate=("%{customdata}<br>" + label +
+                               " %{y:.1f}%<br>%{x:.1f} s per question<extra></extra>"),
+                customdata=[r["label"] for r in group],
+            ))
 
     # One direct label per point, on the Hits@1 series only — labelling both
     # series doubles the text for no information, since a point's identity is
     # its x position.
-    for r in rows:
+    for r in (r for r in rows if r.get("model") in (None, models[0])):
         figure.add_annotation(
             x=r["secs"], y=r["hits_at_1"],
             text=f"<b>{r['label']}</b><br>{r['sub']}",

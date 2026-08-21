@@ -242,6 +242,7 @@ one question actually waits:
 | no graph | 0.47 | ~56 tokens | 42.7% |
 | graph · semantic, 100 triples | 9.44 | ~1,823 tokens | 70.3% |
 | graph · hybrid, 250 triples | 22.48 | ~4,377 tokens | 77.7% |
+| the same, on `qwen3.8:27b` | **70.36** | ~4,377 tokens | 67.3% |
 
 The first nine seconds buy 27.6 points. The next thirteen buy 7.4 more, and
 the paired test says those are real (p = 0.002) — so the curve is still
@@ -290,6 +291,58 @@ Two things follow, and both are worth saying plainly:
   or task-fine-tuned readers, and the 38 dropped questions are exactly where
   a stronger one would score. Swapping the reader is a one-flag change
   (`--model`), which is the point of keeping the two halves separable.
+
+## Does a bigger reader help?
+
+The obvious next move is a bigger model, so it was measured: `qwen3.8:27b`,
+3.4x the parameters, same retrieval, same prompt, on the first 150 of the same
+questions.
+
+| condition | Hits@1 | F1 | n |
+|---|---|---|---|
+| `qwen3:8b` — no graph | 42.7% | 27.9% | 300 |
+| `qwen3.8:27b` — no graph | 44.0% | 30.6% | 150 |
+| `qwen3:8b` — graph | **77.7%** | 57.4% | 300 |
+| `qwen3.8:27b` — graph | 67.3% | 57.1% | 150 |
+
+Two results, and the second one is a trap worth walking through.
+
+**Without a graph, 3.4x the parameters changes nothing.** Paired on the same
+150 questions the two models are exactly level — 14 questions each, McNemar
+p = 1.0. Neither has memorised Freebase, and being larger does not help with
+that. Against this, the graph is worth +35 points on the 8B (p = 9e-20) and
++23 on the 27B (p = 8e-05). **Whatever moves accuracy here, it is not model
+size.**
+
+**With a graph the 8B scores higher — and that is not a capability result.**
+The paired test says the gap is real (8B right on 22 the 27B missed, 27B on 4,
+p = 0.0005), but the mechanism is abstention, not ability:
+
+| | answered "I don't know" | of those, answer was in context | of those, 8B got it right |
+|---|---|---|---|
+| `qwen3:8b` | 4 / 150 | — | — |
+| `qwen3.8:27b` | **30 / 150** | 19 | 13 |
+
+The prompt says *"If you do not know, reply exactly: I don't know"*, and the
+27B follows it far more strictly — declining on 20% of questions, most of
+which had the answer sitting in front of it. Restrict to the 120 questions
+both models actually answered and the difference stops being detectable:
+88.3% against 84.2%, p = 0.27. F1 barely moves either way (57.4 against
+57.1), which fits: abstaining costs Hits@1 outright while F1 only grades the
+answers that were given.
+
+**So this benchmark cannot rank the two models.** What it measured is an
+interaction between one prompt and two models, and the honest reading is:
+
+- the graph helps both, significantly, and by far more than size does;
+- a bigger reader is not a free upgrade — it can follow the same instruction
+  differently, and here that cost 12 points of Hits@1;
+- if you swap the reader, re-tune the abstention instruction and re-measure.
+  `--model` makes that a one-flag change, which is the reason the two halves
+  are kept separable.
+
+It also cost 3.4x the latency for a lower score, which is the practical
+version of the same finding.
 
 ## Where published numbers sit
 

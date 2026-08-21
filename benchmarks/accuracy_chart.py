@@ -33,9 +33,10 @@ F1 = "#eb6834"
 #: bottom to top, so the story reads upward: no graph, then the graph as it
 #: was, then the graph with the retrieval this benchmark ended up choosing.
 ROWS = [
-    ("ans_nograph_8b.jsonl", "no graph", "the model alone"),
-    ("ans_1hopcvt_plain_8b.jsonl", "graph · 1-hop + CVT", "250 triples"),
-    ("ans_hybrid_grounded_8b.jsonl", "graph · hybrid retrieval", "250 triples, grounded answers"),
+    ("ans_nograph_27b.jsonl", "no graph · qwen3.8:27b", "3.4x the parameters"),
+    ("ans_nograph_8b.jsonl", "no graph · qwen3:8b", "the model alone"),
+    ("ans_hybrid_grounded_27b.jsonl", "graph · qwen3.8:27b", "250 triples — abstains on 20%"),
+    ("ans_hybrid_grounded_8b.jsonl", "graph · qwen3:8b", "250 triples, grounded answers"),
 ]
 
 #: Answer-in-context for the retrieval the top row uses, on the same 300
@@ -80,9 +81,10 @@ def main() -> None:
     figure.update_layout(
         title=dict(
             text=("Does a knowledge graph help the model answer?<br>"
-                  f"<span style='font-size:13px;color:{INK_MUTED}'>WebQSP test split · "
-                  f"qwen3:8b, temperature 0 · Hits@1 and F1 per the RoG reference "
-                  f"implementation</span>"),
+                  f"<span style='font-size:13px;color:{INK_MUTED}'>WebQSP test "
+                  "split, temperature 0 · Hits@1 and F1 per the RoG reference "
+                  "implementation · the graph is worth more than 3.4x the "
+                  "parameters</span>"),
             font=dict(size=19, color=INK), x=0.008, xanchor="left", y=0.955,
         ),
         barmode="group", bargap=0.34, bargroupgap=0.12,
