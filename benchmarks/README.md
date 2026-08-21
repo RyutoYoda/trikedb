@@ -6,13 +6,20 @@
 
 # Benchmarks
 
-Three numbers, measured on [WebQSP](https://aclanthology.org/P16-2033/):
+Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 
-| | |
-|---|---|
-| **Accuracy** | a small local model answers **42.7% → 77.7%** with a trikedb graph as context |
-| **Speed** | trikedb spends **0.59 s** of the 22.5 s that answer takes |
-| **Scale** | fast to **100,000 triples**; semantic search is the first thing to give out, at 30,000 |
+**What trikedb does:** it found the answer and put it in front of the model for
+**89.3%** of the questions, spending **0.59 s** each — no server, no index, one
+file. That is the number this library is responsible for.
+
+**What that is worth downstream:** a laptop-sized 8B reader on the same
+retrieval answers **77.7%** correctly, against **42.7%** with no graph. The
+gap between 89.3% and 77.7% is entirely the reader dropping answers it was
+handed, so a stronger one scores higher — published leaders on this benchmark
+run GPT-4-class or fine-tuned readers and land in the mid-to-high 80s.
+
+**Where it stops:** fast to **100,000 triples**; semantic search is the first
+thing to give out, at 30,000.
 
 ## Accuracy
 
