@@ -1803,7 +1803,9 @@ def test_dialect_templates_only_use_percent_s():
         sql = [dialect.ddl, dialect.select, dialect.update,
                dialect.insert_if_absent, dialect.upsert, *dialect.views.values()]
         for stmt in sql:
-            leftover = re.sub(r"%s", "", stmt)
+            # %s (positional) and %(name)s (pyformat) are both legitimate;
+            # anything else means a literal percent that binding would break on
+            leftover = re.sub(r"%\(\w+\)s|%s", "", stmt)
             assert "%" not in leftover, f"{dialect.name}: stray percent in {stmt[:60]}"
 
 
@@ -2640,3 +2642,90 @@ def test_search_payload_keys_cannot_be_hijacked_by_attributes():
     assert triple["attr_kind"] == "mine"
     assert triple["note"] == "ok"                   # ordinary attrs untouched
     assert node["node"] == "gamma" and node["attr_node"] == "clash"
+
+
+def test_bigquery_is_registered_as_a_dialect():
+    """A second warehouse should cost one _Dialect literal, and did."""
+    from trikedb import storage, storage_sql
+
+    assert set(storage_sql.DIALECTS) == {"snowflake", "bigquery"}
+    assert set(storage._SQL_SCHEMES) == set(storage_sql.DIALECTS)
+    assert storage.serialization("bigquery://p.d.T/g") == "json"
+    assert set(storage_sql.BIGQUERY.views) == {
+        "KG_NODE", "KG_EDGE", "KG_PREDICATE", "KG_TRIPLE"}
+
+
+def test_identifier_rules_are_per_dialect():
+    """A GCP project id has hyphens; no Snowflake identifier may.
+
+    One shared pattern rejected every real BigQuery table. The table name is
+    interpolated into SQL — a parameter cannot carry an identifier — so this
+    stays a whitelist per dialect rather than a relaxed one shared.
+    """
+    from trikedb import storage_sql
+
+    _, table, name = storage_sql._split("bigquery://ca-data-1234.ds.T/kg/g")
+    assert (table, name) == ("ca-data-1234.ds.T", "kg/g")
+    _, snow, _ = storage_sql._split("snowflake://DB.PUBLIC.T/g")
+    assert snow == "DB.PUBLIC.T"
+
+    # hyphens are legal for BigQuery and not for Snowflake
+    with pytest.raises(ValueError):
+        storage_sql._split("snowflake://has-dash.T/g")
+    # and injection dies at the door for both
+    for hostile in ("bigquery://p;DROP.ds.T/g", "bigquery://`p`.ds.T/g",
+                    "snowflake://T; DROP TABLE X/g"):
+        with pytest.raises(ValueError):
+            storage_sql._split(hostile)
+
+
+def test_quoting_is_applied_at_the_point_of_use():
+    """Storing the quoted name broke deriving a schema from it.
+
+    `proj.dataset.T` became `` `proj.dataset.T` ``, and rsplitting that for the
+    view's schema produced `` `proj.dataset `` — an unclosed identifier literal
+    that BigQuery rejected.
+    """
+    from trikedb import storage_sql
+
+    ddl = storage_sql.ddl_for("bigquery://ca-data-1234.ds.TRIKE_GRAPHS/g")
+    assert "CREATE TABLE IF NOT EXISTS `ca-data-1234.ds.TRIKE_GRAPHS`" in ddl
+    assert "CREATE OR REPLACE VIEW `ca-data-1234.ds.KG_NODE`" in ddl
+    assert "`ca-data-1234.ds`" not in ddl          # no half-quoted schema
+
+    snow = storage_sql.ddl_for("snowflake://DB.PUBLIC.TRIKE_GRAPHS/g")
+    assert "CREATE OR REPLACE VIEW DB.PUBLIC.KG_NODE" in snow
+    assert "`" not in snow                          # Snowflake takes none
+
+
+def test_named_parameters_are_read_off_the_statement():
+    """Each statement takes its arguments in its own order.
+
+    Declaring one order on the dialect mismapped them — the update takes
+    (doc, version, name, expect) while the insert takes (name, doc, version) —
+    and being wrong there does not raise: it compares the wrong column and
+    reports a conflict that never happened.
+    """
+    import re
+
+    from trikedb import storage_sql
+
+    bq = storage_sql.BIGQUERY
+    assert bq.named_params is True
+    assert storage_sql.SNOWFLAKE.named_params is False
+
+    def order(sql):
+        return list(dict.fromkeys(re.findall(r"%\((\w+)\)s", sql)))
+
+    assert order(bq.select) == ["name"]
+    assert order(bq.update) == ["doc", "version", "name", "expect"]
+    assert order(bq.insert_if_absent) == ["name", "doc", "version"]
+    assert order(bq.upsert) == ["name", "doc", "version"]
+
+    # the mapping the executor performs, and its guard against a mismatch
+    assert storage_sql._named(bq, bq.update, ("D", "V", "N", "E")) == {
+        "doc": "D", "version": "V", "name": "N", "expect": "E"}
+    assert storage_sql._named(
+        storage_sql.SNOWFLAKE, "x = %s", ("a",)) == ("a",)
+    with pytest.raises(ValueError, match="binds"):
+        storage_sql._named(bq, bq.update, ("only-one",))

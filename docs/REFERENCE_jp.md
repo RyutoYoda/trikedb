@@ -478,7 +478,8 @@ fsspec経由で読み書きする(`[remote]` extra)。認証はAWS標準の認�
 で動く。
 
 **ウェアハウスのテーブル** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
-はグラフを1行として保持する(`[snowflake]` extra)。1つのテーブルが多数の
+または `TrikeDB("bigquery://project.dataset.TABLE/sales/crm")` がグラフを1行
+として保持する(`[snowflake]` / `[bigquery]` extra)。1つのテーブルが多数の
 グラフを持つので、導入コストは「グラフごとに1テーブル」ではなく「1テーブル」:
 
 | カラム | |
@@ -791,6 +792,7 @@ flowchart LR
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` 等 | fsspec, s3fs |
 | `[snowflake]` | `snowflake://` グラフ | snowflake-connector-python |
+| `[bigquery]` | `bigquery://` グラフ | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |

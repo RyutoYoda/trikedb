@@ -19,7 +19,7 @@ from pathlib import Path
 REMOTE_PREFIXES = (
     "s3://", "gs://", "gcs://", "http://", "https://",
     "az://", "abfs://", "memory://",
-    "snowflake://",
+    "snowflake://", "bigquery://",
 )
 
 #: Backends whose conditional writes we know how to drive.
@@ -47,7 +47,7 @@ def is_remote(path) -> bool:
 #: cannot install one — Streamlit in Snowflake among them. Importing it
 #: unconditionally turned "open a local YAML file" into an ImportError there.
 #: ``test_sql_schemes_match_the_dialects`` keeps the two lists honest.
-_SQL_SCHEMES = ("snowflake",)
+_SQL_SCHEMES = ("snowflake", "bigquery")
 
 
 def _scheme(path) -> str:

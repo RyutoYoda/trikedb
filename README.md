@@ -83,6 +83,7 @@ pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
 pip install 'trikedb[oauth]'    # + OAuth 2.1 for the claude.ai / ChatGPT UIs
 pip install 'trikedb[remote]'   # + s3:// gs:// graphs
 pip install 'trikedb[snowflake]' # + snowflake:// graphs (the warehouse is the store)
+pip install 'trikedb[bigquery]' # + bigquery:// graphs (same, on BigQuery)
 pip install 'trikedb[shacl]'    # + SHACL validation
 pip install 'trikedb[owl]'      # + OWL-RL inference
 pip install 'trikedb[semantic]' # + semantic search (numpy + model2vec, no torch)
@@ -280,11 +281,14 @@ policies give each team its own graph. `gs://`, `az://` and plain
 `https://` (read-only) work through the same mechanism with the
 matching fsspec backend installed.
 
-**A warehouse table** (`pip install 'trikedb[snowflake]'`) — for teams
-whose governance says data lives in the warehouse:
+**A warehouse table** (`pip install 'trikedb[snowflake]'` or
+`'trikedb[bigquery]'`) — for teams whose governance says data lives in the
+warehouse:
 
 ```python
 db = TrikeDB("snowflake://ANALYTICS.PUBLIC.TRIKE_GRAPHS/sales/crm")
+# or
+db = TrikeDB("bigquery://my-project.analytics.TRIKE_GRAPHS/sales/crm")
 ```
 
 One graph is one row (`name`, `doc`, `version`, `updated_at`), and one

@@ -502,7 +502,8 @@ control. `gs://`, `az://` and read-only `https://` work the same way with
 the matching fsspec backend installed.
 
 **A warehouse table** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
-keeps the graph in a row (`[snowflake]` extra). One table holds many
+or `TrikeDB("bigquery://project.dataset.TABLE/sales/crm")` keeps the graph in
+a row (`[snowflake]` / `[bigquery]` extras). One table holds many
 graphs, so adopting trikedb costs one table rather than one per graph:
 
 | column | |
@@ -837,6 +838,7 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` etc. | fsspec, s3fs |
 | `[snowflake]` | `snowflake://` graphs | snowflake-connector-python |
+| `[bigquery]` | `bigquery://` graphs | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |

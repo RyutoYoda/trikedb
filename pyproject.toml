@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.28.1"
+version = "0.29.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with full SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = { text = "MIT" }
@@ -28,6 +28,7 @@ Homepage = "https://github.com/RyutoYoda/trikedb"
 mcp = ["mcp>=1.2,<2"]
 remote = ["fsspec>=2024.2", "s3fs>=2024.2"]
 snowflake = ["snowflake-connector-python>=3.0"]
+bigquery = ["google-cloud-bigquery>=3.0"]
 shacl = ["pyshacl>=0.25"]
 owl = ["owlrl>=6.0.2"]
 semantic = ["model2vec>=0.3", "numpy>=1.24"]
@@ -43,6 +44,7 @@ all = [
     "pyshacl>=0.25", "owlrl>=6.0.2",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3",
     "pyjwt[crypto]>=2.8", "snowflake-connector-python>=3.0",
+    "google-cloud-bigquery>=3.0",
     "pyoxigraph>=0.4",
 ]
 # pyoxigraph is core: it makes read queries 6-9x faster at every graph size

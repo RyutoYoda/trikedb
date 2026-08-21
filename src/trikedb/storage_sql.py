@@ -68,6 +68,23 @@ class _Dialect:
     #: {view name: SELECT body} — the projection, see _SNOWFLAKE_VIEWS. Empty
     #: is legitimate: a backend can store graphs without exposing them to SQL.
     views: dict = field(default_factory=dict)
+    #: True when this engine binds by name (pyformat, ``%(doc)s``) rather
+    #: than by position (``%s``). The names themselves are read off each
+    #: template — see :func:`_named` — because they differ per statement and
+    #: a single declared order silently mismapped them: the update takes
+    #: (doc, version, name, expect) while the insert takes (name, doc,
+    #: version), so every write compared the wrong column and reported a
+    #: conflict that had not happened.
+    named_params: bool = False
+    #: What one dot-separated part of a table reference may contain. The table
+    #: is interpolated into SQL — a parameter cannot carry an identifier — so
+    #: this is a whitelist, not a quoting rule, and it has to be per-dialect:
+    #: a GCP project id contains hyphens, which no Snowflake identifier may.
+    identifier: str = r"^[A-Za-z_][A-Za-z0-9_$]*$"
+    #: How a qualified name is written into SQL once its parts are validated.
+    #: Applied at the point of use, never stored: quoting the stored name meant
+    #: deriving a schema from it produced `proj.dataset — an unclosed literal.
+    quote_table: Callable[[str], str] = staticmethod(lambda name: name)
 
 
 def _snowflake_config_from_env() -> dict:
@@ -241,11 +258,153 @@ SNOWFLAKE = _Dialect(
     views=_SNOWFLAKE_VIEWS,
 )
 
+# ------------------------------------------------------------------- bigquery
+
+def _bigquery_config_from_env() -> dict:
+    """Connect kwargs for BigQuery.
+
+    Credentials are Google's problem, not ours: the client picks up
+    Application Default Credentials, a service-account key via
+    ``GOOGLE_APPLICATION_CREDENTIALS``, or a workload identity, exactly as
+    every other Google tool on the machine does. All we need is which
+    project to bill.
+    """
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("BIGQUERY_PROJECT")
+    cfg: dict = {}
+    if project:
+        cfg["project"] = project
+    location = os.environ.get("BIGQUERY_LOCATION")
+    if location:
+        cfg["location"] = location
+    return cfg
+
+
+def _bigquery_connect(config: dict):
+    try:
+        from google.cloud import bigquery
+        from google.cloud.bigquery import dbapi
+    except ImportError as exc:  # pragma: no cover - exercised via the message
+        raise ImportError(
+            "bigquery:// graph URLs require the BigQuery client - "
+            "pip install 'trikedb[bigquery]'"
+        ) from exc
+    return dbapi.connect(bigquery.Client(**config))
+
+
+#: BigQuery reaches the same compare-and-swap as Snowflake by a different
+#: route, verified against a real dataset: a stale ``UPDATE`` reports 0
+#: affected rows, a matching one reports 1, and a ``MERGE`` that finds the row
+#: already there reports 0. What differs is spelling.
+#:
+#: - Parameters are named (``@name``), not positional, so the templates carry
+#:   names and :func:`_execute` binds by them.
+#: - JSON is opened with ``SAFE.PARSE_JSON`` + ``JSON_QUERY_ARRAY`` and
+#:   ``UNNEST`` rather than ``LATERAL FLATTEN``. ``SAFE.`` is the same choice
+#:   ``TRY_PARSE_JSON`` was: one row left in the old YAML format must not take
+#:   the view down for every other graph in the table.
+#: - There is no ``VARIANT``; a JSON subtree comes back as ``JSON``, and
+#:   ``TO_JSON_STRING`` keeps the attribute bag readable.
+#: - ``MD5`` returns bytes, so ``TO_HEX`` wraps it to match the hex EDGE_ID
+#:   the other dialect produces.
+_BIGQUERY_VIEWS = {
+    "KG_NODE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       n.name AS NODE_ID,\n"
+        "       JSON_VALUE(n.props, '$.type')  AS NODE_TYPE,\n"
+        "       JSON_VALUE(n.props, '$.label') AS NAME,\n"
+        "       TO_JSON_STRING(n.props) AS PROPS,\n"
+        "       g.updated_at AS TS_UPDATED\n"
+        "FROM {table} g,\n"
+        "     UNNEST([STRUCT(SAFE.PARSE_JSON(g.doc) AS parsed)]) d,\n"
+        "     UNNEST(\n"
+        "       ARRAY(SELECT AS STRUCT k AS name, d.parsed.nodes[k] AS props\n"
+        "             FROM UNNEST(JSON_KEYS(d.parsed.nodes, 1)) AS k)\n"
+        "     ) n"
+    ),
+    "KG_EDGE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       TO_HEX(MD5(CONCAT(JSON_VALUE(t, '$.s'), '|',"
+        " JSON_VALUE(t, '$.p'), '|', JSON_VALUE(t, '$.o')))) AS EDGE_ID,\n"
+        "       JSON_VALUE(t, '$.s') AS SRC_ID,\n"
+        "       JSON_VALUE(t, '$.o') AS DST_ID,\n"
+        "       JSON_VALUE(t, '$.p') AS EDGE_TYPE,\n"
+        "       TO_JSON_STRING(t) AS PROPS,\n"
+        "       g.updated_at AS TS_UPDATED\n"
+        "FROM {table} g,\n"
+        "     UNNEST(JSON_QUERY_ARRAY(SAFE.PARSE_JSON(g.doc), '$.triples')) AS t"
+    ),
+    "KG_PREDICATE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       k AS PREDICATE,\n"
+        "       JSON_VALUE(d.parsed.ontology.predicates[k]) AS DESCRIPTION\n"
+        "FROM {table} g,\n"
+        "     UNNEST([STRUCT(SAFE.PARSE_JSON(g.doc) AS parsed)]) d,\n"
+        "     UNNEST(JSON_KEYS(d.parsed.ontology.predicates, 1)) AS k"
+    ),
+    "KG_TRIPLE": (
+        "SELECT g.name AS GRAPH,\n"
+        "       JSON_VALUE(t, '$.s') AS S,\n"
+        "       JSON_VALUE(t, '$.p') AS P,\n"
+        "       JSON_VALUE(t, '$.o') AS O,\n"
+        "       TO_JSON_STRING(t) AS ATTRS\n"
+        "FROM {table} g,\n"
+        "     UNNEST(JSON_QUERY_ARRAY(SAFE.PARSE_JSON(g.doc), '$.triples')) AS t"
+    ),
+}
+
+BIGQUERY = _Dialect(
+    name="bigquery",
+    config_from_env=_bigquery_config_from_env,
+    connect=_bigquery_connect,
+    ddl=(
+        "CREATE TABLE IF NOT EXISTS {table} (\n"
+        "    name       STRING NOT NULL,\n"
+        "    doc        STRING,\n"
+        "    version    STRING NOT NULL,\n"
+        "    updated_at TIMESTAMP\n"
+        ")"
+    ),
+    select="SELECT doc, version FROM {table} WHERE name = %(name)s",
+    update=(
+        "UPDATE {table} SET doc = %(doc)s, version = %(version)s, "
+        "updated_at = CURRENT_TIMESTAMP() "
+        "WHERE name = %(name)s AND version = %(expect)s"
+    ),
+    insert_if_absent=(
+        "MERGE {table} AS t "
+        "USING (SELECT %(name)s AS name, %(doc)s AS doc, %(version)s AS version) AS s "
+        "ON t.name = s.name "
+        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
+        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
+    ),
+    upsert=(
+        "MERGE {table} AS t "
+        "USING (SELECT %(name)s AS name, %(doc)s AS doc, %(version)s AS version) AS s "
+        "ON t.name = s.name "
+        "WHEN MATCHED THEN UPDATE SET doc = s.doc, version = s.version, "
+        "updated_at = CURRENT_TIMESTAMP() "
+        "WHEN NOT MATCHED THEN INSERT (name, doc, version, updated_at) "
+        "VALUES (s.name, s.doc, s.version, CURRENT_TIMESTAMP())"
+    ),
+    views=_BIGQUERY_VIEWS,
+    # A GCP project id allows hyphens (and commonly has them), which is why
+    # the pattern cannot be shared with Snowflake.
+    identifier=r"^[A-Za-z0-9_-]+$",
+    # Hyphens also mean the reference must be backtick-quoted, or the parser
+    # reads `my-project-1234` as three names being subtracted.
+    quote_table=staticmethod(lambda table: f"`{table}`"),
+    # The BigQuery DB-API is pyformat, so the templates carry %(name)s and the
+    # executor hands it a dict. `@name` is the *native* client's syntax; the
+    # DB-API layer rejects it as "no placeholders".
+    named_params=True,
+)
+
+
 #: scheme -> dialect. A new warehouse lands here and nowhere else: everything
 #: it does differently — types, upsert syntax, how JSON is opened, how the
 #: projection is spelled — is inside its _Dialect. Nothing above this line
 #: mentions a warehouse by name.
-DIALECTS = {"snowflake": SNOWFLAKE}
+DIALECTS = {"snowflake": SNOWFLAKE, "bigquery": BIGQUERY}
 
 
 
@@ -256,7 +415,7 @@ DIALECTS = {"snowflake": SNOWFLAKE}
 #: identifier — so it is checked against what an identifier may contain
 #: rather than quoted. Unquoted also keeps Snowflake's own case folding,
 #: which is what someone writing `mydb.public.t` expects.
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")   # the default
 
 
 def is_sql_url(path) -> bool:
@@ -272,10 +431,12 @@ def _split(url: str):
 
     table = parts.netloc
     segments = table.split(".") if table else []
-    if not 1 <= len(segments) <= 3 or not all(_IDENTIFIER.match(s) for s in segments):
+    allowed = re.compile(dialect.identifier)
+    if not 1 <= len(segments) <= 3 or not all(allowed.match(s) for s in segments):
         raise ValueError(
             f"{url}: expected {parts.scheme}://TABLE/graph-name, where TABLE is "
-            "TABLE, SCHEMA.TABLE or DATABASE.SCHEMA.TABLE"
+            "TABLE, SCHEMA.TABLE or DATABASE.SCHEMA.TABLE, and each part "
+            f"matches {dialect.identifier}"
         )
 
     name = parts.path.lstrip("/")
@@ -295,14 +456,15 @@ def ddl_for(url: str, views: bool = True) -> str:
     part of setting the table up rather than an extra step to remember.
     """
     dialect, table, _ = _split(url)
-    statements = [dialect.ddl.format(table=table)]
+    ref = dialect.quote_table(table)
+    statements = [dialect.ddl.format(table=ref)]
     if views:
         schema = table.rsplit(".", 1)[0] if "." in table else ""
         for name, body in dialect.views.items():
-            qualified = f"{schema}.{name}" if schema else name
+            qualified = dialect.quote_table(f"{schema}.{name}" if schema else name)
             statements.append(
                 f"CREATE OR REPLACE VIEW {qualified} AS\n"
-                + body.format(table=table)
+                + body.format(table=ref)
             )
     return ";\n\n".join(statements)
 
@@ -371,7 +533,27 @@ def _matches(exc: BaseException, markers) -> bool:
 
 # --------------------------------------------------------------------- execute
 
-def _execute(conn, sql: str, params: tuple, want_rows: bool):
+def _named(dialect: _Dialect, sql: str, params: tuple):
+    """Positional params as {name: value} for an engine that binds by name.
+
+    The names come from the statement, in the order its placeholders appear,
+    which is by construction the order the call site passes them in. Declaring
+    them on the dialect instead meant one order had to serve four statements
+    that take their arguments differently — and being wrong there does not
+    raise, it compares the wrong column and reports a conflict.
+    """
+    if not dialect.named_params or not params:
+        return params
+    ordered = list(dict.fromkeys(re.findall(r"%\((\w+)\)s", sql)))
+    if len(ordered) != len(params):
+        raise ValueError(
+            f"{dialect.name}: statement binds {ordered} but {len(params)} "
+            "values were passed"
+        )
+    return dict(zip(ordered, params))
+
+
+def _execute(conn, sql: str, params, want_rows: bool):
     """Run one statement on a DB-API connection or a Snowpark session.
 
     Two shapes reach us. A DB-API connection has ``cursor()`` and reports
@@ -394,7 +576,8 @@ def _execute(conn, sql: str, params: tuple, want_rows: bool):
         # Snowpark binds with ? where the connector binds with %s. Every
         # template here is ours and contains no other percent sign;
         # test_dialect_templates_only_use_percent_s holds that true.
-        rows = conn.sql(sql.replace("%s", "?"), params=list(params or ())).collect()
+        bound = list(params.values()) if isinstance(params, dict) else list(params or ())
+        rows = conn.sql(sql.replace("%s", "?"), params=bound).collect()
         if want_rows:
             return [tuple(r) for r in rows]
         return int(rows[0][0]) if rows and len(rows[0]) else 0
@@ -437,7 +620,8 @@ class SqlGraphStore:
         connection that has quietly died would otherwise turn the next save
         into a failure the caller cannot act on.
         """
-        sql = template.format(table=self._table)
+        sql = template.format(table=self._dialect.quote_table(self._table))
+        params = _named(self._dialect, sql, params)
         if self._injected is not None:
             # Someone else owns this connection's lifetime, so there is
             # nothing to cache, drop or reconnect: hand the statement over
@@ -524,11 +708,12 @@ class SqlGraphStore:
             return done
         schema = self._table.rsplit(".", 1)[0] if "." in self._table else ""
         for name, body in self._dialect.views.items():
-            qualified = f"{schema}.{name}" if schema else name
+            plain = f"{schema}.{name}" if schema else name
             self._run(
-                f"CREATE OR REPLACE VIEW {qualified} AS\n" + body,
+                f"CREATE OR REPLACE VIEW {self._dialect.quote_table(plain)} AS\n"
+                + body,
                 (),
                 want_rows=False,
             )
-            done.append(qualified)
+            done.append(plain)
         return done
