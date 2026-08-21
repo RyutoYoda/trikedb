@@ -10,3 +10,4 @@ build/
 *.local.html
 *.local.md
 .env
+benchmarks/retrieval_progress.jsonl

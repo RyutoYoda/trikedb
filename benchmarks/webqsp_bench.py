@@ -35,10 +35,28 @@ import argparse
 import json
 from pathlib import Path
 
-PARQUET_URL = (
-    "https://huggingface.co/datasets/rmanluo/RoG-webqsp/resolve/main/"
-    "data/test-00000-of-00002-9ee8d68f7d951e1f.parquet"
+#: The WebQSP test split, both shards. Using only the first — which this
+#: benchmark did until it was checked — samples from 814 of the 1,628
+#: questions that published numbers are computed over, so a result would not
+#: be comparable to anything.
+BASE = ("https://huggingface.co/datasets/rmanluo/RoG-webqsp/resolve/main/data/")
+TEST_SHARDS = (
+    "test-00000-of-00002-9ee8d68f7d951e1f.parquet",
+    "test-00001-of-00002-773a7b8213e159f5.parquet",
 )
+
+
+def load_test_split():
+    """The full 1,628-question test split as a DataFrame.
+
+    RoG-WebQSP ships a pre-retrieved Freebase subgraph per question, so this
+    measures retrieval *within* that subgraph — the same basis the RoG line of
+    work reports on, and not retrieval from all of Freebase.
+    """
+    import pandas as pd
+
+    return pd.concat([pd.read_parquet(BASE + s) for s in TEST_SHARDS],
+                     ignore_index=True)
 CTX_CAP = 250
 
 
@@ -47,11 +65,9 @@ def _is_cvt(x: str) -> bool:
 
 
 def prepare(n: int, seed: int, out: Path) -> None:
-    import pandas as pd
-
     from trikedb import TrikeDB
 
-    df = pd.read_parquet(PARQUET_URL)
+    df = load_test_split()
     rows = df.sample(n, random_state=seed).to_dict("records")
 
     eval_set = []
