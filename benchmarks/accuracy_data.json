@@ -3,18 +3,30 @@
   "answers": "ans_nograph_8b.jsonl",
   "hits_at_1": 42.7,
   "f1": 27.9,
-  "n": 300
+  "n": 300,
+  "hits_ci95": [
+   37.2,
+   48.3
+  ]
  },
  {
   "answers": "ans_1hopcvt_plain_8b.jsonl",
   "hits_at_1": 68.6,
   "f1": 52.4,
-  "n": 245
+  "n": 245,
+  "hits_ci95": [
+   62.5,
+   74.1
+  ]
  },
  {
   "answers": "ans_hybrid_grounded_8b.jsonl",
   "hits_at_1": 77.7,
   "f1": 57.4,
-  "n": 300
+  "n": 300,
+  "hits_ci95": [
+   72.6,
+   82.0
+  ]
  }
 ]

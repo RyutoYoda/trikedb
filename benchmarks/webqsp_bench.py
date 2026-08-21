@@ -397,6 +397,24 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
           file=sys.stderr)
 
 
+def _wilson(hits: int, n: int, z: float = 1.96):
+    """95% confidence interval for a proportion, Wilson's method.
+
+    Wilson rather than the textbook normal interval: at these sample sizes the
+    normal one is visibly wrong near the ends of the range, and can even put a
+    bound above 100%. Reported because a single number from 300 questions
+    invites the obvious question, and the answer — the two intervals do not
+    overlap — is the one that matters.
+    """
+    import math
+
+    p = hits / n
+    denominator = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denominator
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    return 100 * (centre - half), 100 * (centre + half)
+
+
 def latency(eval_path: Path, model: str, condition: str, style: str,
             host: str = "http://localhost:11434", n: int = 20,
             workers: int = 1) -> None:
@@ -454,7 +472,7 @@ def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
     belong in the same table.
     """
     gold = {e["id"]: e["answers"] for e in json.load(open(eval_path))}
-    print(f"{'answers':<34}{'Hits@1':>9}{'F1':>9}{'n':>7}")
+    print(f"{'answers':<34}{'Hits@1':>9}{'F1':>9}{'n':>7}   Hits@1 95% CI")
     rows = []
     for path in answer_paths:
         text = path.read_text()
@@ -466,9 +484,12 @@ def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
         hit = sum(hits_at_1(a["answer"], gold[a["id"]]) for a in answers)
         f = sum(f1(a["answer"], gold[a["id"]]) for a in answers)
         n = len(answers)
-        print(f"{path.name:<34}{100 * hit / n:>8.1f}%{100 * f / n:>8.1f}%{n:>7}")
+        lo, hi = _wilson(hit, n)
+        print(f"{path.name:<34}{100 * hit / n:>8.1f}%{100 * f / n:>8.1f}%{n:>7}"
+              f"   [{lo:.1f}, {hi:.1f}]")
         rows.append({"answers": path.name, "hits_at_1": round(100 * hit / n, 1),
-                     "f1": round(100 * f / n, 1), "n": n})
+                     "f1": round(100 * f / n, 1), "n": n,
+                     "hits_ci95": [round(lo, 1), round(hi, 1)]})
     if out_json:
         # The chart reads this, so the picture and the table cannot disagree.
         out_json.write_text(json.dumps(rows, indent=1) + "\n")

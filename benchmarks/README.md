@@ -50,6 +50,25 @@ Two numbers worth putting next to that:
   A retrieval ceiling bounds what the graph can contribute, not what the
   system can score.
 
+**Is 300 questions enough?** Published numbers are computed over all 1,628,
+so the two things to check are the interval and the sample.
+
+| | Hits@1 | Wilson 95% CI |
+|---|---|---|
+| the model alone | 42.7% | 37.2 – 48.3 |
+| the model + a graph | 77.7% | 72.6 – 82.0 |
+
+The intervals do not overlap — 48.3 is below 72.6 — so a 35-point difference
+is not something a 300-question sample could produce by luck. Each individual
+figure carries about ±5 points, which is the reason to read the difference
+rather than the absolute score.
+
+The sample (seed 42) also tracks the full split on everything that would make
+it easier: median gold answers 2 against 2, median subgraph 4,588 triples
+against 4,415, median question length 7 words against 7. It is *harder* on one
+axis — mean gold answers 13.0 against 10.2, a heavier tail of
+many-answer questions — which costs F1, not helps it.
+
 **Reproduce:**
 
 ```bash
@@ -91,7 +110,24 @@ same model, same prompt, **same 250-triple budget** — so the only variable is
 | 1-hop + CVT (what this benchmark used until now) | 212/300 · 70.7% |
 | **hybrid — entity anchor + `search()` ranking** | **268/300 · 89.3%** |
 
-Same amount of context, 18.6 points more of it useful. The retrieval is
+Same amount of context, 18.6 points more of it useful. That figure is a count
+over all 300 questions, not an estimate.
+
+Downstream, the accuracy it buys is a weaker claim than the reachability it
+buys, and the intervals say so:
+
+| retrieval | Hits@1 | Wilson 95% CI | n |
+|---|---|---|---|
+| 1-hop + CVT | 68.6% | 62.5 – 74.1 | 245 |
+| hybrid | 77.7% | 72.6 – 82.0 | 300 |
+
+Those overlap. The 9-point gap is the right direction and consistent with the
+reachability difference, but at this sample size it is **not** separated the
+way the graph-versus-no-graph gap is. Read it as "the better retrieval is
+worth having and the mechanism is measured", not as a significant result.
+Confirming it needs the full 1,628-question split.
+
+The retrieval is
 trikedb's own `search()` and `find()`, and the comparison harness is
 `retrieval_bench.py` — `webqsp_bench.py` imports the methods from it rather
 than keeping a second copy, because the retrieval numbers are what the
