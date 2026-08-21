@@ -1,7 +1,5 @@
 # Architecture
 
-## The whole thing, in one picture
-
 ```mermaid
 flowchart TB
     LA["<b>LAYER 1</b><br/>Interface — writing"]
