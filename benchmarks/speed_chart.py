@@ -27,17 +27,34 @@ INK_MUTED = "#52514e"
 TRIKEDB = "#2a78d6"
 READER = "#c9d9ee"
 
+#: A translated doc deserves a translated figure. Only the words move.
+TEXT = {
+    "en": {"title": "trikedb is 3% of the time an answer takes",
+           "sub": "median seconds for one WebQSP question, 250 triples of context",
+           "trikedb": "load the graph, retrieve the facts",
+           "reader": "read the context, write the answer", "unit": " s"},
+    "jp": {"title": "1問の時間のうち trikedb は3%",
+           "sub": "WebQSP 1問あたりの秒数の中央値・文脈250トリプル",
+           "trikedb": "グラフを読み込み、事実を取得する",
+           "reader": "文脈を読み、答えを書く", "unit": " 秒"},
+    "zh": {"title": "trikedb 只占一题时间的 3%",
+           "sub": "每道 WebQSP 题的秒数中位数 · 250 条三元组的上下文",
+           "trikedb": "载入图谱，检索事实",
+           "reader": "读上下文，写答案", "unit": " 秒"},
+}
 
-def main() -> None:
+
+def main(lang: str = "en") -> None:
+    words = TEXT[lang]
     data = json.loads((HERE / "speed_data.json").read_text())
     total = data["trikedb_secs"] + data["reader_secs"]
 
     figure = go.Figure()
     for name, secs, color, label in (
         ("trikedb", data["trikedb_secs"], TRIKEDB,
-         f"<b>trikedb {data['trikedb_secs']:.2f} s</b><br>load the graph, retrieve the facts"),
+         f"<b>trikedb {data['trikedb_secs']:.2f}{words['unit']}</b><br>{words['trikedb']}"),
         (data["reader"], data["reader_secs"], READER,
-         f"<b>{data['reader']} {data['reader_secs']:.1f} s</b><br>read the context, write the answer"),
+         f"<b>{data['reader']} {data['reader_secs']:.1f}{words['unit']}</b><br>{words['reader']}"),
     ):
         figure.add_trace(go.Bar(
             x=[secs], y=["one question"], orientation="h", name=name,
@@ -60,24 +77,27 @@ def main() -> None:
 
     figure.update_layout(
         title=dict(
-            text=("trikedb is 3% of the time an answer takes<br>"
-                  f"<span style='font-size:14px;color:{INK_MUTED}'>median seconds "
-                  f"for one WebQSP question, 250 triples of context</span>"),
+            text=(f"{words['title']}<br>"
+                  f"<span style='font-size:14px;color:{INK_MUTED}'>"
+                  f"{words['sub']}</span>"),
             font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.9,
         ),
         barmode="stack", bargap=0.7,
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=15),
         xaxis=dict(range=[0, total * 1.02], showgrid=False, zeroline=False,
-                   ticksuffix=" s", tickfont=dict(color=INK_MUTED)),
+                   ticksuffix=words["unit"], tickfont=dict(color=INK_MUTED)),
         yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
         showlegend=False,
         margin=dict(l=16, r=16, t=104, b=112), width=960, height=300,
     )
-    out = HERE / "speed.png"
+    out = HERE / ("speed.png" if lang == "en" else f"speed_{lang}.png")
     figure.write_image(out, scale=2)
     print(f"wrote {out}")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    for language in (sys.argv[1:] or TEXT):
+        main(language)

@@ -37,11 +37,26 @@ WITHOUT_GRAPH = "#a9c8ec"
 #: halves of the comparison four rows apart, and a jump you have to hunt for is
 #: a jump nobody sees.
 ROWS = [
-    ("ans_hybrid_grounded_27b.jsonl", "qwen3.8:27b + graph", True),
-    ("ans_nograph_27b.jsonl", "qwen3.8:27b alone", False),
-    ("ans_hybrid_grounded_8b.jsonl", "qwen3:8b + graph", True),
-    ("ans_nograph_8b.jsonl", "qwen3:8b alone", False),
+    ("ans_hybrid_grounded_27b.jsonl", "qwen3.8:27b", True),
+    ("ans_nograph_27b.jsonl", "qwen3.8:27b", False),
+    ("ans_hybrid_grounded_8b.jsonl", "qwen3:8b", True),
+    ("ans_nograph_8b.jsonl", "qwen3:8b", False),
 ]
+
+#: A translated doc deserves a translated figure — a reader who chose 日本語
+#: should not have to read the one image in English. Only the words move; every
+#: number and every colour is the same file of data.
+TEXT = {
+    "en": {"title": "A knowledge graph beats 3.4x the parameters",
+           "sub": "WebQSP · Hits@1", "with": "{m} + graph", "without": "{m} alone",
+           "delta": "{d:+.0f} points"},
+    "jp": {"title": "グラフはパラメータ3.4倍より効く",
+           "sub": "WebQSP · Hits@1", "with": "{m} + グラフ", "without": "{m} 単体",
+           "delta": "{d:+.0f} ポイント"},
+    "zh": {"title": "知识图谱胜过 3.4 倍的参数",
+           "sub": "WebQSP · Hits@1", "with": "{m} + 图谱", "without": "{m} 单独",
+           "delta": "{d:+.0f} 个百分点"},
+}
 
 #: (lower row, upper row) whose gap gets a delta callout. The number this
 #: benchmark exists to produce is a *difference*, and a difference the reader
@@ -50,9 +65,12 @@ DELTAS = [("ans_nograph_8b.jsonl", "ans_hybrid_grounded_8b.jsonl"),
           ("ans_nograph_27b.jsonl", "ans_hybrid_grounded_27b.jsonl")]
 
 
-def main() -> None:
+def main(lang: str = "en") -> None:
+    words = TEXT[lang]
     scored = {r["answers"]: r for r in json.loads((HERE / "accuracy_data.json").read_text())}
-    rows = [(label, graph, scored[name]) for name, label, graph in ROWS if name in scored]
+    rows = [((words["with"] if graph else words["without"]).format(m=model),
+             graph, scored[name])
+            for name, model, graph in ROWS if name in scored]
     if not rows:
         raise SystemExit("no rows matched accuracy_data.json — check ROWS")
 
@@ -74,15 +92,16 @@ def main() -> None:
             gain = scored[high]["hits_at_1"] - scored[low]["hits_at_1"]
             figure.add_annotation(
                 x=scored[high]["hits_at_1"], y=(index[low] + index[high]) / 2,
-                text=f"<b>{gain:+.0f} points</b>", showarrow=False, xshift=112,
+                text=f"<b>{words['delta'].format(d=gain)}</b>",
+                showarrow=False, xshift=112,
                 font=dict(size=18, color=WITH_GRAPH),
             )
 
     figure.update_layout(
         title=dict(
-            text=("A knowledge graph beats 3.4x the parameters<br>"
-                  f"<span style='font-size:14px;color:{INK_MUTED}'>WebQSP · "
-                  "Hits@1</span>"),
+            text=(f"{words['title']}<br>"
+                  f"<span style='font-size:14px;color:{INK_MUTED}'>"
+                  f"{words['sub']}</span>"),
             font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.93,
         ),
         bargap=0.44,
@@ -94,10 +113,13 @@ def main() -> None:
         showlegend=False,
         margin=dict(l=10, r=210, t=100, b=16), width=960, height=360,
     )
-    out = HERE / "accuracy.png"
+    out = HERE / ("accuracy.png" if lang == "en" else f"accuracy_{lang}.png")
     figure.write_image(out, scale=2)
     print(f"wrote {out}")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    for language in (sys.argv[1:] or TEXT):
+        main(language)

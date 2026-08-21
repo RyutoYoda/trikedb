@@ -31,15 +31,48 @@ RULE = "#c9c7c0"        # reference lines: darker than the grid, still recessive
 #: guidance caps direct labels at four anyway, so only the three that carry the
 #: story are labelled. The legend still names all five.
 SERIES = [
-    ("open_json", "open a .json graph", "#2a78d6", True),
-    ("sparql_2hop", "SPARQL, 2-hop join", "#eb6834", True),
-    ("open_yaml", "open the same graph as .yaml", "#1baf7a", False),
-    ("to_html", "generate the HTML workbench", "#eda100", False),
-    ("search", "semantic search()", "#e87ba4", True),
+    ("open_json", "#2a78d6", True),
+    ("sparql_2hop", "#eb6834", True),
+    ("open_yaml", "#1baf7a", False),
+    ("to_html", "#eda100", False),
+    ("search", "#e87ba4", True),
 ]
 
+#: A translated doc deserves a translated figure. Only the words move; the
+#: data, the colours and which lines get a direct label are identical.
+TEXT = {
+    "en": {
+        "title": "Each operation hits its own ceiling",
+        "sub": "trikedb · one synthetic graph, six sizes · median of three",
+        "x": "triples in the graph", "y": "milliseconds",
+        "open_json": "open a .json graph", "sparql_2hop": "SPARQL, 2-hop join",
+        "open_yaml": "open the same graph as .yaml",
+        "to_html": "generate the HTML workbench", "band_1s": "1s — no longer instant", "band_10s": "10s — nobody waits",
+        "search": "semantic search()",
+    },
+    "jp": {
+        "title": "機能ごとに天井が違う",
+        "sub": "trikedb · 合成グラフ1つを6サイズ · 3回の中央値",
+        "x": "グラフのトリプル数", "y": "ミリ秒",
+        "open_json": ".json のグラフを開く", "sparql_2hop": "SPARQL 2ホップ結合",
+        "open_yaml": "同じグラフを .yaml で開く",
+        "to_html": "HTML ワークベンチを生成", "band_1s": "1秒 — もう即時ではない", "band_10s": "10秒 — 誰も待たない",
+        "search": "意味検索 search()",
+    },
+    "zh": {
+        "title": "每个操作都有自己的天花板",
+        "sub": "trikedb · 一个合成图谱的六种规模 · 三次取中位数",
+        "x": "图谱中的三元组数", "y": "毫秒",
+        "open_json": "打开 .json 图谱", "sparql_2hop": "SPARQL 两跳连接",
+        "open_yaml": "以 .yaml 打开同一个图谱",
+        "to_html": "生成 HTML 工作台", "band_1s": "1 秒 — 不再是瞬时", "band_10s": "10 秒 — 没人会等",
+        "search": "语义检索 search()",
+    },
+}
 
-def main() -> None:
+
+def main(lang: str = "en") -> None:
+    words = TEXT[lang]
     rows = json.loads((HERE / "ceiling_data.json").read_text())
     x = [r["triples"] for r in rows]
 
@@ -48,8 +81,7 @@ def main() -> None:
     # Reference bands first, so the data draws on top of them. One second is
     # where an operation stops feeling immediate; ten is where people stop
     # waiting for it.
-    for y, label in ((1_000, "1s — no longer instant"),
-                     (10_000, "10s — nobody waits")):
+    for y, label in ((1_000, words["band_1s"]), (10_000, words["band_10s"])):
         figure.add_hline(y=y, line=dict(color=RULE, width=2, dash="dot"))
         # Placed by hand rather than with annotation_position, which put the
         # text outside the plot area where it was clipped away.
@@ -59,7 +91,8 @@ def main() -> None:
             font=dict(size=11, color=INK_MUTED), bgcolor=SURFACE, borderpad=2,
         )
 
-    for key, label, color, label_it in SERIES:
+    for key, color, label_it in SERIES:
+        label = words[key]
         ys = [r[key] for r in rows]
         if any(v is None for v in ys):
             continue
@@ -81,23 +114,23 @@ def main() -> None:
 
     figure.update_layout(
         title=dict(
-            text="Each operation hits its own ceiling<br>"
-                 "<span style='font-size:13px;color:%s'>trikedb · one synthetic "
-                 "graph, six sizes · median of three</span>" % INK_MUTED,
+            text=f"{words['title']}<br>"
+                 f"<span style='font-size:13px;color:{INK_MUTED}'>"
+                 f"{words['sub']}</span>",
             font=dict(size=19, color=INK), x=0.008, xanchor="left",
             y=0.97, yanchor="top",
         ),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK_MUTED, size=12),
         xaxis=dict(
-            type="log", title="triples in the graph",
+            type="log", title=words["x"],
             gridcolor=GRID, zeroline=False, linecolor=GRID,
             tickvals=[1_000, 3_000, 10_000, 30_000, 100_000, 300_000],
             ticktext=["1k", "3k", "10k", "30k", "100k", "300k"],
             range=[math.log10(600), math.log10(260_000)],
         ),
         yaxis=dict(
-            type="log", title="milliseconds",
+            type="log", title=words["y"],
             gridcolor=GRID, zeroline=False, linecolor=GRID,
             tickvals=[1, 10, 100, 1_000, 10_000, 100_000],
             ticktext=["1ms", "10ms", "100ms", "1s", "10s", "100s"],
@@ -108,10 +141,13 @@ def main() -> None:
         width=1020, height=600,
     )
 
-    out = HERE / "ceiling.png"
+    out = HERE / ("ceiling.png" if lang == "en" else f"ceiling_{lang}.png")
     figure.write_image(out, scale=2)
     print(f"wrote {out}")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    for language in (sys.argv[1:] or TEXT):
+        main(language)
