@@ -6,92 +6,90 @@
 
 # Benchmarks
 
-**trikedb put the gold answer in front of the model for 89.3% of 300 WebQSP
-questions, taking 0.59 s each.** With a small local reader that becomes 77.7%
-answered correctly end to end — against 42.7% for the same model with no graph.
+Three numbers, measured on [WebQSP](https://aclanthology.org/P16-2033/):
+
+| | |
+|---|---|
+| **Accuracy** | a small local model answers **42.7% → 77.7%** with a trikedb graph as context |
+| **Speed** | trikedb spends **0.59 s** of the 22.5 s that answer takes |
+| **Scale** | fast to **100,000 triples**; semantic search is the first thing to give out, at 30,000 |
+
+## Accuracy
 
 ![Hits@1 by model and condition](accuracy.png)
 
-Tripling the reader's parameters, by contrast, changed nothing without a graph
-(44.0% against 42.7%, paired p = 1.0). Whatever moves accuracy here, it is not
-model size.
-
-Everything below is how those numbers were produced, what they do not say, and
-where the ceiling is.
-
-## KGQA: does the graph reduce hallucination?
-
-**Question:** if an LLM answers factual questions with a trikedb graph as
-context, how much more accurate is it than the same LLM answering alone?
-
-**Setup:** 300 questions sampled (seed 42) from the full 1,628-question
-[WebQSP](https://aclanthology.org/P16-2033/) test split via the
-[RoG-WebQSP](https://huggingface.co/datasets/rmanluo/RoG-webqsp) repack — gold
-answers plus a Freebase subgraph per question, downloaded at runtime, no
-dataset content stored here. Each subgraph is loaded into an in-memory
-TrikeDB (median 5,088 triples) and the per-question context is retrieved with
-trikedb's own `search()` and `find()`: the question entity's neighbourhood
-anchored together with semantically ranked facts, capped at 250 triples.
-Reader model `qwen3:8b` via Ollama, temperature 0. Hits@1 and F1 are computed
-the way the RoG reference implementation computes them.
-
-**Result** (n=300, both conditions answered every question):
-
-| condition | Hits@1 | F1 |
-|---|---|---|
-| the model alone | 42.7% | 27.9% |
-| **the model + a trikedb graph** | **77.7%** | **57.4%** |
-| difference | **+35.0pt** | **+29.6pt** |
-
-Same model, same prompt, same questions. The only thing that changes is
-whether the retrieved triples are in the context.
-
-Two numbers worth putting next to that:
-
-|  | answered correctly | did not | total |
+| condition | Hits@1 | F1 | n |
 |---|---|---|---|
-| retrieval reached the answer | 230 | 38 | 268 |
-| it did not | 3 | 29 | 32 |
-| total | **233** | 67 | 300 |
+| `qwen3:8b` alone | 42.7% | 27.9% | 300 |
+| `qwen3:8b` + graph | **77.7%** | **57.4%** | 300 |
+| `qwen3.8:27b` alone | 44.0% | 30.6% | 150 |
+| `qwen3.8:27b` + graph | 67.3% | 57.1% | 150 |
 
-Read down the table rather than across the headline:
+Same model, same prompt, same questions. The only change is whether the
+retrieved triples are in the context. The graph is worth +35 points on the 8B
+(paired McNemar p = 9e-20) — while **3.4x the parameters is worth nothing
+without one** (44.0% against 42.7%, p = 1.0).
 
-- **Where the remaining gap is.** 38 questions had the answer sitting in the
-  context and the model did not produce it. That is the reader, not the graph
-  — and it is 12.7 points, so a perfect reader on the same retrieval would
-  score 89.3%.
-- **Retrieval reach is a different quantity from accuracy.** 89.3% of
-  questions had the answer in context; 77.7% got a correct answer out. Given
-  the reach, the model converted **85.8%** of it (230 of 268). Dividing the
-  two rates instead (77.7 / 89.3 = 87%) is not that number and does not mean
-  anything — the conditional rate has to be counted.
-- **The model contributes almost nothing on its own here.** Only 3 of the 32
-  unreached questions were answered correctly from what the model already
-  knew. With weaker retrieval it was far more: on the 1-hop + CVT run, 24
-  correct answers came from questions retrieval had missed. Better retrieval
-  does not just add correct answers, it takes over ones the model was
-  previously carrying by memory.
+The 27B scores lower *with* a graph, and that is not a capability result: it
+answers "I don't know" on 30 of 150 questions where the 8B does on 4, and 19 of
+those had the answer in the context. Restrict to the 120 questions both
+answered and the difference disappears (88.3% against 84.2%, p = 0.27). Swap
+the reader and the abstention instruction needs retuning.
 
-**Is 300 questions enough?** Published numbers are computed over all 1,628,
-so the two things to check are the interval and the sample.
+**Retrieval reached the answer for 89.3% of questions**, so 77.7% end to end
+means the model converted 85.8% of what it was handed. The remaining gap is the
+reader, not the graph.
 
-| | Hits@1 | Wilson 95% CI |
+## Speed
+
+![Where the time goes in one question](speed.png)
+
+Retrieval is 0.59 s: building the whole 4,640-triple subgraph into a graph
+(effectively instant) and running `search()` + `find()` over it. No server, no
+index to build, no second store. Everything else is the model reading 4,377
+tokens of context — which is also why a 27B reader costs 70.4 s per question
+instead of 22.5 s.
+
+| retrieval | answer in context | prompt |
 |---|---|---|
-| the model alone | 42.7% | 37.2 – 48.3 |
-| the model + a graph | 77.7% | 72.6 – 82.0 |
+| 1-hop + CVT, 250 triples | 70.7% | ~4,377 tokens |
+| **hybrid, 250 triples** | **89.3%** | ~4,377 tokens |
+| semantic only, 250 triples | 88.7% | ~4,377 tokens |
+| hybrid, 100 triples | 81.3% | ~1,823 tokens |
 
-The intervals do not overlap — 48.3 is below 72.6 — so a 35-point difference
-is not something a 300-question sample could produce by luck. Each individual
-figure carries about ±5 points, which is the reason to read the difference
-rather than the absolute score.
+Same budget, better selection: +18.6 points of usable context for free. The
+entity anchor is worth almost nothing next to plain ranking — 0.6 points at 250
+triples, and a slight loss at 100.
 
-The sample (seed 42) also tracks the full split on everything that would make
-it easier: median gold answers 2 against 2, median subgraph 4,588 triples
-against 4,415, median question length 7 words against 7. It is *harder* on one
-axis — mean gold answers 13.0 against 10.2, a heavier tail of
-many-answer questions — which costs F1, not helps it.
+## Scale
 
-**Reproduce:**
+![Each operation hits its own ceiling](ceiling.png)
+
+| triples | open `.json` | open `.yaml` | save `.yaml` | SPARQL 2-hop | `to_html` | `search()` |
+|---|---|---|---|---|---|---|
+| 733 | 1 ms | 9 ms | 8 ms | 1 ms | 14 ms | 19 ms |
+| 7,333 | 5 ms | 122 ms | 101 ms | 9 ms | 163 ms | 155 ms |
+| 20,400 | 13 ms | 456 ms | 305 ms | 26 ms | 491 ms | 4.3 s |
+| 73,333 | 71 ms | 1.6 s | 1.0 s | 94 ms | 1.9 s | 13.5 s |
+| 204,000 | 147 ms | 4.6 s | 3.2 s | 297 ms | 6.0 s | 41.9 s |
+
+The features do not degrade together, so there is no single size limit:
+
+- **to ~1,000** — everything is instant and the whole graph fits in a pull
+  request. This is the size the tool is shaped for.
+- **to ~10,000** — still comfortable everywhere, semantic search included.
+  Reviewing the whole graph stops being realistic; reviewing diffs does not.
+- **to ~100,000** — SPARQL stays fast. Semantic search (13 s), the HTML
+  workbench (17 MB) and saving as YAML stop being pleasant. Naming the file
+  `.json` keeps open and save an order of magnitude cheaper.
+- **past ~500,000** — it works and it is outside the design. GitHub stops
+  rendering the diff.
+
+What does *not* degrade: a one-fact change is one line of diff at any size, and
+the backend never affects query time — a `snowflake://` row, an `s3://` object
+and a local file answer identically, because the graph is answered from memory.
+
+## Reproduce
 
 ```bash
 uv run --extra all --with polars --with model2vec \
@@ -105,416 +103,64 @@ for cond in nograph graph; do
 done
 
 uv run --extra all python benchmarks/webqsp_bench.py score \
-    bench_out/hybrid/eval_set.json bench_out/ans_*.jsonl \
-    --json benchmarks/accuracy_data.json
+    bench_out/hybrid/eval_set.json bench_out/ans_*.jsonl
+uv run --extra all python benchmarks/webqsp_bench.py compare \
+    bench_out/hybrid/eval_set.json bench_out/ans_nograph.jsonl bench_out/ans_graph.jsonl
 ```
 
-The model is local and named on purpose: the score depends on it, so it has to
-be re-runnable by whoever reads the number. An API key behind a paid endpoint
-is neither nameable nor stable.
-
-**Caveats.** Containment matching is generous, equally to both conditions.
-WebQSP gold labels are noisy (below), which caps honest absolute scores. The
-reader is an 8B open model answering zero-shot — see
-[where published numbers sit](#where-published-numbers-sit) before comparing.
-An earlier pilot of this same setup on 30 questions with `claude-haiku-4-5`
-scored 60% → 83% under a plain containment protocol; it is superseded by the
-table above, which uses ten times the questions and a model anyone can run.
-
-## What the retrieval method is worth
-
-Everything above the retrieval layer was held fixed — same 300 questions,
-same model, same prompt, **same 250-triple budget** — so the only variable is
-*which* 250 triples get picked:
-
-| retrieval | answer present in context |
-|---|---|
-| 1-hop + CVT (what this benchmark used until now) | 212/300 · 70.7% |
-| **hybrid — entity anchor + `search()` ranking** | **268/300 · 89.3%** |
-
-Same amount of context, 18.6 points more of it useful. That figure is a count
-over all 300 questions, not an estimate.
-
-The accuracy it buys, tested on the questions both runs answered:
-
-| retrieval | Hits@1 | n |
-|---|---|---|
-| 1-hop + CVT | 68.6% | 245 |
-| hybrid | 77.7% | 300 |
-
-Paired, hybrid is right on 36 questions the other got wrong and wrong on 19 it
-got right — exact McNemar **p = 0.03**. Real, but a long way from the
-graph-versus-no-graph result (125 against 20, p = 9e-20), and worth treating
-as the weaker of the two claims.
-
-A note on how that was tested, because the obvious way is wrong here. These
-runs answer the *same* questions with the *same* model, so the pairing is the
-whole point; comparing their two Wilson intervals (62.5–74.1 against
-72.6–82.0) makes the difference look unresolved purely because the intervals
-touch. `compare` does the paired test instead — only the questions the two
-runs disagree on carry information, and the question is how lopsided that
-split is.
-
-The retrieval is
-trikedb's own `search()` and `find()`, and the comparison harness is
-`retrieval_bench.py` — `webqsp_bench.py` imports the methods from it rather
-than keeping a second copy, because the retrieval numbers are what the
-accuracy numbers are supposed to be explained by.
-
-**A bigger dump is not the lever — better selection is.** Uncapping the
-context (below) made every gold answer reachable and accuracy did not move.
-
-**Almost all of that comes from the ranking, not the entity anchor.** Rebuilt
-at three budgets, hybrid and pure semantic search sit on top of each other:
-
-| retrieval | 100 triples | 150 | 250 |
-|---|---|---|---|
-| hybrid — entity anchor + semantic | 81.3% | 84.7% | **89.3%** |
-| semantic search alone | **81.7%** | 84.7% | 88.7% |
-| 1-hop + CVT (structure only) | — | — | 70.7% |
-
-The anchor is worth 0.6 points at 250, nothing at 150, and is a slight *loss*
-at 100. Half a small budget spent guaranteeing the question's own entity is
-half a budget not spent on ranking, and ranking is what finds the answer.
-
-That correction is worth spelling out, because the first version of this
-section claimed the anchor "earns its keep at a large budget". It was
-comparing hybrid on these 300 questions against a semantic-search figure
-measured on the full 1,628 — two different question sets. Measured on the same
-set, the anchor barely registers. Two numbers are only comparable when
-everything except the thing under test is held fixed, and a sentence like that
-is exactly where that discipline slips.
-
-## Is a smaller context enough?
-
-The 250-triple context is most of the run time, so the obvious question is
-whether a cheaper one would do. Rebuilt with pure semantic ranking at 100
-triples — 81.7% reachability against 89.3%, and under half the prompt:
-
-| condition | Hits@1 | F1 | n |
-|---|---|---|---|
-| no graph | 42.7% | 27.9% | 300 |
-| graph · semantic, 100 triples | 70.3% | 52.6% | 300 |
-| graph · hybrid, 250 triples | **77.7%** | **57.4%** | 300 |
-
-It is not enough — and that is a measured answer, not an assumption. Paired,
-the 250-triple config is right on 34 questions the 100-triple one misses and
-wrong on 12 it gets, exact McNemar **p = 0.002**. The extra context earns its
-latency.
-
-Worth stating because the shape of that curve was guessed wrong before it was
-measured: given that uncapping the context had not helped in the pilot, the
-expectation was diminishing returns somewhere below 250, with the small
-context nearly free. The returns are still climbing at 250. "More context does
-not help" and "less context is fine" are different claims, and only the first
-one was ever tested.
-
-## What the context costs
-
-Worth knowing before running this yourself: the wall-clock is almost entirely
-**prompt prefill**, not generation. The answers are short — a median of two
-lines — so the run time is set by how many context tokens the model has to
-read per question.
-
-| condition | prompt | 300 questions |
-|---|---|---|
-| no graph | ~120 tokens | **7 min** (measured) |
-| graph, 250 triples | ~5,400 tokens | ~60 min (measured) |
-
-That ratio is why the retrieval table above matters twice: a method that needs
-fewer triples for the same reach is also several times faster. Concurrency is
-not the fix — the GPU is already saturated by prefill, and raising
-`OLLAMA_NUM_PARALLEL` to 8 with `--workers 8` bought far less than the token
-count did. `--workers` exists anyway because it is free on the no-graph
-condition and on any machine where prefill is not the wall.
-
-## Is the graph worth the latency?
-
-The graph costs prompt tokens, and prompt tokens are the run time. Measured
-alone on an idle machine, one request at a time — the latency a person asking
-one question actually waits:
-
-| condition | median seconds | prompt | Hits@1 |
-|---|---|---|---|
-| no graph | 0.47 | ~56 tokens | 42.7% |
-| graph · semantic, 100 triples | 9.44 | ~1,823 tokens | 70.3% |
-| graph · hybrid, 250 triples | 22.48 | ~4,377 tokens | 77.7% |
-| the same, on `qwen3.8:27b` | **70.36** | ~4,377 tokens | 67.3% |
-
-The first nine seconds buy 27.6 points. The next thirteen buy 7.4 more, and
-the paired test says those are real (p = 0.002) — so the curve is still
-climbing where it stops, and nothing here has found the point where more
-context stops paying.
-
-These are single-request numbers on purpose. The per-answer latency recorded
-during the batch runs is much higher — a median of 31.7 s for the 100-triple
-config — because eight requests were in flight and each was waiting behind the
-others. That figure is the right one for throughput planning and the wrong one
-for "how long until I see an answer", so the two are kept apart.
-
-## Which part of this is trikedb?
-
-Worth separating, because the two halves of the pipeline are measured
-separately here and they do not have the same limits.
-
-**trikedb's job is to put the answer in front of the model.** On these 300
-questions it did that for **89.3%** of them, and the work took **0.59 s** per
-question — building the whole 4,640-triple subgraph into a graph (effectively
-instant) and running the hybrid retrieval over it. That is 2.6% of the 22.5 s
-a question takes end to end; the other 21.9 s is the model reading the
-context. No server, no index to build, no second store: `search()` and
-`find()` over one document.
-
-**The model's job is to turn that into an answer**, and it is the half that
-falls short. It converted 85.8% of what it was handed and dropped 38 questions
-whose answer was in front of it — 12.7 points of the total.
-
-| | reach / conversion | time per question |
-|---|---|---|
-| trikedb — find the facts | 89.3% of questions | 0.59 s |
-| `qwen3:8b` — use them | 85.8% of those | 21.9 s |
-| end to end | **77.7%** | 22.5 s |
-
-Two things follow, and both are worth saying plainly:
-
-- **The retrieval side is not the bottleneck, and it improved by a lot.**
-  Swapping the retrieval method took reach from 70.7% to 89.3% at an identical
-  context budget, using nothing but trikedb's own primitives. 89.3% sits
-  inside the band that published end-to-end methods report on this benchmark
-  — a ceiling is not a score, but it does mean the facts being supplied are
-  not what is holding the number down.
-- **The end-to-end number tracks the reader.** 77.7% is what an 8B open model
-  answering zero-shot does with this context. Published leaders run GPT-4-class
-  or task-fine-tuned readers, and the 38 dropped questions are exactly where
-  a stronger one would score. Swapping the reader is a one-flag change
-  (`--model`), which is the point of keeping the two halves separable.
-
-## Does a bigger reader help?
-
-The obvious next move is a bigger model, so it was measured: `qwen3.8:27b`,
-3.4x the parameters, same retrieval, same prompt, on the first 150 of the same
-questions.
-
-| condition | Hits@1 | F1 | n |
-|---|---|---|---|
-| `qwen3:8b` — no graph | 42.7% | 27.9% | 300 |
-| `qwen3.8:27b` — no graph | 44.0% | 30.6% | 150 |
-| `qwen3:8b` — graph | **77.7%** | 57.4% | 300 |
-| `qwen3.8:27b` — graph | 67.3% | 57.1% | 150 |
-
-Two results, and the second one is a trap worth walking through.
-
-**Without a graph, 3.4x the parameters changes nothing.** Paired on the same
-150 questions the two models are exactly level — 14 questions each, McNemar
-p = 1.0. Neither has memorised Freebase, and being larger does not help with
-that. Against this, the graph is worth +35 points on the 8B (p = 9e-20) and
-+23 on the 27B (p = 8e-05). **Whatever moves accuracy here, it is not model
-size.**
-
-**With a graph the 8B scores higher — and that is not a capability result.**
-The paired test says the gap is real (8B right on 22 the 27B missed, 27B on 4,
-p = 0.0005), but the mechanism is abstention, not ability:
-
-| | answered "I don't know" | of those, answer was in context | of those, 8B got it right |
-|---|---|---|---|
-| `qwen3:8b` | 4 / 150 | — | — |
-| `qwen3.8:27b` | **30 / 150** | 19 | 13 |
-
-The prompt says *"If you do not know, reply exactly: I don't know"*, and the
-27B follows it far more strictly — declining on 20% of questions, most of
-which had the answer sitting in front of it. Restrict to the 120 questions
-both models actually answered and the difference stops being detectable:
-88.3% against 84.2%, p = 0.27. F1 barely moves either way (57.4 against
-57.1), which fits: abstaining costs Hits@1 outright while F1 only grades the
-answers that were given.
-
-**So this benchmark cannot rank the two models.** What it measured is an
-interaction between one prompt and two models, and the honest reading is:
-
-- the graph helps both, significantly, and by far more than size does;
-- a bigger reader is not a free upgrade — it can follow the same instruction
-  differently, and here that cost 12 points of Hits@1;
-- if you swap the reader, re-tune the abstention instruction and re-measure.
-  `--model` makes that a one-flag change, which is the reason the two halves
-  are kept separable.
-
-It also cost 3.4x the latency for a lower score, which is the practical
-version of the same finding.
-
-## Where published numbers sit
-
-Published WebQSP leaders report Hits@1 in the mid-to-high 80s and F1 around
-70. The one figure quoted here is the one that can be checked and that this
-harness is built against:
-[RoG](https://arxiv.org/abs/2310.01061) (ICLR 2024) reports **F1 70.8** on
-WebQSP with a fine-tuned LLaMA-2-7B reader, and its metric implementation is
-what `score` reproduces.
-
-Other numbers from that leaderboard are deliberately *not* tabulated here.
-They are easy to mis-transcribe — the same method appears with different
-figures across papers depending on the split, the retriever, and whether the
-reader was fine-tuned — and a table of unverified numbers next to your own is
-worse than no table.
-
-What matters when reading any of them against the numbers above:
-
-- **The reader model.** The leaders run a GPT-4-class model or one fine-tuned
-  on the task. This benchmark runs an 8B open model, zero-shot, on a laptop,
-  and names it, so the number is reproducible without an API key.
-- **The protocol.** That part *is* comparable: Hits@1 and F1 computed the way
-  the RoG reference implementation computes them — normalise, drop articles
-  and punctuation, substring match, credit each gold answer once. Departing
-  from it produces a number that looks comparable and is not, which is why
-  `_normalize` and `f1` carry that note in the source.
-
-## Scoring sensitivity (why we report the containment protocol)
-
-*All numbers in this section and the next come from the earlier 30-question
-pilot with `claude-haiku-4-5`, not from the 300-question table above. They are
-kept because what they say about the protocol still holds, and because the
-findings are what led to the retrieval work above.*
-
-Three scoring variants, reported for transparency:
-
-| protocol | LLM alone | LLM + graph | delta |
-|---|---|---|---|
-| containment match (primary) | 60% | **83%** | **+23pt** |
-| containment, retrieval v2 (relevance-sorted context) | — | 77% | — |
-| containment, retrieval v3 (deeper CVT expansion) | — | 80% | — |
-| LLM-judge, gold-anchored, applied to both conditions | 73% | 77% | +4pt |
-
-Findings worth knowing before you tune this benchmark yourself:
-
-- **Relevance-sorting the context hurt.** Sorting triples by question-word
-  overlap pushed the actual answer triples past the context cap in
-  several questions (e.g. GDP-measurement `currency` triples outranked
-  the country's real currency). Plain hop-order retrieval did better.
-- **Gold labels are noisy.** ~10% of sampled questions have questionable
-  gold answers (e.g. "soviet leader during world war ii" → gold
-  *Brezhnev/Khrushchev*; "what did galileo do to become famous" → gold
-  is a profession list). This caps honest absolute scores on raw WebQSP
-  labels — published SOTA sits around ~86% for the same reason.
-- **LLM-judge scoring is unstable.** A judge that accepts granularity
-  variants rescues the no-graph condition's vague answers and compresses
-  the delta; a stricter judge restores it. We therefore report the
-  deterministic containment protocol as primary — it is reproducible
-  from the committed script with no judgment calls.
-
-The robust claim is the **delta**: under any fixed protocol applied to
-both conditions equally, the graph condition wins. Absolute 90%+ scores
-on WebQSP raw labels are not honestly reachable (label noise); a
-1-hop benchmark over a self-contained KB (e.g. MetaQA 1-hop, currently
-gated on HF) is the right target for high absolute numbers.
-
-## Retrieval-depth experiment (does more context help?)
-
-Follow-up experiments on the same 30 pilot questions. This is the section that
-turned into the retrieval work above: it establishes that *more* context is
-not the lever, which is why the fix was a better-chosen 250 triples rather
-than a larger cap.
-
-| retrieval | answer-reachable ceiling | accuracy |
-|---|---|---|
-| 1-hop + CVT, capped 250 (v1) | 20/30 | **83%** |
-| deeper CVT expansion, capped 400 (v3) | 23/30 | 80% |
-| same, **uncapped** (median 912 triples/question) | **30/30** | 80% |
-| + OWL-RL transitivity materialization (19,070 inferred facts) | 23/30 | not rerun |
-
-Two findings worth internalizing:
-
-- **Reachability is not accuracy.** Removing the context cap made every
-  gold answer reachable (30/30), yet accuracy did not improve: with
-  ~900 triples per question the model starts picking plausible-but-wrong
-  entries from the flood (a TV show instead of a film, one obscure song
-  instead of the famous ones). The bottleneck moved from retrieval to
-  attention. The fix is not a bigger dump but *iterative* retrieval —
-  letting the agent query the graph over MCP turn by turn.
-- **Inference is orthogonal.** Materializing transitive closure over the
-  location predicates added 19,070 correct facts and made zero
-  additional answers reachable: WebQSP's multi-hop questions chain
-  *different* predicates through mediator nodes, which no OWL axiom
-  shortens. OWL earns its keep on same-predicate chains (role
-  inheritance, containment hierarchies), not on this benchmark.
-
-The remaining misses at any depth are dominated by gold-label noise
-(4/30) and answer-granularity mismatches — consistent with published
-SOTA plateauing in the mid-80s.
-
-## Where is the ceiling?
-
-**Question:** how big can a graph get and still be a graph you keep in git,
-review in a pull request, and query without waiting?
-
-The size a document *fits* in turns out to be the least interesting answer.
-Extrapolating from the measurements below at roughly 58 bytes and 3 KB of RAM
-per triple:
-
-| Limit | Triples | Binding? |
-|---|---|---|
-| 8 GB of RAM | ~2,500,000 | no — you hit everything else first |
-| GitHub's 100 MB file block | ~1,700,000 | no |
-| GitHub's 50 MB file warning | **~870,000** | the hard stop, and nothing reaches it |
-
-Nothing curated gets near 870,000. The graphs this is actually used for —
-an ops map, a domain ontology, a chatbot's knowledge base — run two to three
-orders of magnitude below that. So "how many triples fit" is not the question
-worth answering.
-
-**What you actually hit is one feature at a time getting slow, and they do not
-degrade together.**
-
-![Each operation hits its own ceiling](ceiling.png)
-
-Semantic search leaves the pack at 10k triples and is unusable by 30k, while
-SPARQL over the same graph is still answering in a quarter of a second at
-200k. Reading and writing sit in between, and *which format you chose* moves
-them by an order of magnitude.
-
-| triples | YAML | open `.json` | open `.yaml` | save `.yaml` | SPARQL 2-hop | `to_html` | HTML | `search()` |
-|---|---|---|---|---|---|---|---|---|
-| 733 | 0.0 MB | 1 ms | 9 ms | 8 ms | 1 ms | 14 ms | 0.2 MB | 19 ms |
-| 2,040 | 0.1 MB | 1 ms | 35 ms | 26 ms | 2 ms | 39 ms | 0.5 MB | 42 ms |
-| 7,333 | 0.4 MB | 5 ms | 122 ms | 101 ms | 9 ms | 163 ms | 1.7 MB | 155 ms |
-| 20,400 | 1.1 MB | 13 ms | 456 ms | 305 ms | 26 ms | 491 ms | 4.8 MB | 4.3 s |
-| 73,333 | 3.9 MB | 71 ms | 1.6 s | 1.0 s | 94 ms | 1.9 s | 16.9 MB | 13.5 s |
-| 204,000 | 11.2 MB | 147 ms | 4.6 s | 3.2 s | 297 ms | 6.0 s | 48.9 MB | 41.9 s |
-
-`ceiling_bench.py` produced this; `ceiling_chart.py` draws the plot from its
-JSON. Medians of three on an Apple-silicon laptop, one synthetic
-pipeline-shaped graph (vendors → jobs → tables, a third of the edges carrying
-note/prov attributes). Absolute numbers will differ on your hardware; the
-*shape* of each curve is the point.
-
-### How to read it
-
-**Up to ~1,000 triples.** Everything is immediate and you can review the whole
-graph in a pull request. This is the size the tool is shaped for.
-
-**Up to ~10,000.** Still comfortable everywhere, semantic search included
-(155 ms). Reviewing the whole graph stops being realistic around here — 10k
-triples is 10k lines — so review moves to diffs. A one-fact change is one
-line of diff at *every* size, so that keeps working indefinitely.
-
-**Up to ~100,000.** SPARQL and pattern queries stay fast (93 ms for a 2-hop
-join). Three things stop being pleasant: semantic search (13 s), the HTML
-workbench (1.9 s to generate, 17 MB to open in a browser), and saving as YAML
-(1.1 s — which with the default `autosave=True` is the cost of *every*
-`add()`; open with `autosave=False` and batch instead). Naming the file
-`.json` keeps opening and saving an order of magnitude cheaper.
-
-**Past ~500,000.** It works, and it is outside what the design is for. Save
-times are seconds, git is carrying a 20 MB text file, and GitHub stops
-rendering the diff.
-
-### What does *not* degrade
-
-- **The diff for one change.** One line, at 700 triples and at 700,000 —
-  because triples serialise one per line and the save is deterministic.
-- **Queries, by backend.** A `snowflake://` row, an `s3://` object and a
-  local file answer the same query in the same time; the graph is answered
-  from memory, so the backend only decides what opening and saving cost. See
-  `backend_bench.py`.
-- **Building the graph.** `add()` was O(n²) until 0.27.0 — a linear scan for
-  the upsert check made 100k triples take 289 seconds to build, with the cost
-  of a single `add` growing from 60 µs to 2.9 ms. It is indexed now, so
-  importing a large graph is linear. Loading was never affected.
+The reader is local and named on purpose: the score depends on it, so it has to
+be re-runnable without an API key. `score` prints Wilson intervals; `compare`
+runs the paired test, which is the right one here because both runs answer the
+same questions with the same model.
+
+Scale numbers come from `ceiling_bench.py` (medians of three, one synthetic
+pipeline-shaped graph, Apple silicon); backend numbers from `backend_bench.py`;
+the retrieval comparison from `retrieval_bench.py`, which `webqsp_bench.py`
+imports rather than reimplementing.
+
+## What this does not show
+
+- **Not a comparison against other tools.** No vector store, no other triple
+  store, no plain-text RAG was run. "A graph helps" is measured; "trikedb helps
+  more than X" is not.
+- **Not the curation premise.** The graphs here are the dataset's own Freebase
+  subgraphs, so this validates trikedb as a retrieval and storage layer, not
+  the claim that hand-curated graphs are better.
+- **Not the file story.** Each question uses a fresh in-memory graph, so
+  nothing here exercises git review, diffs, or a persisted file.
+- **Absolute scores are below published SOTA** (mid-to-high 80s Hits@1), which
+  uses GPT-4-class or task-fine-tuned readers.
+  [RoG](https://arxiv.org/abs/2310.01061) (ICLR 2024) reports F1 70.8 with a
+  fine-tuned LLaMA-2-7B, and its metric implementation is what `score`
+  reproduces. Other leaderboard figures are deliberately not tabulated here:
+  they are easy to mis-transcribe, and a table of unverified numbers next to
+  your own is worse than no table.
+- **Gold labels are noisy.** Roughly 10% of sampled questions have
+  questionable answers, which caps honest absolute scores on raw WebQSP labels.
+
+## Corrections
+
+Errors found and fixed while producing the numbers above, kept because the same
+mistakes are easy to repeat:
+
+- **Comparing two Wilson intervals on paired data.** The runs answer the same
+  questions with the same model; comparing independent intervals threw the
+  pairing away and called a real 9-point difference unresolved.
+- **Dividing two rates instead of counting a conditional one.** "77.7 / 89.3 =
+  87% converted" is not a conversion rate. Counted properly: 230 of 268, 85.8%.
+- **Comparing across question sets.** "The entity anchor earns its keep at a
+  large budget" compared hybrid on 300 questions against semantic search
+  measured on all 1,628. On the same set the anchor is worth 0.6 points.
+- **Assuming instead of measuring, twice.** A cap on answer length looked
+  obviously right and cost more than it saved (Hits@1 −1.7 at a cap of 5). A
+  smaller context looked nearly free because *more* context had not helped;
+  returns were still climbing at 250 triples.
+- **Retrieval nobody revisited.** The accuracy pipeline used the weakest
+  measured retrieval, and `prepare` had an undefined constant, so the eval set
+  could not have been rebuilt to notice.
+
+Earlier pilot, superseded: 30 questions with `claude-haiku-4-5` scored
+60% → 83%. Two findings from it still hold, and are why the retrieval above was
+rebuilt rather than enlarged — uncapping the context made every gold answer
+reachable and accuracy did not move, and materialising OWL transitivity added
+19,070 correct facts and zero reachable answers.

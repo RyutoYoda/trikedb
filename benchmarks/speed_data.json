@@ -1,0 +1,6 @@
+{
+ "trikedb_secs": 0.59,
+ "reader_secs": 21.89,
+ "reader": "qwen3:8b",
+ "note": "medians on an idle machine, one request at a time. trikedb = building the 4,640-triple subgraph into a graph plus hybrid retrieval, timed over 30 questions. reader = the 22.48 s a graph-grounded question takes end to end, minus trikedb's share."
+}
