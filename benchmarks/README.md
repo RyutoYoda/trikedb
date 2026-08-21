@@ -163,20 +163,28 @@ accuracy numbers are supposed to be explained by.
 **A bigger dump is not the lever — better selection is.** Uncapping the
 context (below) made every gold answer reachable and accuracy did not move.
 
-**The entity anchor only earns its keep at a large budget.** Rebuilt at
-smaller caps, hybrid and pure semantic search are indistinguishable:
+**Almost all of that comes from the ranking, not the entity anchor.** Rebuilt
+at three budgets, hybrid and pure semantic search sit on top of each other:
 
-| retrieval | cap | answer in context |
-|---|---|---|
-| hybrid | 250 | 89.3% |
-| hybrid | 150 | 84.7% |
-| semantic search | 150 | 84.7% |
-| semantic search | 100 | 81.7% |
-| hybrid | 100 | 81.3% |
+![Reach against context budget](retrieval.png)
 
-At 150 triples they tie exactly, and at 100 the anchor is a slight *loss*.
-Half a small budget spent guaranteeing the question's own entity is half a
-budget not spent on ranking, and ranking is what finds the answer.
+| retrieval | 100 triples | 150 | 250 |
+|---|---|---|---|
+| hybrid — entity anchor + semantic | 81.3% | 84.7% | **89.3%** |
+| semantic search alone | **81.7%** | 84.7% | 88.7% |
+| 1-hop + CVT (structure only) | — | — | 70.7% |
+
+The anchor is worth 0.6 points at 250, nothing at 150, and is a slight *loss*
+at 100. Half a small budget spent guaranteeing the question's own entity is
+half a budget not spent on ranking, and ranking is what finds the answer.
+
+That correction is worth spelling out, because the first version of this
+section claimed the anchor "earns its keep at a large budget". It was
+comparing hybrid on these 300 questions against a semantic-search figure
+measured on the full 1,628 — two different question sets. Measured on the same
+set, the anchor barely registers. Two numbers are only comparable when
+everything except the thing under test is held fixed, and a sentence like that
+is exactly where that discipline slips.
 
 ## Is a smaller context enough?
 
