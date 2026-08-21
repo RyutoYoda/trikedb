@@ -2873,3 +2873,32 @@ def test_readmes_link_to_every_translation():
                 target = f"{Path(source).stem}{other_suffix}.md"
                 assert target in header, f"{where} does not link to {target}"
                 assert other_label in header, f"{where} is missing the {other_label} label"
+
+
+def test_semantic_tools_expose_the_model_override_everywhere():
+    """`model` reached the Python API and the CLI but not MCP, which breaks the
+    rule this repo states in two places: anything an agent can do exists in all
+    three interfaces. An agent that cannot pick the embedding model cannot
+    reproduce a result its human colleague got from the CLI.
+
+    The MCP tools are closures inside `build_server`, so this reads the source
+    rather than building a server — which would need the [mcp] extra installed
+    just to check a signature.
+    """
+    import inspect
+    from pathlib import Path
+
+    from trikedb import TrikeDB
+
+    for method in (TrikeDB.search, TrikeDB.find):
+        assert "model" in inspect.signature(method).parameters, method.__name__
+
+    source = (Path(__file__).resolve().parent.parent
+              / "src" / "trikedb" / "mcp_server.py").read_text(encoding="utf-8")
+    for name in ("search", "find"):
+        signature = source.split(f"    def {name}(", 1)[1].split(") -> ", 1)[0]
+        assert "model" in signature, f"MCP tool {name} has no model parameter"
+
+    cli = (Path(__file__).resolve().parent.parent
+           / "src" / "trikedb" / "cli.py").read_text(encoding="utf-8")
+    assert '"--model"' in cli, "the CLI lost its --model flag"

@@ -143,17 +143,22 @@ def build_server(
         return write(lambda: db.sparql(query))
 
     @server.tool()
-    def search(query: str, k: int = 10) -> list:
+    def search(query: str, k: int = 10, model: Optional[str] = None) -> list:
         """Semantic search: rank facts by meaning, not spelling.
 
         Use this for fuzzy questions ("認証まわりの注意点", "what feeds the
         cost dashboard?") where you don't know the exact node names to
         match or SPARQL over. Returns scored triples and nodes. Requires
-        the [semantic] extra on the server side."""
-        return db.search(query, k=k)
+        the [semantic] extra on the server side.
+
+        `model` names a model2vec model to use instead of the default
+        multilingual one — a Transformer encoder cannot be passed here,
+        because the embedding path is deliberately torch-free."""
+        return db.search(query, k=k, model=model)
 
     @server.tool()
-    def find(question: str, where: Optional[dict] = None, k: int = 10) -> list:
+    def find(question: str, where: Optional[dict] = None, k: int = 10,
+             model: Optional[str] = None) -> list:
         """Hybrid retrieval: semantic recall + a hard structured filter.
 
         The one-call version of "search, then narrow": recall candidate
@@ -161,8 +166,9 @@ def build_server(
         `where` (e.g. {"type": "table", "pii": true}). Returns each match
         with its properties and outgoing facts — a ready-to-use payload.
         Prefer this over search when you can name the hard constraints.
-        Requires the [semantic] extra on the server side."""
-        return db.find(question, where=where, k=k)
+        Requires the [semantic] extra on the server side. `model` overrides
+        the embedding model, as on `search`."""
+        return db.find(question, where=where, k=k, model=model)
 
     @server.tool()
     def match(
