@@ -59,6 +59,86 @@ conditions equally, and WebQSP subgraphs are larger than trikedb's
 intended sweet spot (they are loaded in-memory per question, which works
 fine — the YAML file is not the bottleneck here).
 
+## What the retrieval method is worth
+
+Everything above the retrieval layer was held fixed — same 300 questions,
+same model, same prompt, **same 250-triple budget** — so the only variable is
+*which* 250 triples get picked:
+
+| retrieval | answer present in context |
+|---|---|
+| 1-hop + CVT (what this benchmark used until now) | 212/300 · 70.7% |
+| **hybrid — entity anchor + `search()` ranking** | **268/300 · 89.3%** |
+
+Same amount of context, 18.6 points more of it useful. The retrieval is
+trikedb's own `search()` and `find()`, and the comparison harness is
+`retrieval_bench.py` — `webqsp_bench.py` imports the methods from it rather
+than keeping a second copy, because the retrieval numbers are what the
+accuracy numbers are supposed to be explained by.
+
+**A bigger dump is not the lever — better selection is.** Uncapping the
+context (below) made every gold answer reachable and accuracy did not move.
+
+**The entity anchor only earns its keep at a large budget.** Rebuilt at
+smaller caps, hybrid and pure semantic search are indistinguishable:
+
+| retrieval | cap | answer in context |
+|---|---|---|
+| hybrid | 250 | 89.3% |
+| hybrid | 150 | 84.7% |
+| semantic search | 150 | 84.7% |
+| semantic search | 100 | 81.7% |
+| hybrid | 100 | 81.3% |
+
+At 150 triples they tie exactly, and at 100 the anchor is a slight *loss*.
+Half a small budget spent guaranteeing the question's own entity is half a
+budget not spent on ranking, and ranking is what finds the answer.
+
+## What the context costs
+
+Worth knowing before running this yourself: the wall-clock is almost entirely
+**prompt prefill**, not generation. The answers are short — a median of two
+lines — so the run time is set by how many context tokens the model has to
+read per question.
+
+| condition | prompt | 300 questions |
+|---|---|---|
+| no graph | ~120 tokens | **7 min** (measured) |
+| graph, 250 triples | ~5,400 tokens | ~60 min (measured) |
+
+That ratio is why the retrieval table above matters twice: a method that needs
+fewer triples for the same reach is also several times faster. Concurrency is
+not the fix — the GPU is already saturated by prefill, and raising
+`OLLAMA_NUM_PARALLEL` to 8 with `--workers 8` bought far less than the token
+count did. `--workers` exists anyway because it is free on the no-graph
+condition and on any machine where prefill is not the wall.
+
+## Where published numbers sit
+
+Published WebQSP leaders report Hits@1 in the mid-to-high 80s and F1 around
+70. The one figure quoted here is the one that can be checked and that this
+harness is built against:
+[RoG](https://arxiv.org/abs/2310.01061) (ICLR 2024) reports **F1 70.8** on
+WebQSP with a fine-tuned LLaMA-2-7B reader, and its metric implementation is
+what `score` reproduces.
+
+Other numbers from that leaderboard are deliberately *not* tabulated here.
+They are easy to mis-transcribe — the same method appears with different
+figures across papers depending on the split, the retriever, and whether the
+reader was fine-tuned — and a table of unverified numbers next to your own is
+worse than no table.
+
+What matters when reading any of them against the numbers above:
+
+- **The reader model.** The leaders run a GPT-4-class model or one fine-tuned
+  on the task. This benchmark runs an 8B open model, zero-shot, on a laptop,
+  and names it, so the number is reproducible without an API key.
+- **The protocol.** That part *is* comparable: Hits@1 and F1 computed the way
+  the RoG reference implementation computes them — normalise, drop articles
+  and punctuation, substring match, credit each gold answer once. Departing
+  from it produces a number that looks comparable and is not, which is why
+  `_normalize` and `f1` carry that note in the source.
+
 ## Scoring sensitivity (why we report the containment protocol)
 
 We also ran three variants and report them for transparency:

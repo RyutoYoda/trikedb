@@ -281,8 +281,13 @@ def _ask(client, model: str, question: str, triples=None, style: str = "plain") 
     return client(model, body)
 
 
-def _ollama_client(host: str, timeout: int = 120):
+def _ollama_client(host: str, timeout: int = 900):
     """A callable (model, prompt) -> text, against a local Ollama.
+
+    The timeout is generous because it has to cover the first request of a
+    run, which waits for the model to be loaded into VRAM — 28 s for an 8B
+    here. Sizing it for a warm request instead turns a cold start into a
+    cascade of recorded failures.
 
     Local on purpose: the score depends on the model, so the model has to be
     nameable and re-runnable by whoever reads the number. An API key behind a
@@ -319,54 +324,125 @@ def _ollama_client(host: str, timeout: int = 120):
 
 def run(eval_path: Path, model: str, out: Path, condition: str,
         host: str = "http://localhost:11434", limit: int = 0,
-        style: str = "plain") -> None:
-    """Answer every question in eval_set.json and append results as they land.
+        style: str = "plain", workers: int = 8) -> None:
+    """Answer every question in the eval set and append results as they land.
 
     Appended per question, not collected and written at the end: a full test
     split takes hours, and losing all of it to one interruption is a way to
     never finish. Re-running skips what is already answered.
+
+    ``workers`` requests run at once. One at a time left the machine idle
+    between answers — 29 s per question where the model itself needs a
+    fraction of that — because a single request cannot overlap one answer's
+    generation with the next one's prefill. The server has to be started with
+    ``OLLAMA_NUM_PARALLEL`` at least this high or it queues them anyway, which
+    looks like the speedup simply not arriving.
     """
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
     eval_set = json.load(open(eval_path))
     if limit:
         eval_set = eval_set[:limit]
     client = _ollama_client(host)
 
-    done = {}
+    done = set()
     if out.exists():
         for line in out.read_text().splitlines():
             if line.strip():
-                record = json.loads(line)
-                done[record["id"]] = record
+                done.add(json.loads(line)["id"])
         print(f"resuming: {len(done)} already answered", file=sys.stderr)
+    todo = [item for item in eval_set if item["id"] not in done]
     out.parent.mkdir(parents=True, exist_ok=True)
-    log = out.open("a")
 
-    failed = 0
-    for i, item in enumerate(eval_set, 1):
-        if item["id"] in done:
-            continue
+    log = out.open("a")
+    lock = threading.Lock()
+    state = {"finished": 0, "failed": 0}
+
+    def answer(item):
         triples = item["triples"] if condition == "graph" else None
+        started = time.perf_counter()
         try:
-            answer = _ask(client, model, item["question"], triples, style)
+            text = _ask(client, model, item["question"], triples, style)
         except Exception as exc:                        # noqa: BLE001
-            # One question must never end the run. An empty answer scores
-            # zero, which is the honest outcome, and it is recorded so a
-            # rerun does not retry it forever.
-            failed += 1
-            print(f"  {item['id']}: {type(exc).__name__} — recorded as empty",
-                  file=sys.stderr, flush=True)
-            answer = ""
-        log.write(json.dumps({"id": item["id"], "answer": answer},
-                             ensure_ascii=False) + "\n")
-        log.flush()
-        if i % 25 == 0:
-            print(f"  {i}/{len(eval_set)}"
-                  + (f"  ({failed} failed)" if failed else ""),
-                  file=sys.stderr, flush=True)
+            # One question must never end the run, and it must never be
+            # recorded either: a resume would skip it forever and the empty
+            # string would score zero as if the model had answered.
+            with lock:
+                state["failed"] += 1
+                print(f"  {item['id']}: {type(exc).__name__} — will retry on rerun",
+                      file=sys.stderr, flush=True)
+            return
+        with lock:
+            # Latency per answer, so the cost side of the trade is measured
+            # rather than derived from wall clock — which counts whatever else
+            # was competing for the GPU. Under --workers this is the latency of
+            # a request among N in flight, not of a lone request; `latency`
+            # measures a config the way it would actually be run.
+            log.write(json.dumps({"id": item["id"], "answer": text,
+                                  "secs": round(time.perf_counter() - started, 2)},
+                                 ensure_ascii=False) + "\n")
+            log.flush()
+            state["finished"] += 1
+            if state["finished"] % 25 == 0:
+                print(f"  {len(done) + state['finished']}/{len(eval_set)}",
+                      file=sys.stderr, flush=True)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(answer, todo))
     log.close()
     print(f"wrote {out}"
-          + (f" — {failed} question(s) recorded empty after an error" if failed else ""),
+          + (f" — {state['failed']} question(s) left for a rerun" if state["failed"] else ""),
           file=sys.stderr)
+
+
+def latency(eval_path: Path, model: str, condition: str, style: str,
+            host: str = "http://localhost:11434", n: int = 20,
+            workers: int = 1) -> None:
+    """Median seconds per question for one configuration, measured alone.
+
+    Separate from ``run`` because the answers already collected were produced
+    while other things shared the GPU, so their wall clock is not the cost of
+    the configuration — it is the cost of that afternoon. This runs one request
+    at a time by default, on a machine doing nothing else, which is the number
+    that belongs on the x-axis of an accuracy-versus-speed plot.
+
+    The first request is discarded: it waits for the model to be loaded into
+    VRAM (28 s for an 8B here) and would otherwise dominate a 20-question
+    median.
+    """
+    import statistics
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    eval_set = json.load(open(eval_path))[: n + 1]
+    client = _ollama_client(host)
+
+    def once(item):
+        triples = item["triples"] if condition == "graph" else None
+        started = time.perf_counter()
+        _ask(client, model, item["question"], triples, style)
+        return time.perf_counter() - started
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            times = list(pool.map(once, eval_set))
+    else:
+        times = [once(item) for item in eval_set]
+    warm = times[1:]
+    tokens = statistics.median(
+        len(_ask(lambda m, prompt: prompt, model, item["question"],
+                 item["triples"] if condition == "graph" else None, style)) // 4
+        for item in eval_set)
+    print(json.dumps({
+        "eval_set": str(eval_path), "model": model, "condition": condition,
+        "style": style, "workers": workers, "n": len(warm),
+        "median_secs": round(statistics.median(warm), 2),
+        "mean_secs": round(statistics.mean(warm), 2),
+        "cold_first_secs": round(times[0], 2),
+        "approx_prompt_tokens": int(tokens),
+    }, indent=1))
 
 
 def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
@@ -417,9 +493,21 @@ def main() -> None:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--host", default="http://localhost:11434")
     r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--workers", type=int, default=8,
+                   help="concurrent requests; needs OLLAMA_NUM_PARALLEL >= this")
     r.add_argument("--style", choices=("plain", "grounded", "precise"), default="plain",
                    help="grounded constrains the answer to names present in "
                         "the retrieved facts (graph condition only)")
+    latency_parser = sub.add_parser(
+        "latency", help="median seconds per question for one configuration")
+    latency_parser.add_argument("eval_set", type=Path)
+    latency_parser.add_argument("--model", required=True)
+    latency_parser.add_argument("--condition", choices=("graph", "nograph"), required=True)
+    latency_parser.add_argument("--style", choices=("plain", "grounded", "precise"),
+                                default="plain")
+    latency_parser.add_argument("--host", default="http://localhost:11434")
+    latency_parser.add_argument("--n", type=int, default=20)
+    latency_parser.add_argument("--workers", type=int, default=1)
     s = sub.add_parser("score")
     s.add_argument("eval_set", type=Path)
     s.add_argument("answers", type=Path, nargs="+")
@@ -430,7 +518,10 @@ def main() -> None:
         prepare(args.n, args.seed, args.out, args.retrieval, args.cap, args.like)
     elif args.cmd == "run":
         run(args.eval_set, args.model, args.out, args.condition,
-            args.host, args.limit, args.style)
+            args.host, args.limit, args.style, args.workers)
+    elif args.cmd == "latency":
+        latency(args.eval_set, args.model, args.condition, args.style,
+                args.host, args.n, args.workers)
     else:
         score(args.eval_set, *args.answers, out_json=args.out_json)
 
