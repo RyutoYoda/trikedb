@@ -38,11 +38,15 @@ ROWS = [
     ("ans_hybrid_grounded_8b.jsonl", "graph · hybrid retrieval", "250 triples, grounded answers"),
 ]
 
-#: Answer-in-context for the retrieval the top row uses, measured on the same
-#: 300 questions. Drawn because it is the honest reference for a
-#: graph-grounded answer — but it is not a cap on the score, since the model
-#: also answers from what it already knows.
+#: Answer-in-context for the retrieval the top row uses, on the same 300
+#: questions. It shares the axis with the bars because it is also a
+#: percentage-of-questions, but it is a *different quantity* — what retrieval
+#: put in front of the model, not what the model got right — and reading it as
+#: a taller bar is the mistake the line invites. Hence the wording: "reached",
+#: not a percentage score. The gap between it and the top bar is 38 questions
+#: whose answer was in the context and did not come out of the model.
 CEILING = 89.3
+CEILING_LABEL = "retrieval reached the answer for 89.3% of questions"
 
 
 def main() -> None:
@@ -59,7 +63,7 @@ def main() -> None:
     figure.add_vline(x=CEILING, line=dict(color=RULE, width=2, dash="dot"))
     figure.add_annotation(
         x=CEILING, y=1.015, xref="x", yref="paper",
-        text=f"answer present in context · {CEILING}%",
+        text=CEILING_LABEL,
         showarrow=False, font=dict(size=11, color=INK_MUTED),
         xanchor="right", xshift=-6, yshift=1,
     )

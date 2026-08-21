@@ -41,14 +41,29 @@ whether the retrieved triples are in the context.
 
 Two numbers worth putting next to that:
 
-- **The graph converts most of what it finds.** The gold answer was present in
-  the retrieved context for 89.3% of questions, and Hits@1 landed at 77.7% —
-  so 87% of what retrieval found became a correct answer. The remaining gap is
-  the reader, not the graph.
-- **Reachability is not a ceiling.** 24 of the model's correct answers came on
-  questions whose context did *not* contain the answer — it knew them already.
-  A retrieval ceiling bounds what the graph can contribute, not what the
-  system can score.
+|  | answered correctly | did not | total |
+|---|---|---|---|
+| retrieval reached the answer | 230 | 38 | 268 |
+| it did not | 3 | 29 | 32 |
+| total | **233** | 67 | 300 |
+
+Read down the table rather than across the headline:
+
+- **Where the remaining gap is.** 38 questions had the answer sitting in the
+  context and the model did not produce it. That is the reader, not the graph
+  — and it is 12.7 points, so a perfect reader on the same retrieval would
+  score 89.3%.
+- **Retrieval reach is a different quantity from accuracy.** 89.3% of
+  questions had the answer in context; 77.7% got a correct answer out. Given
+  the reach, the model converted **85.8%** of it (230 of 268). Dividing the
+  two rates instead (77.7 / 89.3 = 87%) is not that number and does not mean
+  anything — the conditional rate has to be counted.
+- **The model contributes almost nothing on its own here.** Only 3 of the 32
+  unreached questions were answered correctly from what the model already
+  knew. With weaker retrieval it was far more: on the 1-hop + CVT run, 24
+  correct answers came from questions retrieval had missed. Better retrieval
+  does not just add correct answers, it takes over ones the model was
+  previously carrying by memory.
 
 **Is 300 questions enough?** Published numbers are computed over all 1,628,
 so the two things to check are the interval and the sample.
@@ -157,6 +172,30 @@ At 150 triples they tie exactly, and at 100 the anchor is a slight *loss*.
 Half a small budget spent guaranteeing the question's own entity is half a
 budget not spent on ranking, and ranking is what finds the answer.
 
+## Is a smaller context enough?
+
+The 250-triple context is most of the run time, so the obvious question is
+whether a cheaper one would do. Rebuilt with pure semantic ranking at 100
+triples — 81.7% reachability against 89.3%, and under half the prompt:
+
+| condition | Hits@1 | F1 | n |
+|---|---|---|---|
+| no graph | 42.7% | 27.9% | 300 |
+| graph · semantic, 100 triples | 70.3% | 52.6% | 300 |
+| graph · hybrid, 250 triples | **77.7%** | **57.4%** | 300 |
+
+It is not enough — and that is a measured answer, not an assumption. Paired,
+the 250-triple config is right on 34 questions the 100-triple one misses and
+wrong on 12 it gets, exact McNemar **p = 0.002**. The extra context earns its
+latency.
+
+Worth stating because the shape of that curve was guessed wrong before it was
+measured: given that uncapping the context had not helped in the pilot, the
+expectation was diminishing returns somewhere below 250, with the small
+context nearly free. The returns are still climbing at 250. "More context does
+not help" and "less context is fine" are different claims, and only the first
+one was ever tested.
+
 ## What the context costs
 
 Worth knowing before running this yourself: the wall-clock is almost entirely
@@ -175,6 +214,31 @@ not the fix — the GPU is already saturated by prefill, and raising
 `OLLAMA_NUM_PARALLEL` to 8 with `--workers 8` bought far less than the token
 count did. `--workers` exists anyway because it is free on the no-graph
 condition and on any machine where prefill is not the wall.
+
+## Is the graph worth the latency?
+
+The graph costs prompt tokens, and prompt tokens are the run time. Measured
+alone on an idle machine, one request at a time — the latency a person asking
+one question actually waits:
+
+![Accuracy against seconds per question](frontier.png)
+
+| condition | median seconds | prompt | Hits@1 |
+|---|---|---|---|
+| no graph | 0.47 | ~56 tokens | 42.7% |
+| graph · semantic, 100 triples | 9.44 | ~1,823 tokens | 70.3% |
+| graph · hybrid, 250 triples | 22.48 | ~4,377 tokens | 77.7% |
+
+The first nine seconds buy 27.6 points. The next thirteen buy 7.4 more, and
+the paired test says those are real (p = 0.002) — so the curve is still
+climbing where it stops, and nothing here has found the point where more
+context stops paying.
+
+These are single-request numbers on purpose. The per-answer latency recorded
+during the batch runs is much higher — a median of 31.7 s for the 100-triple
+config — because eight requests were in flight and each was waiting behind the
+others. That figure is the right one for throughput planning and the wrong one
+for "how long until I see an answer", so the two are kept apart.
 
 ## Where published numbers sit
 
