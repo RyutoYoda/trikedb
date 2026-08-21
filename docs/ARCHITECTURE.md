@@ -4,69 +4,76 @@
 
 ```mermaid
 flowchart TB
-    subgraph I1["LAYER 1 · Interface — one per medium, no graph logic"]
-        direction LR
-        WA["agent<br/>MCP"]
-        WC["person<br/>CLI · editor"]
-        WP["program<br/>Python · import · SPARQL UPDATE"]
-    end
+    LA["<b>LAYER 1</b><br/>Interface — writing"]
+    LG[" "]
+    LB["<b>LAYER 2</b><br/>Core — exactly one"]
+    LC["<b>LAYER 3</b><br/>Storage — pick exactly one"]
+    LD["<b>LAYER 4</b><br/>Projection — pick any, none is stored"]
+    LE["<b>LAYER 1</b><br/>Interface — reading"]
+    LA ~~~ LG ~~~ LB ~~~ LC ~~~ LD ~~~ LE
 
+    WA("agent<br/>MCP")
+    WC("person<br/>CLI · editor")
+    WP("program<br/>Python · SPARQL UPDATE")
     G{{"the ontology guard — every write passes here"}}
-
-    C["<b>LAYER 2 · Core — exactly one</b><br/>ONE document: triples · nodes · ontology<br/><i>the data and its meaning, in the same file</i>"]
-
-    subgraph ST["LAYER 3 · Storage — pick one"]
-        direction LR
-        SF["file<br/>graph.yaml · graph.json"]
-        SO["object<br/>s3:// gs:// az://"]
-        SW["table row<br/>snowflake:// bigquery://"]
-    end
-
-    subgraph PJ["LAYER 4 · Projection — pick any, none is stored"]
-        direction LR
-        PO["oxigraph<br/>runs SPARQL"]
-        PR["rdflib.Graph<br/>for owlrl · pyshacl · exports"]
-        PN["networkx<br/>graph algorithms"]
-        PV["SQL views<br/>KG_NODE · KG_EDGE · …"]
-    end
-
-    subgraph I2["LAYER 1 · Interface — the same layer, reading"]
-        direction LR
-        RA["agent<br/>MCP"]
-        RH["person<br/>HTML workbench"]
-        RP["app<br/>REST · Python"]
-        RS["anything with SQL<br/>BI · dbt · notebook"]
-    end
+    C("<b>ONE document</b><br/>triples · nodes · ontology")
+    SF("file<br/>graph.yaml · graph.json")
+    SO("object<br/>s3:// · gs:// · az://")
+    SW("table row<br/>snowflake:// · bigquery://")
+    PO("oxigraph<br/>runs SPARQL")
+    PR("rdflib.Graph<br/>owlrl · pyshacl · exports")
+    PN("networkx<br/>graph algorithms")
+    PV("SQL views<br/>over the warehouse row")
+    RH("person<br/>HTML workbench")
+    RA("agent<br/>MCP")
+    RP("app<br/>REST · Python")
+    RS("SQL<br/>BI · dbt · notebook")
 
     WA --> G
     WC --> G
     WP --> G
     G --> C
-
-    C --> SF
-    C --> SO
-    C --> SW
-    SF --> C
-    SO --> C
-    SW --> C
-
-    C --> PO
-    C --> PR
-    C --> PN
-    SW -.->|"JSON in the row,<br/>so SQL can open it"| PV
-
+    C <--> SF
+    C <--> SO
+    C <--> SW
+    SF ~~~ PO
+    SO ~~~ PR
+    SW ~~~ PN
+    SW -.-> PV
+    C -.-> PO
+    C -.-> PR
+    C -.-> PN
     PO --> RA
     PO --> RP
     PR --> RP
     PN --> RP
-    C --> RH
     PV --> RS
+    PO ~~~ RH
+    C -.-> RH
+
+    classDef lbl fill:none,stroke:none,color:#8b8b8b,text-align:left
+    classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
+    classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10
+    classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
+    classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
+    class LA,LG,LB,LC,LD,LE lbl
+    class WA,WC,WP,RH,RA,RP,RS iface
+    class C,G core
+    class SF,SO,SW store
+    class PO,PR,PN,PV proj
 ```
 
 
-**Four layers, and the interface is one of them appearing twice** — writing
-on the way in, reading on the way out. The core is single; storage and
-projection are sets you choose from.
+
+
+
+Read it top to bottom: each row is one layer, colour-coded, with the layer's
+name on the left. Solid arrows move bytes; dotted arrows are *derived* — built
+on demand from the document and thrown away.
+
+**Four layers, and layer 1 is the bread on both ends** — the same interface
+layer, writing on the way in and reading on the way out. The core between them
+is single. Storage and projection are sets you choose from.
 
 | Layer | How many | Owns | Does *not* own |
 |---|---|---|---|
