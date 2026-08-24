@@ -28,7 +28,7 @@
 
 # trikedb
 
-**The single-file graph database.** You query it like a real triple store — full SPARQL 1.1, reads *and* writes. Underneath, it's one YAML file. Built for LLM agents.
+**The single-file knowledge graph for AI agents.** One graph is one YAML file in your repo — full SPARQL 1.1, reads *and* writes, agents write through an ontology guard, and every change arrives as a diff.
 
 ```yaml
 triples:
