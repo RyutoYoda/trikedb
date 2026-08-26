@@ -4,6 +4,18 @@ import yaml
 from trikedb import OntologyError, TrikeDB
 
 
+@pytest.fixture(autouse=True)
+def embedding_cache_dir(tmp_path_factory, monkeypatch):
+    """Semantic search caches its vectors in a cache directory. A test suite
+    has no business writing to the user's real one — and it redirects
+    TRIKEDB_CACHE_DIR rather than XDG_CACHE_HOME on purpose: moving the
+    latter also moves the HuggingFace model cache, and every test that
+    loads the embedding model would download it again."""
+    d = tmp_path_factory.mktemp("trikedb-cache")
+    monkeypatch.setenv("TRIKEDB_CACHE_DIR", str(d))
+    return d
+
+
 @pytest.fixture
 def db(tmp_path):
     db = TrikeDB(tmp_path / "graph.yaml")
@@ -1196,6 +1208,33 @@ def test_semantic_chunk_index_does_not_eat_a_property(tmp_path):
     assert {p["chunk"] for p in payloads} == set(range(len(payloads)))
 
 
+def test_semantic_hit_previews_a_document_instead_of_shipping_it(tmp_path):
+    """A node hit inlines the node's properties. With long values chunked
+    they now rank, and a 540k-character body came back whole from one
+    search(k=5) — into the context of an agent that asked one question. The
+    hit carries the passage that matched; the full value stays in node()."""
+    import json
+
+    from trikedb import semantic
+    from unittest.mock import MagicMock, patch
+    body = "認証キーペアの話 " * 20_000
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.add("proj", "REL", "thing")
+    db.set_node("doc", type="document", body=body)
+    model = MagicMock()
+    model.encode.side_effect = lambda texts: [[1.0, 0.0]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=model):
+        hits = semantic.search(db, "認証キーペア", k=5)
+        found = db.find("認証キーペア", k=5)
+    hit = next(h for h in hits if h.get("node") == "doc")
+    assert len(hit["body"]) < semantic.MAX_VALUE_CHARS + 100 < len(body)
+    assert "read the whole value with get_node" in hit["body"]
+    assert hit["chunk_text"] and len(hit["chunk_text"]) <= semantic.MAX_CHUNK_CHARS
+    assert len(json.dumps(hits, ensure_ascii=False)) < 20_000     # was 540,557
+    assert len(json.dumps(found, ensure_ascii=False)) < 20_000    # find() too
+    assert db.node("doc")["body"] == body        # the graph itself is untouched
+
+
 def test_semantic_search_gives_one_slot_per_chunked_node(tmp_path):
     """A 700KB property is hundreds of chunks of one node; if each can win a
     slot, the whole result list is that one document and the triples that
@@ -1312,7 +1351,7 @@ def test_search_k_clamps_to_positive(tmp_path):
         assert len(rows) >= 1
 
 
-def test_semantic_search_caches_corpus_embeddings(tmp_path):
+def test_semantic_search_caches_corpus_embeddings(tmp_path, embedding_cache_dir):
     from trikedb import semantic
     from unittest.mock import MagicMock, patch
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
@@ -1323,16 +1362,34 @@ def test_semantic_search_caches_corpus_embeddings(tmp_path):
         semantic.search(db, "first", k=1)
         semantic.search(db, "second", k=1)
     assert model.encode.call_count == 3  # corpus once, then two query vectors
-    assert list(tmp_path.glob("*.npz"))
+    assert list(embedding_cache_dir.glob("*.npz"))
 
 
-def test_semantic_cache_encodes_only_what_changed(tmp_path):
+def test_semantic_cache_never_lands_next_to_the_graph(tmp_path, embedding_cache_dir):
+    """It used to be a sidecar, which `git add -A` staged as a 28MB binary
+    beside a YAML whose whole point is being a reviewable diff."""
+    from trikedb import semantic
+    from unittest.mock import MagicMock, patch
+    graph_dir = tmp_path / "repo"
+    graph_dir.mkdir()
+    db = TrikeDB(graph_dir / "g.yaml", autosave=True)
+    db.add("a", "REL", "b")
+    model = MagicMock()
+    model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=model):
+        semantic.search(db, "q", k=1)
+    assert [f.name for f in graph_dir.iterdir()] == ["g.yaml"]
+    assert len(list(embedding_cache_dir.glob("*.npz"))) == 1
+
+
+def test_semantic_cache_encodes_only_what_changed(tmp_path, embedding_cache_dir):
     """The loop an agent runs is add-a-fact-then-search. Re-encoding the
     whole graph for the one new sentence is what made this 16s at 40k
     sentences, and a per-revision cache file would leave the old corpus
-    behind on disk next to a database that claims to be one file."""
+    behind on disk."""
     from trikedb import semantic
     from unittest.mock import MagicMock, patch
+    cache_dir = embedding_cache_dir
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
     for i in range(50):
         db.add(f"s{i}", "REL", f"o{i}")
@@ -1346,16 +1403,16 @@ def test_semantic_cache_encodes_only_what_changed(tmp_path):
         semantic.search(db, "q", k=1)
     encoded = [batch for (batch,), _ in model.encode.call_args_list]
     assert encoded[0] == ["brand REL new"]        # only the sentence that is new
-    assert len(list(tmp_path.glob("*.npz"))) == 1     # one sidecar, not one per revision
+    assert len(list(cache_dir.glob("*.npz"))) == 1   # one entry, not one per revision
 
-    # retired sentences drop out on the next write, so the sidecar tracks the
+    # retired sentences drop out on the next write, so the cache tracks the
     # graph instead of growing forever (a search alone never rewrites it)
     db.remove(s="brand")
     db.add("later", "REL", "fact")
     with patch("trikedb.semantic._load_model", return_value=model):
         semantic.search(db, "q", k=1)
     import numpy as np
-    with np.load(next(iter(tmp_path.glob("*.npz")))) as data:
+    with np.load(next(iter(cache_dir.glob("*.npz")))) as data:
         assert len(data["keys"]) == 51      # the 50 originals plus "later", not 52
 
 

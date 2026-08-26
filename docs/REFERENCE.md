@@ -199,7 +199,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
 | `sparql(q)` | Full SPARQL 1.1. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
-| `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling. `score`/`kind`/`node` are the payload's own keys; an attribute with one of those names is preserved as `attr_<name>` — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords |
+| `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling. `score`/`kind`/`node`/`chunk`/`chunk_text` are the payload's own keys; an attribute with one of those names is preserved as `attr_<name>` — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords. Vectors are cached per sentence, so a graph that gained one fact re-encodes one sentence (see [Embedding cache](#embedding-cache)) |
 | `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
@@ -736,6 +736,33 @@ implementation buys nothing there.
 What is *not* tunable is the shape: the whole document is read on open and
 rewritten on save. That is the price of a graph you can review in a diff, and
 it is why the practical ceiling is a few MB rather than a few GB.
+
+Two things make a big graph feel slow that are not the graph's fault:
+
+- **`autosave=True` in a loop.** One full rewrite per mutation. 28k triples
+  that way is about an hour; the same load inside `with db.batch():` is
+  seconds.
+- **Encoding for semantic search.** 27.5k sentences take ~10s to embed the
+  first time, ~0.1s after — see below.
+
+### Embedding cache
+
+`search()` and `find()` embed the graph, and the vectors are cached so they
+are computed once. Keyed per *sentence*, so adding one fact re-encodes one
+sentence rather than the corpus (27.5k sentences: 10.4s cold, 0.11s warm,
+0.10s after a write).
+
+The cache is **not** stored beside the graph — a binary blob next to a YAML
+whose point is being a reviewable diff gets committed by the first
+`git add -A`. It lives in `TRIKEDB_CACHE_DIR` if set, else
+`$XDG_CACHE_HOME/trikedb`, else `~/.cache/trikedb`, as one file per (graph,
+model). Deleting it is always safe. Graphs on S3 or in a warehouse are not
+cached at all.
+
+A hit on a node whose property holds a whole document returns a labelled
+preview of that value plus `chunk_text`, the passage that actually matched —
+a 540k-character body used to come back whole. `node()` / `get_node` still
+return the untouched value.
 
 ## Validation & inference
 

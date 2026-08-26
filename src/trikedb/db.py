@@ -887,8 +887,12 @@ class TrikeDB:
 
         Returns candidates in recall-rank order, each as a ready-to-use
         payload: {"node": name, "props": {...}, "facts": [[p, o], ...]}.
+        A property holding a whole document comes back as a preview — this
+        answers a question, and burying the answer under 540k characters of
+        source does not. `node(name)` returns the untouched value.
         Requires the [semantic] extra (for the recall stage).
         """
+        from .semantic import preview
         candidates = []
         for hit in self.search(question, k=k, model=model):   # stage 1: recall
             candidates += (
@@ -909,7 +913,7 @@ class TrikeDB:
                 keep = True
             if keep:
                 facts = [[t.p, t.o] for t in self.triples(s=name)]
-                out.append({"node": name, "props": props, "facts": facts})
+                out.append({"node": name, "props": preview(props), "facts": facts})
         return out
 
     def infer(self, apply: bool = False, base: str = "urn:trikedb:") -> list:

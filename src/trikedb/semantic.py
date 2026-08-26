@@ -40,12 +40,31 @@ def _load_model(name: str):
 #: and one annotated `kind="mine"` was skipped by every caller checking for
 #: `kind == "triple"`. Reserved keys win, and the colliding attribute is kept
 #: under `attr_<name>` so nothing is silently dropped either.
-_RESERVED = ("score", "kind", "node", "chunk")
+_RESERVED = ("score", "kind", "node", "chunk", "chunk_text")
+
+#: A hit inlines the node's properties, and one of those can be a whole
+#: document — 540k characters of it came back from a single `search(k=5)`,
+#: straight into the context of the agent that asked a one-line question.
+#: Longer values arrive as a self-describing preview instead; the passage
+#: that actually matched rides along as `chunk_text`, and `node()` /
+#: `get_node` still hand over the untouched value to anyone who wants it.
+MAX_VALUE_CHARS = 400
+
+
+def preview(fields: dict) -> dict:
+    """`fields` with over-long values cut down to a labelled preview."""
+    out = {}
+    for key, value in fields.items():
+        if isinstance(value, str) and len(value) > MAX_VALUE_CHARS:
+            value = (f"{value[:MAX_VALUE_CHARS]}… (+{len(value) - MAX_VALUE_CHARS} "
+                     f"chars — read the whole value with get_node)")
+        out[key] = value
+    return out
 
 
 def _payload(fields: dict, **reserved) -> dict:
     out = {}
-    for key, value in fields.items():
+    for key, value in preview(fields).items():
         out[f"attr_{key}" if key in _RESERVED else key] = value
     out.update(reserved)
     return out
@@ -70,27 +89,49 @@ def sentences(db) -> list:
                 items.append((text, payload))
             else:
                 # Long document properties must not collapse into one vector.
-                # Keep the node payload so callers can still resolve the hit.
+                # Keep the node payload so callers can still resolve the hit,
+                # and hand back the passage that matched rather than the
+                # document it came from.
                 for start in range(0, len(text), MAX_CHUNK_CHARS):
                     chunk = text[start:start + MAX_CHUNK_CHARS]
-                    items.append((chunk, {**payload, "chunk": start // MAX_CHUNK_CHARS}))
+                    items.append((chunk, {**payload,
+                                          "chunk": start // MAX_CHUNK_CHARS,
+                                          "chunk_text": chunk}))
     return items
 
 
-def _cache_path(db, model: str):
-    """The one sidecar file holding this graph's vectors for this model.
+def _cache_root():
+    """The directory vectors are cached in: `TRIKEDB_CACHE_DIR` if set, else
+    the XDG cache directory, else `~/.cache`. None when none of them is an
+    absolute path — a runtime with no home just re-encodes."""
+    explicit = os.environ.get("TRIKEDB_CACHE_DIR")
+    if explicit:
+        return Path(explicit) if os.path.isabs(explicit) else None
+    root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return Path(root) / "trikedb" if os.path.isabs(root) else None
 
-    One file per (graph, model), never one per revision: a name that
-    included the corpus would leave the previous corpus behind as a dead
-    file every time a fact was added — a graph whose whole promise is that
-    it is a single file would grow a pile of 40MB orphans beside it.
+
+def _cache_path(db, model: str):
+    """Where this graph's vectors live for this model, or None if nowhere.
+
+    In a cache directory, not beside the graph. A sidecar file was tidy
+    right up until `git add -A` staged a 28MB binary next to a YAML whose
+    whole point is being a reviewable diff.
+
+    One entry per (graph, model), never one per revision: a name that
+    included the corpus would leave the old one behind as a dead file every
+    time a fact was added.
     """
     path = getattr(db, "path", None)
     if not path or "://" in str(path):
-        return None  # a graph in a bucket or a warehouse has no local sidecar
+        return None  # a graph in a bucket or a warehouse has no local cache
+    root = _cache_root()
+    if root is None:
+        return None
     p = Path(path)
+    where = hashlib.sha256(str(p.resolve()).encode("utf-8")).hexdigest()[:16]
     model_digest = hashlib.sha256(model.encode("utf-8")).hexdigest()[:12]
-    return p.with_name(f".{p.name}.semantic-{model_digest}.npz")
+    return root / f"{p.stem or 'graph'}-{where}-{model_digest}.npz"
 
 
 def _key(text: str) -> str:
@@ -142,6 +183,7 @@ def _write_cache(cache, keys: list, embs) -> None:
 
     tmp = cache.with_name(f"{cache.name}.{os.getpid()}.tmp")
     try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
         with open(tmp, "wb") as fh:
             np.savez(fh, keys=np.array(keys), embs=embs)
         tmp.replace(cache)

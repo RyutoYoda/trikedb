@@ -652,6 +652,8 @@ db.find("customer data", where=lambda name, props: props.get("pii"))  # … or a
 #   "facts": [["INGESTS_TO", ...], ...]}]
 ```
 
+Embeddings are cached per sentence in your cache directory (`TRIKEDB_CACHE_DIR`, else `~/.cache/trikedb`) — never beside the graph, so nothing binary lands in your diff. 27.5k sentences: 10.4s the first time, 0.11s after, 0.10s after a write, because adding a fact re-encodes that fact and not the corpus. A property holding a whole document comes back as a preview plus the passage that matched; `get_node` still has the full text.
+
 Recall casts a wide net (`search`, cross-lingual, synonym-tolerant); the `where` filter drops the false positives with no fuzz and pulls exact structured facts. Use the recall stage for candidates and the filter for correctness — never gate on the raw similarity score. The same two-stage move is available to LLM agents as the **`find` MCP tool** below, or hand-rolled from `search` + `sparql`/`match` when you want full control.
 
 ## An ontology layer for AI agents (MCP)
