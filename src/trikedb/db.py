@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import shlex
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence, Union
@@ -162,6 +163,8 @@ class TrikeDB:
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
         self._triples: list = []
+        #: open batch() blocks; while any is open, autosave holds its write
+        self._batch_depth = 0
         #: storage token the in-memory graph was built from; see storage.version
         self._version = None
         #: (base, engine) -> a built query graph. sparql() used to rebuild one
@@ -422,18 +425,51 @@ class TrikeDB:
         return self._index
 
     def _autosave(self) -> None:
-        if self.autosave and self.path:
+        if self.autosave and self.path and not self._batch_depth:
             self.save()
 
-    def set_node(self, name: str, **props: Any) -> dict:
+    @contextmanager
+    def batch(self):
+        """Mutate freely, save once on the way out.
+
+        `autosave=True` rewrites the whole file per mutation, which is what
+        you want for a fact or two and quadratic for a bulk load — 28k
+        triples one autosaved add at a time is an hour, and the same load in
+        here is seconds. Nothing is written if the block raises: a half-
+        finished import stays out of the file it would have to be undone from.
+        """
+        self._batch_depth += 1
+        succeeded = False
+        try:
+            yield self
+            succeeded = True
+        finally:
+            self._batch_depth -= 1
+            if succeeded and not self._batch_depth and self.autosave and self.path:
+                self.save()
+
+    def set_node(self, name: str, *, replace: bool = False, **props: Any) -> dict:
         """Attach (or merge) free-form properties onto a node.
 
         Conventional keys the HTML export understands: `type` (color
         grouping + legend), `label` (display name), `level` (column in
         the flow layout). Everything else shows up in the detail panel.
+
+        `type` is the one property not merged blindly. Two different things
+        that share a name — a tool and a topic both called "Codex" — would
+        otherwise take each other's place, and since the type is what the
+        legend groups by, the only trace is a node count that no longer
+        adds up. Pass `replace=True` to change a type on purpose.
         """
         self._guard_writable()
         merged = self.nodes_meta.setdefault(str(name), {})
+        old = merged.get("type")
+        if not replace and "type" in props and old is not None and props["type"] != old:
+            raise ValueError(
+                f"node {name!r} already has type {old!r}; refusing to replace "
+                f"it with {props['type']!r} — pass replace (--replace on the "
+                f"CLI) to change it deliberately"
+            )
         merged.update(props)
         self._autosave()
         return merged

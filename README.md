@@ -154,6 +154,12 @@ db.find("where is the customer CRM data?", where={"type": "table", "pii": True})
 # Writes go through SPARQL too and autosave straight back to the YAML
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 
+# Autosave rewrites the whole file per mutation — right for a handful of facts,
+# quadratic for a bulk load. Wrap those in one save.
+with db.batch():
+    for s, p, o in rows:          # tens of thousands: minutes without this, seconds with
+        db.add(s, p, o)
+
 # Ship one self-contained HTML file your team can actually click through
 db.to_html("pipeline.html")     # searchable graph + node details + in-browser SPARQL console
 db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL view — or graduate to any RDF tool

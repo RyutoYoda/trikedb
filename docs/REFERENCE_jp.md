@@ -178,8 +178,10 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 ```
 
 変更は即ファイルに書き戻される — `add()` したものがそのままディスクにある
-(CLIと同じ感覚)。まとめて書きたいときは `autosave=False` で開いて
-`save()` を自分で呼ぶ。
+(CLIと同じ感覚)。ただし1回の変更ごとにYAML全体を書き直すので、大量投入は
+`with db.batch():` で囲む(最後に1回だけ保存。それ以外はautosaveのまま)か、
+`autosave=False` で開いて `save()` を自分で呼ぶ。数万トリプルを
+autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()` なら秒で終わる。
 
 | メソッド | 説明 |
 |---|---|
@@ -192,7 +194,8 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True がデフォルト
 | `find(question, where=None, k=10)` | ハイブリッド検索(`[semantic]` extra): 意味でのrecall→ハードな構造フィルタ(`where`: 必須ノードプロパティのdict、または `(name, props) -> bool` の関数)。`{node, props, facts}` のペイロードを返す |
 | `update(q)` | SPARQL Updateを明示実行(`sparql`が書き込み形を委譲する先) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |
-| `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可 |
+| `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可。既存の `type` の変更は拒否される(同名の別物が黙って上書きし合うため) — 意図的に変えるなら `replace=True` |
+| `batch()` | コンテキストマネージャ。中では自由に変更し、抜けるときに1回だけ保存。`autosave=True` のままだと1変更ごとに全体を書き直すので、大量投入では二次になる |
 | `import_file(path)` | CSV/TSV(s,p,oヘッダ)・Markdown(s/p/o表)・別のYAMLグラフをマージ |
 | `declare(pred, characteristic)` | RDFS/OWL意味論の宣言: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`、または RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — レビュー可能なトリプルとして保存 |
 | `infer(apply=False)` | OWL-RL推論の実体化（RDFSの分類・階層＋OWLエッジを表面化、rdf/owlの内部ノイズは抑制）。`apply=True` で `inferred: true` 付きで追加 |

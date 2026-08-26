@@ -199,12 +199,15 @@ def build_server(
         return write(lambda: db.remove(s=s, p=p, o=o))
 
     @server.tool()
-    def set_node(name: str, props: dict) -> dict:
+    def set_node(name: str, props: dict, replace: bool = False) -> dict:
         """Attach (merge) free-form properties onto a node.
 
         Conventional keys: type (color grouping), label, url, description.
-        Properties are queryable in SPARQL, e.g. ?x t:type "table"."""
-        return write(lambda: db.set_node(name, **props))
+        Properties are queryable in SPARQL, e.g. ?x t:type "table".
+        Changing the type of a node that already has one is refused unless
+        replace=true: two different things sharing a name would otherwise
+        silently overwrite each other."""
+        return write(lambda: db.set_node(name, replace=replace, **props))
 
     @server.tool()
     def get_node(name: str) -> dict:

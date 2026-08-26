@@ -186,8 +186,11 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True is the default
 ```
 
 Mutations write straight back to the file — what you `add()` is what's
-on disk, same as the CLI. Pass `autosave=False` to batch changes and
-call `save()` yourself.
+on disk, same as the CLI. That is one full YAML rewrite per mutation, so
+a bulk import wants `with db.batch():` (one save at the end, autosave
+still on for everything else) or `autosave=False` and your own `save()`.
+Loading tens of thousands of triples one autosaved `add()` at a time is
+quadratic and takes minutes; inside `batch()` the same load is seconds.
 
 | Method | What it does |
 |---|---|
@@ -200,7 +203,8 @@ call `save()` yourself.
 | `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
-| `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals |
+| `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals. Changing an existing `type` is refused (two things sharing a name would silently overwrite each other) — pass `replace=True` to mean it |
+| `batch()` | Context manager: mutate freely, save once on exit. `autosave=True` otherwise rewrites the whole file per mutation, which is quadratic over a bulk import |
 | `import_file(path)` | Merge from CSV/TSV (s,p,o header), Markdown (s/p/o tables), or another YAML graph |
 | `declare(pred, characteristic)` | RDFS/OWL semantics: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`, or RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — stored as a reviewable triple |
 | `infer(apply=False)` | OWL-RL materialization (RDFS classification + hierarchy and OWL edges; rdf/owl bookkeeping noise suppressed); `apply=True` adds facts tagged `inferred: true` |

@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from .db import TrikeDB
+from .db import OntologyError, TrikeDB
 
 
 def main(argv=None) -> int:
@@ -70,6 +70,10 @@ def main(argv=None) -> int:
     p_node.add_argument(
         "-a", "--attr", action="append", default=[], metavar="key=value",
         help="set node properties; conventional keys: label, type, url, description, level",
+    )
+    p_node.add_argument(
+        "--replace", action="store_true",
+        help="allow changing the node's existing type (refused by default)",
     )
 
     p_onto = sub.add_parser(
@@ -192,7 +196,12 @@ def main(argv=None) -> int:
     )
 
     args = parser.parse_args(argv)
-    return _COMMANDS[args.command](args)
+    try:
+        return _COMMANDS[args.command](args)
+    except (OntologyError, ValueError) as exc:
+        # A rejected predicate or a refused type change is the graph doing
+        # its job; a traceback reads like trikedb broke instead.
+        raise SystemExit(f"error: {exc}")
 
 
 def _print_rows(rows, as_json: bool) -> int:
@@ -305,7 +314,7 @@ def _parse_attrs(pairs) -> dict:
 def _cmd_node(args) -> int:
     db = TrikeDB(args.file)
     if args.attr:
-        db.set_node(args.name, **_parse_attrs(args.attr))
+        db.set_node(args.name, replace=args.replace, **_parse_attrs(args.attr))
         db.save()
     print(json.dumps({
         "name": args.name,

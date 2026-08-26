@@ -239,6 +239,11 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
            smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
   interaction: { hover: true },
 });
+if (!flow) {
+  network.once("stabilizationIterationsDone", function () {
+    network.setOptions({ physics: false });
+  });
+}
 
 // ------------------------------------- header legend (click = filter)
 const hiddenTypes = new Set();

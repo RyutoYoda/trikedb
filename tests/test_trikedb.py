@@ -324,6 +324,18 @@ def test_node_props_roundtrip(tmp_path):
     assert again.node("j") == {}
 
 
+def test_set_node_rejects_type_replacement():
+    db = TrikeDB(autosave=False)
+    db.set_node("Codex", type="tool")
+    with pytest.raises(ValueError, match="already has type"):
+        db.set_node("Codex", type="topic")
+    assert db.node("Codex")["type"] == "tool"
+    db.set_node("Codex", type="tool", owner="me")      # same type still merges
+    assert db.node("Codex") == {"type": "tool", "owner": "me"}
+    db.set_node("Codex", type="topic", replace=True)   # the deliberate change
+    assert db.node("Codex")["type"] == "topic"
+
+
 def test_node_props_queryable_via_sparql():
     db = TrikeDB()
     db.add("v", "PROVIDES", "j")
@@ -438,6 +450,21 @@ def test_cli_node_set_and_show(tmp_path, capsys):
     assert main(["node", g, "svc-etl-01"]) == 0  # show-only does not error
 
 
+def test_cli_refused_type_change_reads_as_an_error_not_a_crash(tmp_path, capsys):
+    """The guard fires on a normal `trikedb node ... -a type=x`, so the CLI has
+    to say what happened; a traceback reads like trikedb broke."""
+    from trikedb.cli import main
+
+    g = str(tmp_path / "g.yaml")
+    assert main(["node", g, "Codex", "-a", "type=tool"]) == 0
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exc:
+        main(["node", g, "Codex", "-a", "type=topic"])
+    assert "error: node 'Codex' already has type 'tool'" in str(exc.value)
+    assert main(["node", g, "Codex", "-a", "type=topic", "--replace"]) == 0
+    assert TrikeDB(g).node("Codex")["type"] == "topic"
+
+
 def test_cli_ontology_set(tmp_path):
     from trikedb.cli import main
 
@@ -467,6 +494,38 @@ def test_remote_memory_roundtrip():
     assert again.node("a") == {"type": "thing"}
     assert again.ontology == {"P": "test predicate"}
     assert isinstance(again.path, str)  # remote URLs stay strings
+
+
+def test_batch_autosave_writes_once(tmp_path):
+    """Counted on a subclass, not by patching save onto the instance: a
+    bound method stored back on the object it came from is a reference
+    cycle, and the graph it keeps alive was enough to skew the timing
+    assertion in test_add_does_not_scan_the_graph further down this file."""
+    class Counting(TrikeDB):
+        saves = 0
+
+        def save(self, *a, **k):
+            type(self).saves += 1
+            return super().save(*a, **k)
+
+    path = tmp_path / "g.yaml"
+    db = Counting(path, autosave=True)
+    with db.batch():
+        for i in range(200):
+            db.add(f"s{i}", "P", f"o{i}")
+    assert Counting.saves == 1
+    assert len(TrikeDB(path)) == 200
+
+
+def test_batch_leaves_nothing_on_disk_when_it_raises(tmp_path):
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path, autosave=True)
+    db.add("keep", "P", "me")
+    with pytest.raises(RuntimeError):
+        with db.batch():
+            db.add("half", "P", "written")
+            raise RuntimeError("boom")
+    assert len(TrikeDB(path)) == 1  # the failed batch never reached the file
 
 
 def test_remote_autosave():
@@ -1114,6 +1173,51 @@ def test_semantic_sentences_shape(tmp_path):
     assert kinds == {"triple", "node"}
 
 
+def test_semantic_sentences_chunk_long_node(tmp_path):
+    from trikedb import semantic
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.set_node("doc", type="document", body="重要な検索語 " * 1000)
+    items = semantic.sentences(db)
+    chunks = [payload for text, payload in items if payload.get("kind") == "node"]
+    assert len(chunks) > 1
+    assert {p["node"] for p in chunks} == {"doc"}
+    assert all(len(text) <= semantic.MAX_CHUNK_CHARS for text, p in items if p.get("kind") == "node")
+
+
+def test_semantic_chunk_index_does_not_eat_a_property(tmp_path):
+    """`chunk` is a payload field now, so a property of that name has to
+    move aside like every other reserved key — otherwise the chunk number
+    silently replaces the value the caller stored."""
+    from trikedb import semantic
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.set_node("doc", type="document", chunk="第3章", body="長い本文 " * 1000)
+    payloads = [p for _, p in semantic.sentences(db) if p.get("kind") == "node"]
+    assert all(p["attr_chunk"] == "第3章" for p in payloads)
+    assert {p["chunk"] for p in payloads} == set(range(len(payloads)))
+
+
+def test_semantic_search_gives_one_slot_per_chunked_node(tmp_path):
+    """A 700KB property is hundreds of chunks of one node; if each can win a
+    slot, the whole result list is that one document and the triples that
+    answer the structural half of the query are pushed out."""
+    from trikedb import semantic
+    from unittest.mock import MagicMock, patch
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    for i in range(5):
+        db.add(f"s{i}", "REL", f"o{i}")
+    db.set_node("doc", type="document", body="本文 " * 5000)
+    db.set_node("other", type="document", body="別の本文 " * 5000)
+    model = MagicMock()
+    # every sentence identical to the query: ranking is then decided purely
+    # by the dedup rule, which is what this test is about
+    model.encode.side_effect = lambda texts: [[1.0, 0.0]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=model):
+        hits = semantic.search(db, "本文", k=8)
+    nodes = [h["node"] for h in hits if h["kind"] == "node"]
+    assert sorted(nodes) == ["doc", "other"]      # one slot each, not hundreds
+    assert len([h for h in hits if h["kind"] == "triple"]) == 5
+
+
 def test_semantic_search_ranks_by_meaning(tmp_path):
     pytest.importorskip("model2vec")
     from trikedb import semantic
@@ -1206,6 +1310,53 @@ def test_search_k_clamps_to_positive(tmp_path):
         assert len(rows) >= 1
         rows = semantic.search(db, "test", k=-5)
         assert len(rows) >= 1
+
+
+def test_semantic_search_caches_corpus_embeddings(tmp_path):
+    from trikedb import semantic
+    from unittest.mock import MagicMock, patch
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.add("a", "REL", "b")
+    model = MagicMock()
+    model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=model):
+        semantic.search(db, "first", k=1)
+        semantic.search(db, "second", k=1)
+    assert model.encode.call_count == 3  # corpus once, then two query vectors
+    assert list(tmp_path.glob("*.npz"))
+
+
+def test_semantic_cache_encodes_only_what_changed(tmp_path):
+    """The loop an agent runs is add-a-fact-then-search. Re-encoding the
+    whole graph for the one new sentence is what made this 16s at 40k
+    sentences, and a per-revision cache file would leave the old corpus
+    behind on disk next to a database that claims to be one file."""
+    from trikedb import semantic
+    from unittest.mock import MagicMock, patch
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    for i in range(50):
+        db.add(f"s{i}", "REL", f"o{i}")
+    model = MagicMock()
+    model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
+    with patch("trikedb.semantic._load_model", return_value=model):
+        semantic.search(db, "q", k=1)
+        assert len(model.encode.call_args_list[0][0][0]) == 50   # cold: all of it
+        db.add("brand", "REL", "new")
+        model.encode.reset_mock()
+        semantic.search(db, "q", k=1)
+    encoded = [batch for (batch,), _ in model.encode.call_args_list]
+    assert encoded[0] == ["brand REL new"]        # only the sentence that is new
+    assert len(list(tmp_path.glob("*.npz"))) == 1     # one sidecar, not one per revision
+
+    # retired sentences drop out on the next write, so the sidecar tracks the
+    # graph instead of growing forever (a search alone never rewrites it)
+    db.remove(s="brand")
+    db.add("later", "REL", "fact")
+    with patch("trikedb.semantic._load_model", return_value=model):
+        semantic.search(db, "q", k=1)
+    import numpy as np
+    with np.load(next(iter(tmp_path.glob("*.npz")))) as data:
+        assert len(data["keys"]) == 51      # the 50 originals plus "later", not 52
 
 
 def test_readme_links_are_absolute_for_pypi():
@@ -2265,16 +2416,29 @@ def test_add_does_not_scan_the_graph(tmp_path):
     was never affected, so it only bit graphs being *built*, which is what an
     agent does. This asserts the shape of the curve rather than a timing,
     which would be flaky on a loaded machine.
+
+    Measured with the collector off, or it measures the wrong thing: the
+    graphs earlier tests leave on the heap decide when a generational pass
+    lands, and one landing inside the 16k build was enough to push a linear
+    curve past this threshold. Adding a test above this one should not fail
+    it.
     """
+    import gc
     import time
 
     def build_ms(n):
-        db = TrikeDB(autosave=False)
-        start = time.perf_counter()
-        for i in range(n):
-            db.add(f"s{i}", "P", f"o{i}")
-        return (time.perf_counter() - start) * 1000
+        gc.collect()
+        gc.disable()
+        try:
+            db = TrikeDB(autosave=False)
+            start = time.perf_counter()
+            for i in range(n):
+                db.add(f"s{i}", "P", f"o{i}")
+            return (time.perf_counter() - start) * 1000
+        finally:
+            gc.enable()
 
+    build_ms(2_000)  # warm the interpreter's caches before the two that count
     small, large = build_ms(2_000), build_ms(16_000)
     per_add_ratio = (large / 16_000) / (small / 2_000)
     # linear would be ~1x; the old scan was ~8x for this 8x size step

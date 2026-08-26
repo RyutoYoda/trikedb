@@ -154,6 +154,12 @@ db.find("where is the customer CRM data?", where={"type": "table", "pii": True})
 # 書き込みも SPARQL を通り、そのまま YAML に自動保存される
 db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
 
+# 自動保存は1変更ごとにファイル全体を書き直す。数件なら正しく、大量投入では二次。
+# まとめて1回の保存にする。
+with db.batch():
+    for s, p, o in rows:          # 数万件: これ無しだと分、有れば秒
+        db.add(s, p, o)
+
 # チームが実際にクリックして回れる、自己完結した HTML を1つ出す
 db.to_html("pipeline.html")     # 検索可能なグラフ + ノード詳細 + ブラウザ内 SPARQL コンソール
 db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL のビュー — あるいは任意の RDF ツールへ卒業
