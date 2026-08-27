@@ -344,7 +344,7 @@ const THEMES = {
   light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7",
            hlBorder: "#5a83b8", edgeHl: "#1b1e26", evFont: "#b3261e", evBg: "#fdeaea" },
 };
-function applyTheme(name) {
+function applyTheme(name, persist = true) {
   const th = THEMES[name];
   document.body.classList.toggle("light", name === "light");
   // vis caches the style of selected elements: deselect, restyle, reselect
@@ -363,14 +363,21 @@ function applyTheme(name) {
   edges.update(TRIPLES.map((t, i) => ({
     id: i, color: { color: PREDICATES[t.p], highlight: th.edgeHl } })));
   network.setSelection(sel);
-  try { localStorage.setItem("trikedb-theme", name); } catch (e) {}
+  if (persist) { try { localStorage.setItem("trikedb-theme", name); } catch (e) {} }
   document.getElementById("btn-theme").textContent = name === "light" ? "dark" : "light";
 }
 document.getElementById("btn-theme").onclick = () =>
   applyTheme(document.body.classList.contains("light") ? "dark" : "light");
-try {
-  if (localStorage.getItem("trikedb-theme") === "light") applyTheme("light");
-} catch (e) {}
+// ?theme=light|dark lets an embedding page pick the theme without touching
+// the visitor's own saved preference.
+const urlTheme = new URLSearchParams(location.search).get("theme");
+if (urlTheme === "light" || urlTheme === "dark") {
+  applyTheme(urlTheme, false);
+} else {
+  try {
+    if (localStorage.getItem("trikedb-theme") === "light") applyTheme("light");
+  } catch (e) {}
+}
 
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
 // full-text search: node ids + labels + node properties + edge attributes
