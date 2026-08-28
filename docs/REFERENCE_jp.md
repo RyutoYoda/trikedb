@@ -189,7 +189,7 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 | `remove(s=, p=, o=)` | パターン一致を全削除。削除数を返す |
 | `triples(s=, p=, o=, **attrs)` | パターンマッチ。`None`=ワイルドカード、`*`/`?` glob、attrsは完全一致フィルタ |
 | `query([patterns])` | `?変数` の複数パターン結合(SPARQL的BGP、依存ゼロ) |
-| `sparql(q)` | SPARQL 1.1フル。読み取りはOxigraph、書き込みはrdflibで実行（速度の節を参照）。SELECT→行、ASK→bool、INSERT/DELETE→増減数。`t:`/`rdf:` pre-bound |
+| `sparql(q)` | SPARQL 1.1フル。読み取りはOxigraph、書き込みはrdflibで実行（速度の節を参照）。SELECT→行、ASK→bool、INSERT/DELETE→増減数。`t:`/`rdf:` pre-bound。ノード名は書いたままIRIになる — `t:調査工程` でそのノードを指せる。IRIに入れられない文字だけをエスケープするので、空白を含む名前は `<urn:trikedb:Baltic%20states>` と書く。ドットを含む項(`location.location.events`)もフルIRIが要る — SPARQLは短縮名の中のドットを数値として読む |
 | `search(q, k=10)` | 意味検索(`[semantic]` extra): 綴りでなく意味で事実をランク付け。`score`/`kind`/`node`/`chunk`/`chunk_text` はペイロード側の予約キーで、同名の属性は `attr_<名前>` として保持される — 「認証まわりの注意点」がキーワード共有ゼロのkeypair/MFA事実を見つける。ベクトルは文単位でキャッシュされるので、1件足したグラフの再エンコードは1文だけ(下の「埋め込みキャッシュ」) |
 | `find(question, where=None, k=10)` | ハイブリッド検索(`[semantic]` extra): 意味でのrecall→ハードな構造フィルタ(`where`: 必須ノードプロパティのdict、または `(name, props) -> bool` の関数)。`{node, props, facts}` のペイロードを返す |
 | `update(q)` | SPARQL Updateを明示実行(`sparql`が書き込み形を委譲する先) |

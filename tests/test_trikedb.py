@@ -357,6 +357,51 @@ def test_node_props_queryable_via_sparql():
     assert rows == [{"x": "v"}]
 
 
+@pytest.mark.parametrize("engine", ["oxigraph", "rdflib"])
+def test_a_japanese_node_can_be_named_in_sparql(engine):
+    """Names went into the RDF view percent-encoded, so a node called 担当A was
+    `urn:trikedb:%E3%83%A8%E3%83%80` and `t:担当A` matched nothing — reported
+    as zero rows, which reads as an empty graph rather than a broken one. An
+    IRI is allowed to carry non-ASCII; only the delimiters have to be escaped.
+    Both engines, because they parse the IRI independently."""
+    pytest.importorskip("pyoxigraph") if engine == "oxigraph" else None
+    db = TrikeDB(sparql_engine=engine)
+    db.add("調査工程", "担当", "担当A")
+    db.set_node("調査工程", type="工程")
+    assert "<urn:trikedb:調査工程>" in db.to_rdflib().serialize(format="nt")
+    assert db.sparql("SELECT ?s WHERE { ?s t:担当 t:担当A }") == [{"s": "調査工程"}]
+    assert db.sparql("SELECT ?o WHERE { t:調査工程 t:担当 ?o }") == [{"o": "担当A"}]
+    assert db.sparql('SELECT ?s WHERE { ?s t:type "工程" }') == [{"s": "調査工程"}]
+
+
+@pytest.mark.parametrize("engine", ["oxigraph", "rdflib"])
+def test_names_an_iri_cannot_carry_are_still_escaped(engine):
+    """A space, a quote, an angle bracket would end the term early in
+    N-Triples; `%` has to be escaped for the round-trip to be reversible.
+    Every one of these has to come back as it went in."""
+    hostile = ["Baltic states", "#topic", "100%", "%41", "a<b>c", 'quote"d',
+               "back\\slash", "a{b}c", "tab\there", "a?b", "café", "🦕"]
+    db = TrikeDB(sparql_engine=engine)
+    for i, name in enumerate(hostile):
+        db.add(name, "P", f"o{i}")
+    assert {r["s"] for r in db.sparql("SELECT ?s WHERE { ?s t:P ?o }")} == set(hostile)
+    # and the serialization a browser or another tool has to read back
+    import rdflib
+    reparsed = rdflib.Graph()
+    reparsed.parse(data=db.to_rdflib().serialize(format="nt"), format="nt")
+    assert len(reparsed) == len(hostile)
+
+
+def test_sparql_update_round_trips_a_japanese_name_into_the_yaml(tmp_path):
+    """The write path goes name -> IRI -> name. A mismatch between the two
+    halves would land a percent-encoded node in the YAML."""
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path, ontology={"担当": "工程 -> 人"})
+    db.sparql("INSERT DATA { <urn:trikedb:調査工程> <urn:trikedb:担当> <urn:trikedb:担当A> }")
+    assert [t.spo() for t in TrikeDB(path)] == [("調査工程", "担当", "担当A")]
+    assert "調査工程" in path.read_text()      # readable in the diff, not escaped
+
+
 def test_update_does_not_absorb_node_props():
     db = TrikeDB()
     db.add("a", "P", "b")

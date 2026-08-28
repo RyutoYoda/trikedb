@@ -636,15 +636,13 @@ class TrikeDB:
               ?st rdf:subject ?s ; rdf:predicate t:AFFECTED_BY ;
                   rdf:object ?o ; t:note ?note }
         """
-        from urllib.parse import quote
-
         from rdflib import RDF, Graph, Literal, URIRef
 
         def node(name: str):
             # absolute URIs (OWL/RDF vocabulary, external resources) pass through
             if name.startswith(("http://", "https://", "urn:")):
                 return URIRef(name)
-            return URIRef(base + quote(name, safe=""))
+            return URIRef(_iri(name, base))
 
         g = Graph()
         g.bind("t", base)
@@ -700,8 +698,6 @@ class TrikeDB:
         ``?x t:pii true`` matches a typed boolean and would silently return
         nothing against a plain string.
         """
-        from urllib.parse import quote
-
         from pyoxigraph import DefaultGraph, Literal, NamedNode, Quad, Store
 
         xsd = "http://www.w3.org/2001/XMLSchema#"
@@ -709,7 +705,7 @@ class TrikeDB:
         def node(name: str):
             if name.startswith(("http://", "https://", "urn:")):
                 return NamedNode(name)
-            return NamedNode(base + quote(name, safe=""))
+            return NamedNode(_iri(name, base))
 
         def literal(value):
             # bool before int: in Python bool *is* an int, and a boolean
@@ -1033,6 +1029,26 @@ class TrikeDB:
     def __repr__(self) -> str:
         where = str(self.path) if self.path else "in-memory"
         return f"<TrikeDB {where}: {len(self)} triples, {len(self.predicates())} predicates>"
+
+
+#: What actually has to be escaped to sit inside an IRI: the delimiters
+#: RFC 3987 excludes, the characters that would end the term early in
+#: N-Triples or start a comment in Turtle, and `%` itself so the escaping
+#: round-trips. Everything else stays as it was written — most importantly
+#: every non-ASCII letter, which an IRI is explicitly allowed to carry.
+#:
+#: Percent-encoding all of it (`quote(name, safe="")`) made a Japanese node
+#: `urn:trikedb:%E6%8B%85%E5%BD%93A`, so `SELECT ?s WHERE { ?s t:OWNED_BY
+#: t:担当A }` matched nothing and reported it as zero rows rather than as an
+#: error — the graph looked empty instead of mis-encoded. Names with spaces
+#: still need `<urn:trikedb:Baltic%20states>`; a space cannot be in an IRI.
+_IRI_ESCAPES = {chr(c): f"%{c:02X}" for c in list(range(0x21)) + [0x7F]}
+_IRI_ESCAPES.update({c: f"%{ord(c):02X}" for c in '"<>{}|\\^`%#?'})
+
+
+def _iri(name: str, base: str) -> str:
+    """`name` as an IRI under `base`, escaped only where it has to be."""
+    return base + "".join(_IRI_ESCAPES.get(c, c) for c in name)
 
 
 def _shorten(value, base: str) -> str:

@@ -198,7 +198,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
-| `sparql(q)` | Full SPARQL 1.1. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound |
+| `sparql(q)` | Full SPARQL 1.1. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound. Node names become IRIs as written — `t:調査工程` names the node `調査工程`. Only what an IRI cannot carry is escaped, so a name with a space needs `<urn:trikedb:Baltic%20states>`. A term with a dot (`location.location.events`) also needs the full IRI — SPARQL reads the dot in a prefixed name as a number |
 | `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling. `score`/`kind`/`node`/`chunk`/`chunk_text` are the payload's own keys; an attribute with one of those names is preserved as `attr_<name>` — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords. Vectors are cached per sentence, so a graph that gained one fact re-encodes one sentence (see [Embedding cache](#embedding-cache)) |
 | `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
