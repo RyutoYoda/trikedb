@@ -382,6 +382,46 @@ def test_html_includes_node_meta_and_flow():
     assert "NODE_TYPES" in html
 
 
+def test_flow_columns_survive_a_rework_loop():
+    """A process graph loops: review sends the work back to be redone. Left
+    to work the columns out itself, vis-network answered 53 of them for a
+    six-step process and drew it 13,920px wide, with step one stranded
+    12,720px from the rest. The columns are computed here instead, over the
+    graph with the looping edges dropped."""
+    import json as _json
+    import re as _re
+
+    from trikedb.html import _levels
+
+    db = TrikeDB(ontology={"NEXT": "step -> step", "OWNED_BY": "step -> person"})
+    steps = ["受付", "調査", "作成", "レビュー", "共有"]
+    for a, b in zip(steps, steps[1:]):
+        db.add(a, "NEXT", b)
+    db.add("受付", "NEXT", "作成")           # shortcut: a repeat job skips ahead
+    db.add("レビュー", "NEXT", "作成")       # rework: NG sends it back
+    for s in steps:
+        db.add(s, "OWNED_BY", "担当A")
+
+    levels = _levels([t.to_dict() for t in db], db.nodes_meta)
+    assert [levels[s] for s in steps] == [1, 2, 3, 4, 5]   # the loop costs nothing
+    assert max(levels.values()) <= len(steps) + 1          # was 53
+
+    html = db.to_html(layout="flow")
+    shipped = _json.loads(_re.search(r"const LEVELS = (\{.*?\});", html).group(1))
+    assert set(shipped) == set(db.nodes())     # vis needs a level on every node
+
+
+def test_flow_columns_yield_to_an_explicit_level():
+    """`level` is the documented way to pin a column by hand; a computed
+    default that overrode it would take the control away."""
+    db = TrikeDB()
+    db.add("a", "P", "b")
+    db.set_node("b", level=9)
+    html = db.to_html(layout="flow")
+    assert '"level": 9' in html
+    assert "levelOf" in html      # explicit wins over the computed column
+
+
 # --------------------------------------------------------------- mcp
 
 def test_mcp_server_tools_and_roundtrip(tmp_path):

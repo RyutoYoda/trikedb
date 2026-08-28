@@ -19,6 +19,80 @@ PALETTE = [
     "#4ff7e3", "#f74f9e", "#8ef74f", "#f74f4f", "#4f6af7",
 ]
 
+
+def _levels(triples: list, nodes_meta: dict) -> dict:
+    """A column number per node for the hierarchical ("flow") layout.
+
+    vis-network works these out itself from edge direction, and gets them
+    catastrophically wrong as soon as the graph has a cycle. A six-step
+    process with one rework edge (review sends work back to build) and one
+    shortcut into the same step came out 13,920px wide — 53 columns for 6
+    steps, with the first step stranded 12,720px from everything else.
+    Loops are not an edge case in a process graph; they are what a process
+    graph is for.
+
+    So the columns are computed here, over the DAG left after dropping the
+    edges that close a loop: every node keeps a column, the back edge draws
+    as an arrow pointing left, and the layout stays as wide as the process
+    is long. Explicit `level` node properties still win — that is the
+    documented way to pin a column by hand.
+    """
+    succ: dict = {}
+    nodes: list = []
+    for t in triples:
+        for name in (t["s"], t["o"]):
+            if name not in succ:
+                succ[name] = []
+                nodes.append(name)
+        if t["s"] != t["o"]:            # a self-loop is its own back edge
+            succ[t["s"]].append(t["o"])
+    for name in nodes_meta:
+        if name not in succ:
+            succ[name] = []
+            nodes.append(name)
+
+    # Iterative DFS colouring: grey means "on the current path", so an edge
+    # into a grey node is the one closing the loop. Recursion would blow the
+    # stack on a long chain, and a graph this file can hold gets long.
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = dict.fromkeys(nodes, WHITE)
+    back: set = set()
+    for root in nodes:
+        if colour[root] != WHITE:
+            continue
+        stack = [(root, iter(succ[root]))]
+        colour[root] = GREY
+        while stack:
+            node, children = stack[-1]
+            for child in children:
+                if colour[child] == GREY:
+                    back.add((node, child))
+                elif colour[child] == WHITE:
+                    colour[child] = GREY
+                    stack.append((child, iter(succ[child])))
+                    break
+            else:
+                colour[node] = BLACK
+                stack.pop()
+
+    indegree = dict.fromkeys(nodes, 0)
+    for src, dests in succ.items():
+        for dest in dests:
+            if (src, dest) not in back:
+                indegree[dest] += 1
+    level = dict.fromkeys(nodes, 1)
+    queue = [n for n in nodes if not indegree[n]]
+    while queue:
+        node = queue.pop(0)
+        for dest in succ[node]:
+            if (node, dest) in back:
+                continue
+            level[dest] = max(level[dest], level[node] + 1)
+            indegree[dest] -= 1
+            if not indegree[dest]:
+                queue.append(dest)
+    return level
+
 _TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,6 +231,7 @@ const NODE_TYPES = __NODE_TYPES__;
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
 const GRAPHS = __GRAPHS__;   // workspace: {graph name: color}; {} otherwise
+const LEVELS = __LEVELS__;   // computed column per node; a `level` prop overrides
 const BASE = "urn:trikedb:";
 
 // which member graph(s) each node belongs to (workspace unions only)
@@ -186,11 +261,17 @@ const degree = {};
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
-// vis-network requires levels on ALL nodes or NONE — honor explicit level
-// props only when every non-event node has one (events go one past the max)
-const explicitLevels = ids.filter(id => !eventNodes.has(id)).map(id => (NODES_META[id] || {}).level);
-const useLevels = explicitLevels.length > 0 && explicitLevels.every(l => typeof l === "number");
-const maxLevel = useLevels ? Math.max(...explicitLevels) : 0;
+// vis-network requires levels on ALL nodes or NONE, and works them out
+// itself — badly — when given none: one rework edge and a six-step process
+// spread over 53 columns. LEVELS covers every node, and a `level` property
+// still overrides it. Events go one past the max.
+const levelOf = (id) => {
+  const explicit = (NODES_META[id] || {}).level;
+  return typeof explicit === "number" ? explicit : LEVELS[id];
+};
+const nodeLevels = ids.filter(id => !eventNodes.has(id)).map(levelOf);
+const useLevels = nodeLevels.length > 0 && nodeLevels.every(l => typeof l === "number");
+const maxLevel = useLevels ? Math.max(...nodeLevels) : 0;
 const nodes = new vis.DataSet(ids.map(id => {
   if (eventNodes.has(id)) {
     const n = { id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
@@ -203,7 +284,7 @@ const nodes = new vis.DataSet(ids.map(id => {
   const tc = NODE_TYPES[meta.type];
   if (tc) n.color = { border: tc, background: "#1e2129",
                       highlight: { border: "#ffffff", background: "#2c4a6e" } };
-  if (useLevels) n.level = meta.level;
+  if (useLevels) n.level = levelOf(id);
   const g0 = nodeGraphs[id] ? [...nodeGraphs[id]][0] : null;
   if (g0 && anchors[g0]) {   // seed each project into its grid cell
     n.x = anchors[g0].x + jitter(id, 7) * 1.4;
@@ -604,6 +685,7 @@ def to_html(
         .replace("__NT__", json.dumps(nt, ensure_ascii=False))
         .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
         .replace("__GRAPHS__", json.dumps(graph_colors, ensure_ascii=False))
+        .replace("__LEVELS__", json.dumps(_levels(triples, nodes_meta), ensure_ascii=False))
         .replace("__FLOW_DEFAULT__", "true" if flow_default else "false")
         .replace("__CONTENT_HASH__", db.content_hash())
     )
