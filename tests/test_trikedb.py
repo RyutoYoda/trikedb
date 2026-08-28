@@ -360,7 +360,7 @@ def test_node_props_queryable_via_sparql():
 @pytest.mark.parametrize("engine", ["oxigraph", "rdflib"])
 def test_a_japanese_node_can_be_named_in_sparql(engine):
     """Names went into the RDF view percent-encoded, so a node called 担当A was
-    `urn:trikedb:%E3%83%A8%E3%83%80` and `t:担当A` matched nothing — reported
+    `urn:trikedb:%E6%8B%85%E5%BD%93A` and `t:担当A` matched nothing — reported
     as zero rows, which reads as an empty graph rather than a broken one. An
     IRI is allowed to carry non-ASCII; only the delimiters have to be escaped.
     Both engines, because they parse the IRI independently."""

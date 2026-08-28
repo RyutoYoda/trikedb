@@ -6,5 +6,5 @@ updated with full SPARQL 1.1. Built for LLM agents.
 
 from .db import OntologyError, Triple, TrikeDB
 
-__version__ = "0.31.0"
+__version__ = "0.31.1"
 __all__ = ["TrikeDB", "Triple", "OntologyError", "__version__"]
