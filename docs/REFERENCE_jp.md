@@ -227,7 +227,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb ontology FILE [--set P=desc]` | 語彙の表示/拡張 |
 | `trikedb stats FILE` | 述語別トリプル数・ノード数 |
 | `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可: `workspace.yaml` か `graph.yaml` があればそれ、無ければディレクトリ内の唯一のグラフ、それも無ければ唯一のワークスペース（ユニオンは他を含むので競合候補ではない） |
-| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す |
+| `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す。(`trikedb html` も同じ動作のまま残してあるが、名前は `ui` の下に移した) |
 | `trikedb jsonld FILE` | JSON-LDを標準出力へ |
 | `trikedb validate FILE SHAPES.ttl` | SHACL検証。違反でexit 1(CI向き) |
 | `trikedb infer FILE [--apply]` | OWL-RL推論。`--apply` でタグ付き永続化 |
@@ -454,7 +454,7 @@ OAUTH_ISSUER=https://idp.example.com/
 
 ## HTMLワークベンチ
 
-`to_html()` / `trikedb html` が自己完結のページを生成する:
+`to_html()` / `trike ui generate` が自己完結のページを生成する:
 
 - 力学クラスタ or 左→右フロー(`--layout auto` がグラフの形で自動選択)。
   workspaceでは各グラフが格子のセルに島として並び、グラフ別フィルタチップ付き
@@ -755,11 +755,11 @@ boolean に一致しなければならない。`TrikeDB(..., sparql_engine="rdfl
 グラフがどこにあるかがページの出力先を決めることはない:
 
 ```bash
-trikedb html graph.yaml                          # -> graph.html（隣に出る）
-trikedb html s3://bucket/kg/graph.yaml           # -> カレントに graph.html
-trikedb html snowflake://DB.SCHEMA.T/sales/crm   # -> カレントに crm.html
-trikedb html graph.yaml -o docs/index.html       # 明示指定
-trikedb html graph.yaml -o s3://site/kg.html     # バケットに公開
+trike ui generate graph.yaml                          # -> graph.html（隣に出る）
+trike ui generate s3://bucket/kg/graph.yaml           # -> カレントに graph.html
+trike ui generate snowflake://DB.SCHEMA.T/sales/crm   # -> カレントに crm.html
+trike ui generate graph.yaml -o docs/index.html       # 明示指定
+trike ui generate graph.yaml -o s3://site/kg.html     # バケットに公開
 ```
 
 リモートグラフはデフォルトでカレントディレクトリに、グラフ名で出る。
@@ -778,7 +778,7 @@ URLには「隣に置く」相手のファイルが存在しないため。`-o` 
 
 ```mermaid
 flowchart LR
-    E("書き込み<br/>エージェント · CLI · API · import") --> G("trikedb html<br/>ビュー再生成")
+    E("書き込み<br/>エージェント · CLI · API · import") --> G("trike ui generate<br/>ビュー再生成")
     G --> C("trikedb check<br/>パース+鮮度")
     C --> A("trikedb audit<br/>重複 · 名前衝突 · 孤児")
     A -->|クリーン| PR("commit / PR — またはグラフ自身の履歴")

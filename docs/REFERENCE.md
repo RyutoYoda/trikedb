@@ -236,7 +236,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb ontology FILE [--set P=desc]` | Show / extend the predicate vocabulary |
 | `trikedb stats FILE` | Triples per predicate, node count |
 | `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional: `workspace.yaml` or `graph.yaml` if either is there, else the only graph in the directory, else the only workspace among them (a union is not a rival candidate — it contains the others) |
-| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Export the workbench to a file you can publish |
+| `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Write the workbench to a file you can publish. (`trikedb html` still works and does the same, but the name moved under `ui`) |
 | `trikedb jsonld FILE` | JSON-LD to stdout |
 | `trikedb validate FILE SHAPES.ttl` | SHACL; exit 1 on violations (CI-friendly) |
 | `trikedb infer FILE [--apply]` | OWL-RL inference; `--apply` persists tagged facts |
@@ -476,7 +476,7 @@ in [SCALING.md](SCALING.md).)
 
 ## The HTML workbench
 
-`to_html()` / `trikedb html` produce a self-contained page:
+`to_html()` / `trike ui generate` produce a self-contained page:
 
 - force-directed clusters or left-to-right flow (`--layout auto` picks
   by graph shape); workspaces tile each member graph into its own cell
@@ -804,11 +804,11 @@ The workbench is a *rendering* of the graph, not part of it. Where the
 graph lives never decides where the page goes:
 
 ```bash
-trikedb html graph.yaml                      # -> graph.html, next to it
-trikedb html s3://bucket/kg/graph.yaml       # -> graph.html in the working dir
-trikedb html snowflake://DB.SCHEMA.T/sales/crm   # -> crm.html in the working dir
-trikedb html graph.yaml -o docs/index.html   # or say where explicitly
-trikedb html graph.yaml -o s3://site/kg.html # publish it to a bucket
+trike ui generate graph.yaml                      # -> graph.html, next to it
+trike ui generate s3://bucket/kg/graph.yaml       # -> graph.html in the working dir
+trike ui generate snowflake://DB.SCHEMA.T/sales/crm   # -> crm.html in the working dir
+trike ui generate graph.yaml -o docs/index.html   # or say where explicitly
+trike ui generate graph.yaml -o s3://site/kg.html # publish it to a bucket
 ```
 
 A remote graph renders to the working directory by default, named after
@@ -828,7 +828,7 @@ keep a generated view in version control.
 
 ```mermaid
 flowchart LR
-    E("write<br/>agent · CLI · API · import") --> G("trikedb html<br/>regenerate view")
+    E("write<br/>agent · CLI · API · import") --> G("trike ui generate<br/>regenerate view")
     G --> C("trikedb check<br/>parse + freshness")
     C --> A("trikedb audit<br/>dupes · collisions · orphans")
     A -->|clean| PR("commit / PR — or the graph's own history")

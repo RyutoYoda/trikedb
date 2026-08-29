@@ -586,6 +586,29 @@ def test_cli_ui_opens_the_graph_it_finds(tmp_path, monkeypatch, capsys):
     assert "vis.Network" in page.read_text()      # it really is the workbench
 
 
+def test_cli_ui_generate_writes_the_page_instead_of_opening_it(tmp_path, monkeypatch):
+    """Two verbs under one noun: you either look at the UI or hand it to
+    someone. `-o` on the looking form is a mix-up worth naming, since it
+    silently did nothing before."""
+    import webbrowser
+
+    from trikedb.cli import main
+
+    (tmp_path / "graph.yaml").write_text("triples:\n  - {s: a, p: P, o: b}\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(webbrowser, "open", lambda url: pytest.fail("generate must not open a browser"))
+
+    assert main(["ui", "generate", "-o", "out.html"]) == 0
+    assert "vis.Network" in (tmp_path / "out.html").read_text()
+    assert main(["ui", "generate"]) == 0                     # default output path
+    assert (tmp_path / "graph.html").exists()
+    assert main(["ui", "generate", "graph.yaml", "-o", "named.html"]) == 0
+    assert (tmp_path / "named.html").exists()
+
+    with pytest.raises(SystemExit, match="ui generate"):
+        main(["ui", "-o", "nope.html"])
+
+
 def test_cli_ui_opens_the_workspace_rather_than_calling_it_a_tie(tmp_path, monkeypatch):
     """A workspace is not a competing candidate: it is the union *of* the
     other files in the directory. Treating it as one more ambiguity meant a

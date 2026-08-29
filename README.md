@@ -190,7 +190,7 @@ trikedb sparql pipeline.yaml \
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 trikedb stats pipeline.yaml
-trikedb html pipeline.yaml -o pipeline.html
+trike ui generate pipeline.yaml -o pipeline.html
 trikedb jsonld pipeline.yaml
 ```
 
@@ -397,7 +397,7 @@ graphs:
 ```
 
 Every command accepts it (`trikedb sparql workspace.yaml ...`,
-`trikedb html workspace.yaml`, `trikedb serve workspace.yaml`). In the
+`trike ui generate workspace.yaml`, `trikedb serve workspace.yaml`). In the
 HTML view each project tiles into its own cluster with a per-graph
 filter bar; every triple carries a `graph:` attribute naming its source.
 
@@ -687,7 +687,7 @@ The zero-setup loop:
    > Predicates are limited to the ontology declared in the file.
 
 3. Agents propose edits as diffs to the YAML — reviewable in a PR like any other change. The ontology check (`trikedb.add` raises on unknown predicates) keeps generated edits inside the vocabulary you chose.
-4. Humans browse the same graph via `trikedb html`.
+4. Humans browse the same graph with `trike ui`.
 
 One source of truth, two projections: YAML for machines, HTML for people.
 

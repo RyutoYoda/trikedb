@@ -190,7 +190,7 @@ trikedb sparql pipeline.yaml \
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 trikedb stats pipeline.yaml
-trikedb html pipeline.yaml -o pipeline.html
+trike ui generate pipeline.yaml -o pipeline.html
 trikedb jsonld pipeline.yaml
 ```
 
@@ -338,7 +338,7 @@ graphs:
   warehouse: ../infra/ontology/warehouse.yaml
 ```
 
-每个命令都接受它（`trikedb sparql workspace.yaml ...`、`trikedb html workspace.yaml`、`trikedb serve workspace.yaml`）。在 HTML 视图里每个项目平铺为自己的一簇，并带上按图谱的筛选栏；每条三元组都带一个 `graph:` 属性标明来源。
+每个命令都接受它（`trikedb sparql workspace.yaml ...`、`trike ui generate workspace.yaml`、`trikedb serve workspace.yaml`）。在 HTML 视图里每个项目平铺为自己的一簇，并带上按图谱的筛选栏；每条三元组都带一个 `graph:` 属性标明来源。
 
 回报是**自动连接**：因为 RDF 三元组会在共享的名字上合并，财务里的 `(tanaka, OWNS_BUDGET, project-atlas)` 和平台里的 `(project-atlas, USES, ACME_DWH)` 就成了一条可以用 SPARQL 走通的路径 — 不需要外键，不需要就模式谈判。并集是**只读视图**；每个成员图谱仍由它的团队拥有（和授权），写入落到成员文件。成员也可以是数仓里的行，并且会继承连接 — 这正是让并集能在「自己开不出连接的地方」也可用的原因：
 
@@ -550,7 +550,7 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
    > 谓词仅限于文件中声明的本体。
 
 3. 智能体以对 YAML 的 diff 形式提出修改 — 像任何其他改动一样可以在 PR 里审阅。本体检查（`trikedb.add` 遇到未知谓词会抛异常）把生成的修改约束在你选定的词汇之内。
-4. 人类通过 `trikedb html` 浏览同一个图谱。
+4. 人类通过 `trike ui` 浏览同一个图谱。
 
 一个事实来源，两种投影：给机器的 YAML，给人的 HTML。
 

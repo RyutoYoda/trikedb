@@ -190,7 +190,7 @@ trikedb sparql pipeline.yaml \
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 trikedb stats pipeline.yaml
-trikedb html pipeline.yaml -o pipeline.html
+trike ui generate pipeline.yaml -o pipeline.html
 trikedb jsonld pipeline.yaml
 ```
 
@@ -338,7 +338,7 @@ graphs:
   warehouse: ../infra/ontology/warehouse.yaml
 ```
 
-すべてのコマンドが受け取ります（`trikedb sparql workspace.yaml ...`、`trikedb html workspace.yaml`、`trikedb serve workspace.yaml`）。HTML ビューでは各プロジェクトが自分のクラスタとしてタイル表示され、グラフ単位のフィルタバーが付きます。すべてのトリプルは出所を示す `graph:` 属性を持ちます。
+すべてのコマンドが受け取ります（`trikedb sparql workspace.yaml ...`、`trike ui generate workspace.yaml`、`trikedb serve workspace.yaml`）。HTML ビューでは各プロジェクトが自分のクラスタとしてタイル表示され、グラフ単位のフィルタバーが付きます。すべてのトリプルは出所を示す `graph:` 属性を持ちます。
 
 見返りは**自動的な結合**です。RDF のトリプルは共有された名前でマージされるので、財務の `(tanaka, OWNS_BUDGET, project-atlas)` と基盤の `(project-atlas, USES, ACME_DWH)` が、SPARQL で辿れる1本の経路になります — 外部キーもスキーマの折衝もなしに。統合は**読み取り専用のビュー**です。各メンバーグラフはそのチームが所有（と権限管理）し続け、書き込みはメンバーのファイルに行きます。メンバーはウェアハウスの行でもよく、その場合は接続を継承します — これが、自分では接続を開けない場所でも統合を使える理由です:
 
@@ -550,7 +550,7 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
    > 述語はファイル内で宣言されたオントロジーに限られる。
 
 3. エージェントは YAML への diff として編集を提案します — 他の変更と同じように PR でレビューできます。オントロジーチェック（`trikedb.add` は未知の述語で例外を投げる）が、生成された編集をあなたが選んだ語彙の内側に留めます。
-4. 人間は同じグラフを `trikedb html` で眺めます。
+4. 人間は同じグラフを `trike ui` で眺めます。
 
 真実の源は1つ、投影は2つ: 機械には YAML、人間には HTML。
 

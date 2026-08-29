@@ -17,7 +17,8 @@ def main(argv=None) -> int:
         prog=Path(sys.argv[0]).name or "trikedb",
         description="A knowledge graph in a single YAML file.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    # metavar keeps the usage line from becoming a wall of command names
+    sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     p_query = sub.add_parser("query", help="match graph patterns with ?variables")
     p_query.add_argument("file")
@@ -91,7 +92,9 @@ def main(argv=None) -> int:
     p_stats = sub.add_parser("stats", help="summarize the graph")
     p_stats.add_argument("file")
 
-    p_html = sub.add_parser("html", help="export an interactive HTML visualization")
+    # superseded by `ui generate`; kept working so pipelines that already
+    # spell it out do not break, but no longer advertised
+    p_html = sub.add_parser("html")
     p_html.add_argument("file", nargs="?", default=None,
                         help="graph file; omit it to pick up the one in this directory")
     p_html.add_argument("-o", "--out", default=None)
@@ -108,10 +111,15 @@ def main(argv=None) -> int:
     )
 
     p_ui = sub.add_parser(
-        "ui", help="open the graph in a browser (generates the HTML for you)"
+        "ui", help="open the graph in a browser; `ui generate` writes the file instead"
     )
-    p_ui.add_argument("file", nargs="?", default=None,
-                      help="graph file; omit it to pick up the one in this directory")
+    p_ui.add_argument(
+        "target", nargs="*", metavar="[generate] [FILE]",
+        help="`trike ui` opens the graph in this directory; `trike ui FILE` opens "
+             "that one; `trike ui generate [FILE] -o out.html` writes the page "
+             "instead of opening it",
+    )
+    p_ui.add_argument("-o", "--out", default=None, help="output path for `ui generate`")
     p_ui.add_argument("--title", default=None)
     p_ui.add_argument(
         "--events", default=None, metavar="PRED1,PRED2",
@@ -121,6 +129,8 @@ def main(argv=None) -> int:
         "--layout", default="auto", choices=["auto", "flow", "free"],
         help="initial layout: flow (hierarchical), free (force-directed), auto",
     )
+
+    sub._choices_actions = [a for a in sub._choices_actions if a.dest != "html"]
 
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
@@ -423,28 +433,44 @@ def _find_graph() -> str:
 
 
 def _cmd_ui(args) -> int:
-    """Generate the workbench into a temp file and open it.
+    """Open the workbench, or write it out with `ui generate`.
 
-    Named for what you get rather than what it writes: `html` is the one
-    that hands you a file to publish. The temp file is keyed by the graph's
+    Two verbs under one noun, the way `dbt docs serve` and `dbt docs
+    generate` split: the thing is the UI, and you either look at it or hand
+    it to someone. When opening, the temp file is keyed by the graph's
     content hash, so opening the same unchanged graph twice reuses it
     instead of littering the temp directory.
     """
     import tempfile
     import webbrowser
 
-    path = args.file or _find_graph()
+    target = list(args.target)
+    generate = bool(target) and target[0] == "generate"
+    if generate:
+        target = target[1:]
+    if len(target) > 1:
+        raise SystemExit(f"error: expected one graph, got {' '.join(target)}")
+    path = (target[0] if target else None) or _find_graph()
+
     db = TrikeDB(path)
     events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
+    title = args.title or f"trikedb — {path}"
+    if generate:
+        out = args.out or _default_html_out(path)
+        db.to_html(out, title=title, event_predicates=events, layout=args.layout)
+        print(f"wrote {out}")
+        return 0
+    if args.out:
+        raise SystemExit("error: -o writes a file — did you mean `trike ui generate`?")
     out = Path(tempfile.gettempdir()) / f"trikedb-{db.content_hash()}.html"
-    db.to_html(out, title=args.title or f"trikedb — {path}",
-               event_predicates=events, layout=args.layout)
+    db.to_html(out, title=title, event_predicates=events, layout=args.layout)
     webbrowser.open(out.as_uri())
     print(f"opened {path} → {out}", file=sys.stderr)
     return 0
 
 
 def _cmd_html(args) -> int:
+    print("note: `trikedb html` is now `trike ui generate`", file=sys.stderr)
     args.file = args.file or _find_graph()
     db = TrikeDB(args.file)
     out = args.out or _default_html_out(args.file)
