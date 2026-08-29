@@ -295,8 +295,12 @@ const nodes = new vis.DataSet(ids.map(id => {
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: t.s, to: t.o, label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
-  const attrs = Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k));
-  if (attrs.length) e.title = attrs.map(([k, v]) => k + ": " + v).join("\\n");
+  // the predicate leads the tooltip too: on a busy canvas the label a line
+  // belongs to is not always the one nearest the cursor
+  const lines = [t.p];
+  Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k))
+        .forEach(([k, v]) => lines.push(k + ": " + v));
+  e.title = lines.join("\\n");
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
   return e;
 }));
@@ -307,12 +311,24 @@ const FLOW_OPTS = {
 };
 const FREE_OPTS = {
   layout: { hierarchical: { enabled: false } },
-  physics: { enabled: true, solver: "forceAtlas2Based", stabilization: { iterations: 150 } },
+  // The solver's defaults let nodes settle on top of each other, which on a
+  // graph of any size reads as one illegible clump. avoidOverlap keeps them
+  // apart and the longer spring gives labels room; the extra stabilization
+  // steps are what that arrangement needs to actually come to rest.
+  physics: { enabled: true, solver: "forceAtlas2Based",
+             forceAtlas2Based: { gravitationalConstant: -120, centralGravity: 0.008,
+                                 springLength: 190, springConstant: 0.05, avoidOverlap: 1 },
+             stabilization: { iterations: Math.min(1200, Math.max(200, ids.length * 12)) } },
 };
 let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
   ...(flow ? FLOW_OPTS : FREE_OPTS),
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
+           // vis stops drawing a label once it would render under ~5px, so
+           // zooming out to see the whole graph blanks every box at once.
+           // Drawing them small is the lesser evil: the shape of the graph
+           // stays readable while you look for where to zoom back in.
+           scaling: { label: { drawThreshold: 1 } },
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },

@@ -456,6 +456,22 @@ def test_flow_columns_survive_a_rework_loop():
     assert set(shipped) == set(db.nodes())     # vis needs a level on every node
 
 
+def test_force_layout_keeps_nodes_from_landing_on_each_other():
+    """The solver's defaults settle nodes on top of each other, which on a
+    graph of any size reads as one illegible clump — 64 nodes came out as a
+    knot with labels stacked three deep. avoidOverlap is what separates
+    them, and the arrangement needs more stabilization steps to come to
+    rest; the label threshold keeps zooming out from blanking every box."""
+    db = TrikeDB()
+    for i in range(80):
+        db.add(f"s{i}", "P", f"o{i % 20}")
+    html = db.to_html(layout="free")
+    assert "avoidOverlap: 1" in html
+    assert "springLength" in html
+    assert "drawThreshold: 1" in html
+    assert "Math.min(1200, Math.max(200, ids.length * 12))" in html
+
+
 def test_flow_columns_yield_to_an_explicit_level():
     """`level` is the documented way to pin a column by hand; a computed
     default that overrode it would take the control away."""
