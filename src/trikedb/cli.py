@@ -386,22 +386,40 @@ def _default_html_out(graph: str) -> str:
     return (graph.rsplit(".", 1)[0] if "." in graph else graph) + ".html"
 
 
+def _is_workspace(path: Path) -> bool:
+    """Does this file union other graphs? (a top-level `graphs:` key)"""
+    try:
+        head = path.read_text(errors="replace")[:65536]
+    except OSError:
+        return False
+    return any(line.startswith(("graphs:", '"graphs":', "'graphs':"))
+               for line in head.splitlines())
+
+
 def _find_graph() -> str:
     """The graph in this directory, when the command was given no path.
 
     `trike ui` with nothing after it is the whole point of the short form,
     and in a repo that holds one graph there is nothing to disambiguate.
-    Two candidates is not a guess worth making, so it says which it found.
+
+    A workspace is not a competing candidate — it is the union *of* the
+    other files, so a directory of member graphs plus one workspace has an
+    obvious answer. Only a genuine tie stops and says what it found.
     """
     here = Path(".")
-    if (here / "graph.yaml").exists():
-        return "graph.yaml"
-    found = sorted(str(p) for ext in ("*.yaml", "*.yml") for p in here.glob(ext))
+    for conventional in ("workspace.yaml", "graph.yaml"):
+        if (here / conventional).exists():
+            return conventional
+    found = sorted(p for ext in ("*.yaml", "*.yml") for p in here.glob(ext))
     if len(found) == 1:
-        return found[0]
+        return str(found[0])
+    unions = [p for p in found if _is_workspace(p)]
+    if len(unions) == 1:
+        return str(unions[0])
     if not found:
         raise SystemExit("error: no .yaml graph here — pass one: trike ui graph.yaml")
-    raise SystemExit("error: several graphs here, name one: " + ", ".join(found))
+    listed = ", ".join(f"{p} (workspace)" if p in unions else str(p) for p in found)
+    raise SystemExit("error: several graphs here, name one: " + listed)
 
 
 def _cmd_ui(args) -> int:

@@ -226,7 +226,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc]` | 語彙の表示/拡張 |
 | `trikedb stats FILE` | 述語別トリプル数・ノード数 |
-| `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可（そのディレクトリにグラフが1つならそれを使うので、`trike ui` だけで開く） |
+| `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可: `workspace.yaml` か `graph.yaml` があればそれ、無ければディレクトリ内の唯一のグラフ、それも無ければ唯一のワークスペース（ユニオンは他を含むので競合候補ではない） |
 | `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す |
 | `trikedb jsonld FILE` | JSON-LDを標準出力へ |
 | `trikedb validate FILE SHAPES.ttl` | SHACL検証。違反でexit 1(CI向き) |

@@ -586,6 +586,33 @@ def test_cli_ui_opens_the_graph_it_finds(tmp_path, monkeypatch, capsys):
     assert "vis.Network" in page.read_text()      # it really is the workbench
 
 
+def test_cli_ui_opens_the_workspace_rather_than_calling_it_a_tie(tmp_path, monkeypatch):
+    """A workspace is not a competing candidate: it is the union *of* the
+    other files in the directory. Treating it as one more ambiguity meant a
+    perfectly ordinary layout — five member graphs and the workspace that
+    unions them — could not be opened without naming the file."""
+    import webbrowser
+
+    from trikedb.cli import main
+
+    for name in ("org.yaml", "finance.yaml"):
+        (tmp_path / name).write_text("triples:\n  - {s: a, p: P, o: b}\n")
+    (tmp_path / "team.yaml").write_text("graphs:\n  org: org.yaml\n  finance: finance.yaml\n")
+    monkeypatch.chdir(tmp_path)
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+
+    assert main(["ui"]) == 0          # the union, though it is not named workspace.yaml
+    page = Path(opened[0].replace("file://", "")).read_text()
+    assert "workspace" in page        # the union view carries the per-graph filter
+
+    # and the conventional name wins outright, without reading anything
+    (tmp_path / "workspace.yaml").write_text("graphs:\n  org: org.yaml\n")
+    opened.clear()
+    assert main(["ui"]) == 0
+    assert len(opened) == 1
+
+
 def test_cli_ui_says_which_graphs_it_found_when_it_cannot_choose(tmp_path, monkeypatch):
     from trikedb.cli import main
 

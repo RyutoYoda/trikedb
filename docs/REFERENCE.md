@@ -235,7 +235,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc]` | Show / extend the predicate vocabulary |
 | `trikedb stats FILE` | Triples per predicate, node count |
-| `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional — with one graph in the directory it picks that one, so `trike ui` on its own is the whole command |
+| `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional: `workspace.yaml` or `graph.yaml` if either is there, else the only graph in the directory, else the only workspace among them (a union is not a rival candidate — it contains the others) |
 | `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Export the workbench to a file you can publish |
 | `trikedb jsonld FILE` | JSON-LD to stdout |
 | `trikedb validate FILE SHAPES.ttl` | SHACL; exit 1 on violations (CI-friendly) |
