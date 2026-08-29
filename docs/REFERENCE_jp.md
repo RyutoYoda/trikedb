@@ -213,7 +213,7 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 
 ## CLI
 
-APIでできることは全部CLIでもできる(`pip install trikedb` または `uvx --from trikedb trikedb ...`):
+APIでできることは全部CLIでもできる(`pip install trikedb` または `uvx --from trikedb trikedb ...`)。コマンド名は `trikedb` と、短い `trike` の2つが入る（同じもの。`trike ui` と `trikedb ui` は同じ）:
 
 | コマンド | 用途 |
 |---|---|
@@ -226,7 +226,8 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc]` | 語彙の表示/拡張 |
 | `trikedb stats FILE` | 述語別トリプル数・ノード数 |
-| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | ワークベンチ出力 |
+| `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可（そのディレクトリにグラフが1つならそれを使うので、`trike ui` だけで開く） |
+| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す |
 | `trikedb jsonld FILE` | JSON-LDを標準出力へ |
 | `trikedb validate FILE SHAPES.ttl` | SHACL検証。違反でexit 1(CI向き) |
 | `trikedb infer FILE [--apply]` | OWL-RL推論。`--apply` でタグ付き永続化 |

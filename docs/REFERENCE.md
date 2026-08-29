@@ -222,7 +222,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 
 ## CLI
 
-Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb ...`):
+Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb ...`). Two names install: `trikedb` and the shorter `trike` — same command, so `trike ui` and `trikedb ui` are interchangeable:
 
 | Command | Purpose |
 |---|---|
@@ -235,7 +235,8 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc]` | Show / extend the predicate vocabulary |
 | `trikedb stats FILE` | Triples per predicate, node count |
-| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Export the workbench |
+| `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional — with one graph in the directory it picks that one, so `trike ui` on its own is the whole command |
+| `trikedb html FILE [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Export the workbench to a file you can publish |
 | `trikedb jsonld FILE` | JSON-LD to stdout |
 | `trikedb validate FILE SHAPES.ttl` | SHACL; exit 1 on violations (CI-friendly) |
 | `trikedb infer FILE [--apply]` | OWL-RL inference; `--apply` persists tagged facts |

@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .db import OntologyError, TrikeDB
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="trikedb",
+        # whichever name it was invoked as: the usage line saying "trikedb"
+        # after someone typed "trike" is a small lie that costs a retype
+        prog=Path(sys.argv[0]).name or "trikedb",
         description="A knowledge graph in a single YAML file.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -89,7 +92,8 @@ def main(argv=None) -> int:
     p_stats.add_argument("file")
 
     p_html = sub.add_parser("html", help="export an interactive HTML visualization")
-    p_html.add_argument("file")
+    p_html.add_argument("file", nargs="?", default=None,
+                        help="graph file; omit it to pick up the one in this directory")
     p_html.add_argument("-o", "--out", default=None)
     p_html.add_argument("--title", default=None)
     p_html.add_argument(
@@ -101,6 +105,21 @@ def main(argv=None) -> int:
         "--layout", default="auto", choices=["auto", "flow", "free"],
         help="initial layout: flow (hierarchical), free (force-directed), "
              "auto (flow up to 150 triples)",
+    )
+
+    p_ui = sub.add_parser(
+        "ui", help="open the graph in a browser (generates the HTML for you)"
+    )
+    p_ui.add_argument("file", nargs="?", default=None,
+                      help="graph file; omit it to pick up the one in this directory")
+    p_ui.add_argument("--title", default=None)
+    p_ui.add_argument(
+        "--events", default=None, metavar="PRED1,PRED2",
+        help="comma-separated predicates to treat as change events",
+    )
+    p_ui.add_argument(
+        "--layout", default="auto", choices=["auto", "flow", "free"],
+        help="initial layout: flow (hierarchical), free (force-directed), auto",
     )
 
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
@@ -367,7 +386,48 @@ def _default_html_out(graph: str) -> str:
     return (graph.rsplit(".", 1)[0] if "." in graph else graph) + ".html"
 
 
+def _find_graph() -> str:
+    """The graph in this directory, when the command was given no path.
+
+    `trike ui` with nothing after it is the whole point of the short form,
+    and in a repo that holds one graph there is nothing to disambiguate.
+    Two candidates is not a guess worth making, so it says which it found.
+    """
+    here = Path(".")
+    if (here / "graph.yaml").exists():
+        return "graph.yaml"
+    found = sorted(str(p) for ext in ("*.yaml", "*.yml") for p in here.glob(ext))
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise SystemExit("error: no .yaml graph here — pass one: trike ui graph.yaml")
+    raise SystemExit("error: several graphs here, name one: " + ", ".join(found))
+
+
+def _cmd_ui(args) -> int:
+    """Generate the workbench into a temp file and open it.
+
+    Named for what you get rather than what it writes: `html` is the one
+    that hands you a file to publish. The temp file is keyed by the graph's
+    content hash, so opening the same unchanged graph twice reuses it
+    instead of littering the temp directory.
+    """
+    import tempfile
+    import webbrowser
+
+    path = args.file or _find_graph()
+    db = TrikeDB(path)
+    events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
+    out = Path(tempfile.gettempdir()) / f"trikedb-{db.content_hash()}.html"
+    db.to_html(out, title=args.title or f"trikedb — {path}",
+               event_predicates=events, layout=args.layout)
+    webbrowser.open(out.as_uri())
+    print(f"opened {path} → {out}", file=sys.stderr)
+    return 0
+
+
 def _cmd_html(args) -> int:
+    args.file = args.file or _find_graph()
     db = TrikeDB(args.file)
     out = args.out or _default_html_out(args.file)
     title = args.title or f"trikedb — {args.file}"
@@ -496,6 +556,7 @@ _COMMANDS = {
     "ontology": _cmd_ontology,
     "stats": _cmd_stats,
     "html": _cmd_html,
+    "ui": _cmd_ui,
     "jsonld": _cmd_jsonld,
     "check": _cmd_check,
     "audit": _cmd_audit,

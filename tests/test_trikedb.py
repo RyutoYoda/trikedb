@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -561,6 +563,38 @@ def test_cli_node_set_and_show(tmp_path, capsys):
     again = TrikeDB(g)
     assert again.node("svc-etl-01") == {"label": "etl-bot", "type": "bot", "pii": False}
     assert main(["node", g, "svc-etl-01"]) == 0  # show-only does not error
+
+
+def test_cli_ui_opens_the_graph_it_finds(tmp_path, monkeypatch, capsys):
+    """`trike ui` with nothing after it is the point of the short form: in a
+    repo holding one graph there is nothing to disambiguate, so typing the
+    path again is friction. The temp file is keyed by content hash, so
+    reopening an unchanged graph reuses it instead of piling up files."""
+    import webbrowser
+
+    from trikedb.cli import main
+
+    (tmp_path / "graph.yaml").write_text("triples:\n  - {s: a, p: P, o: b}\n")
+    monkeypatch.chdir(tmp_path)
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+
+    assert main(["ui"]) == 0
+    assert main(["ui"]) == 0                      # same graph, same file
+    assert len(set(opened)) == 1
+    page = Path(opened[0].replace("file://", ""))
+    assert "vis.Network" in page.read_text()      # it really is the workbench
+
+
+def test_cli_ui_says_which_graphs_it_found_when_it_cannot_choose(tmp_path, monkeypatch):
+    from trikedb.cli import main
+
+    for name in ("finance.yaml", "platform.yaml"):
+        (tmp_path / name).write_text("triples: []\n")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["ui"])
+    assert "finance.yaml" in str(exc.value) and "platform.yaml" in str(exc.value)
 
 
 def test_cli_refused_type_change_reads_as_an_error_not_a_crash(tmp_path, capsys):
