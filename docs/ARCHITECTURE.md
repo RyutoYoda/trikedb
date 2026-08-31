@@ -23,9 +23,12 @@ flowchart TB
     WU("program<br/>SPARQL UPDATE")
     G{{"the ontology guard — every write passes here<br/>an undeclared predicate never lands"}}
     C("<b>ONE document</b><br/>triples · nodes · ontology")
-    SF("file<br/>graph.yaml · graph.json")
-    SO("object<br/>s3:// · gs:// · az://")
-    SW("table row<br/>snowflake:// · bigquery://")
+    subgraph pick["a graph lives in ONE of these — never in two"]
+        direction LR
+        SF("file<br/>graph.yaml · graph.json")
+        SO("object<br/>s3:// · gs:// · az://")
+        SW("table row<br/>snowflake:// · bigquery://")
+    end
     PO("oxigraph<br/>answers every read query")
     PR("rdflib.Graph<br/>updates · owlrl · pyshacl · exports")
     PN("networkx<br/>graph algorithms")
@@ -59,6 +62,7 @@ flowchart TB
     PV --> RS
     PD --> RQ
 
+    style pick fill:#11161b,stroke:#39434b,color:#8b949e
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
     classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10

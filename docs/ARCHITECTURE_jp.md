@@ -23,9 +23,12 @@ flowchart TB
     WU("プログラム<br/>SPARQL UPDATE")
     G{{"オントロジーガード — すべての書き込みがここを通る<br/>宣言されていない述語は着地しない"}}
     C("<b>1つの文書</b><br/>triples · nodes · ontology")
-    SF("ファイル<br/>graph.yaml · graph.json")
-    SO("オブジェクト<br/>s3:// · gs:// · az://")
-    SW("テーブルの行<br/>snowflake:// · bigquery://")
+    subgraph pick["グラフはこのどれか1つに住む — 2つに置くことはない"]
+        direction LR
+        SF("ファイル<br/>graph.yaml · graph.json")
+        SO("オブジェクト<br/>s3:// · gs:// · az://")
+        SW("テーブルの行<br/>snowflake:// · bigquery://")
+    end
     PO("oxigraph<br/>読み取りクエリを全部答える")
     PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 各形式へ出力")
     PN("networkx<br/>グラフアルゴリズム")
@@ -59,6 +62,7 @@ flowchart TB
     PV --> RS
     PD --> RQ
 
+    style pick fill:#11161b,stroke:#39434b,color:#8b949e
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
     classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10

@@ -23,9 +23,12 @@ flowchart TB
     WU("程序<br/>SPARQL UPDATE")
     G{{"本体护栏 — 每一次写入都经过这里<br/>未声明的谓词落不了地"}}
     C("<b>一份文档</b><br/>triples · nodes · ontology")
-    SF("文件<br/>graph.yaml · graph.json")
-    SO("对象<br/>s3:// · gs:// · az://")
-    SW("表中的一行<br/>snowflake:// · bigquery://")
+    subgraph pick["一张图只住在其中之一 — 绝不会同时放两处"]
+        direction LR
+        SF("文件<br/>graph.yaml · graph.json")
+        SO("对象<br/>s3:// · gs:// · az://")
+        SW("表中的一行<br/>snowflake:// · bigquery://")
+    end
     PO("oxigraph<br/>回答所有读取查询")
     PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 导出")
     PN("networkx<br/>图算法")
@@ -59,6 +62,7 @@ flowchart TB
     PV --> RS
     PD --> RQ
 
+    style pick fill:#11161b,stroke:#39434b,color:#8b949e
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
     classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10
