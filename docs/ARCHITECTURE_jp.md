@@ -63,7 +63,7 @@ flowchart TB
     PD --> RQ
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
-    classDef lbl fill:none,stroke:none,color:#7b8595
+    classDef lbl fill:none,stroke:none,color:#4b5563
     classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
     classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
     classDef store fill:#e3f3f4,stroke:#2b8a9c,color:#0c454f,rx:10,ry:10
