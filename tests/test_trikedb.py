@@ -482,6 +482,10 @@ def test_nodes_carry_no_scaling_option():
     db.add("a", "P", "b")
     for html in (db.to_html(layout="free"), db.to_html(layout="flow")):
         assert "scaling:" not in html
+        # the threshold is lowered on the objects vis built, per frame,
+        # because vis puts the default back whenever a node is updated
+        assert "o.scaling.label.drawThreshold = 0" in html
+        assert 'network.on("beforeDrawing"' in html
 
 
 def test_flow_columns_yield_to_an_explicit_level():

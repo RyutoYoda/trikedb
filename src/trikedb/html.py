@@ -324,13 +324,10 @@ let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
   ...(flow ? FLOW_OPTS : FREE_OPTS),
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
-           // Do NOT set `scaling` here. vis normalises any scaling object we
-           // pass down to {label:{}}, which leaves the label's font size NaN:
-           // every box then measures 0px of text and renders empty at every
-           // zoom. Leaving it out also leaves drawThreshold undefined, and
-           // the "is this label too small to bother" test compares against
-           // it — so labels keep drawing however far you zoom out, which is
-           // what setting drawThreshold was reaching for in the first place.
+           // Do NOT set `scaling` here. vis rewrites any scaling object we
+           // pass down, and the label comes out with a NaN font size: every
+           // box then measures 0px of text and renders empty at every zoom.
+           // The label draw threshold is dealt with after construction.
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
@@ -341,8 +338,26 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
 if (!flow) {
   network.once("stabilizationIterationsDone", function () {
     network.setOptions({ physics: false });
+    network.redraw();
   });
 }
+
+// vis hides a label once it would render under ~4px, so on a big graph the
+// whole thing fits on screen as rows of blank boxes and you have to zoom in
+// to find out what anything is. Tiny text still reads as "there is a name
+// here", and you can still see which cluster you want. Passing this through
+// the options is not an option: vis rewrites any `scaling` we hand it and
+// leaves the label with a NaN font size. So reach for the threshold vis
+// built itself, and do it every frame — vis rebuilds a node's options
+// whenever one is updated (theme switch, type filter), which would put the
+// default back.
+network.on("beforeDrawing", function () {
+  for (const id in network.body.nodes) {
+    const o = network.body.nodes[id].options;
+    if (o && o.scaling && o.scaling.label) o.scaling.label.drawThreshold = 0;
+  }
+});
+network.redraw();
 
 // ------------------------------------- header legend (click = filter)
 const hiddenTypes = new Set();
