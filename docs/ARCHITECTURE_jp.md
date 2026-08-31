@@ -62,7 +62,7 @@ flowchart TB
     PV --> RS
     PD --> RQ
 
-    style pick fill:none,stroke:#7f8c99,stroke-dasharray:5 5,color:#7f8c99
+    style pick fill:none,stroke:#a9b4c0,stroke-width:1px,stroke-dasharray:4 6,color:#a9b4c0
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
     classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10
