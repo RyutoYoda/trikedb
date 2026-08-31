@@ -62,12 +62,12 @@ flowchart TB
     PV --> RS
     PD --> RQ
 
-    style pick fill:none,stroke:#a9b4c0,stroke-width:1px,stroke-dasharray:4 6,color:#a9b4c0
-    classDef lbl fill:none,stroke:none,color:#8b8b8b
-    classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
-    classDef core fill:#312e2b,stroke:#a16207,color:#fef3c7,rx:10,ry:10
-    classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
-    classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
+    style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    classDef lbl fill:none,stroke:none,color:#7b8595
+    classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
+    classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
+    classDef store fill:#e3f3f4,stroke:#2b8a9c,color:#0c454f,rx:10,ry:10
+    classDef proj fill:#efe9fb,stroke:#8055e6,color:#3a2568,rx:10,ry:10
     class LA,LG,LB,LC,LD,LE lbl
     class WA,WC,WI,WP,WU,RQ,RG,RS iface
     class C,G core
