@@ -463,15 +463,25 @@ def test_force_layout_keeps_nodes_from_landing_on_each_other():
     graph of any size reads as one illegible clump — 64 nodes came out as a
     knot with labels stacked three deep. avoidOverlap is what separates
     them, and the arrangement needs more stabilization steps to come to
-    rest; the label threshold keeps zooming out from blanking every box."""
+    rest."""
     db = TrikeDB()
     for i in range(80):
         db.add(f"s{i}", "P", f"o{i % 20}")
     html = db.to_html(layout="free")
     assert "avoidOverlap: 1" in html
     assert "springLength" in html
-    assert "drawThreshold: 1" in html
     assert "Math.min(1200, Math.max(200, ids.length * 12))" in html
+
+
+def test_nodes_carry_no_scaling_option():
+    """vis rewrites any `scaling` we hand it to {label:{}}, and a node whose
+    scaling has no label sizes gets a NaN font size: the box then draws with
+    0px of text, so every label in the graph disappears. Shipped that way
+    once — the demo pages came out as rows of empty coloured boxes."""
+    db = TrikeDB()
+    db.add("a", "P", "b")
+    for html in (db.to_html(layout="free"), db.to_html(layout="flow")):
+        assert "scaling:" not in html
 
 
 def test_flow_columns_yield_to_an_explicit_level():

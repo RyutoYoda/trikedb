@@ -324,11 +324,13 @@ let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
   ...(flow ? FLOW_OPTS : FREE_OPTS),
   nodes: { shape: "box", font: { color: "#e8e8ea", size: 12, face: "Menlo, monospace" },
-           // vis stops drawing a label once it would render under ~5px, so
-           // zooming out to see the whole graph blanks every box at once.
-           // Drawing them small is the lesser evil: the shape of the graph
-           // stays readable while you look for where to zoom back in.
-           scaling: { label: { drawThreshold: 1 } },
+           // Do NOT set `scaling` here. vis normalises any scaling object we
+           // pass down to {label:{}}, which leaves the label's font size NaN:
+           // every box then measures 0px of text and renders empty at every
+           // zoom. Leaving it out also leaves drawThreshold undefined, and
+           // the "is this label too small to bother" test compares against
+           // it — so labels keep drawing however far you zoom out, which is
+           // what setting drawThreshold was reaching for in the first place.
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
