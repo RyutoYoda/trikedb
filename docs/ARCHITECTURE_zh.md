@@ -26,16 +26,14 @@ flowchart TB
     SF("文件<br/>graph.yaml · graph.json")
     SO("对象<br/>s3:// · gs:// · az://")
     SW("表中的一行<br/>snowflake:// · bigquery://")
-    PO("oxigraph<br/>执行 SPARQL")
-    PR("rdflib.Graph<br/>owlrl · pyshacl · 导出")
+    PO("oxigraph<br/>回答所有读取查询")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 导出")
     PN("networkx<br/>图算法")
     PV("SQL 视图<br/>建在数仓那一行之上")
-    PD("完全不用引擎<br/>文档作为 JSON")
-    RA("智能体<br/>MCP")
-    RP("应用<br/>REST · Python")
+    PD("完全不用引擎<br/>JSON-LD · 嵌入页面的文档")
+    RQ("智能体 MCP · CLI · REST · Python · HTML<br/>所有读取图本身的一方")
     RG("程序<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
-    RH("人<br/>HTML 工作台")
 
     WA --> G
     WC --> G
@@ -55,11 +53,11 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    PO --> RA
-    PR --> RP
+    PO --> RQ
+    PR --> RQ
     PN --> RG
     PV --> RS
-    PD --> RH
+    PD --> RQ
 
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
@@ -67,14 +65,16 @@ flowchart TB
     classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
     classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
     class LA,LG,LB,LC,LD,LE lbl
-    class WA,WC,WI,WP,WU,RA,RP,RG,RS,RH iface
+    class WA,WC,WI,WP,WU,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
     class PO,PR,PN,PV,PD proj
 ```
 
-虚线箭头表示派生 — 按需构建，用完就丢。每一列都是一条端到端的真实路径：
-`oxigraph → 通过 MCP 的智能体`、`SQL 视图 → dbt`、`完全不用引擎 → HTML 工作台`。
+虚线箭头表示派生 — 按需构建，用完就丢。投影与接口**不是**一对一的：
+**oxigraph 回答所有读取查询，无论是哪个接口发起的** — MCP、CLI、REST、
+Python、工作台页面。rdflib 是更新、OWL、SHACL 和导出器所需要的。右侧两列
+才是真正独立的路径：`networkx → 图算法`、`SQL 视图 → dbt`。
 
 | 层 | 负责什么 | *不*负责什么 |
 |---|---|---|
@@ -254,10 +254,11 @@ rdflib 都会留下。
 
 | 操作 | 引擎 | 会改变图吗？ | 为什么是这个引擎 |
 |---|---|---|---|
-| `sparql()` — SELECT, ASK | **oxigraph** | 不会 | 只需要一个答案，而且快 6–40 倍 |
+| `sparql()` — SELECT, ASK | **oxigraph** | 不会 | 只需要一个答案，而且更快：在 8,000 条三元组上实测 7–47 倍（两跳 10 倍、聚合 34 倍、FILTER REGEX 47 倍、属性路径 7 倍） |
 | `sparql()` — INSERT, DELETE | rdflib | **会** | 在一个图上执行更新，然后把差异写回 |
 | `infer()` — OWL-RL | rdflib | 只在 `apply=True` 时 | `owlrl` 接受一个 `rdflib.Graph` |
 | `validate()` — SHACL | rdflib | 不会 | `pyshacl` 接受一个 `rdflib.Graph` |
+| `sparql()` — CONSTRUCT, DESCRIBE | rdflib | 不会 | 返回的是图而不是绑定；以 `{s, p, o}` 行返回 |
 | `to_rdflib()`, `to_jsonld()` | rdflib | 不会 | 导出；rdflib *就是*那个格式 |
 | `triples()`, `query()` | 无 | 不会 | 在一个 Python 列表上做模式匹配 |
 | `search()`, `find()` | 无 | 不会 | 静态嵌入；不涉及 SPARQL |
@@ -293,7 +294,7 @@ rdflib 都会留下。
 flowchart LR
     subgraph adapters["接口适配器"]
         direction TB
-        CLI("cli.py<br/>18 个子命令")
+        CLI("cli.py<br/>19 个子命令")
         MCP("mcp_server.py<br/>11 个 MCP 工具")
         SERVE("serve.py<br/>UI + REST + 远程 MCP")
         HTML("html.py<br/>工作台导出")
@@ -403,7 +404,7 @@ flowchart LR
   子命令。永远不要从一个适配器 import 另一个；在一个 `serve.py` 风格的模块里做
   组合。
 - **智能体能做的任何事都必须在三种接口里都存在** — Python API、CLI、MCP。对等
-  不是巧合，而是一项功能。
+  不是巧合，而是一项功能。这也是最容易被无意破坏的规则：`find` 在 API 和 MCP 里存在，却有好几个版本没有对应的 CLI 子命令——规则写着，同时又被违反着。
 - **缓存首先是一个正确性问题，其次才是一个速度问题。** 这里有两个：构建好的查询图，
   以及 `add()` 背后的 `(s, p, o)` 索引。两者在过期时都是*静默*失败 — 从一个已经
   变过的图上作答，或者判定一条三元组已经存在从而丢掉这次写入。所以失效处理是有意

@@ -957,6 +957,23 @@ def test_an_unknown_sparql_engine_is_refused():
     TrikeDB(sparql_engine="rdflib")
 
 
+def test_find_exists_on_the_cli_too(tmp_path, capsys):
+    """ARCHITECTURE.md states the rule: anything an agent can do exists in
+    the Python API, the CLI and MCP. `find` was in the API and in MCP but
+    not on the CLI, so the rule was documented and broken at once."""
+    pytest.importorskip("model2vec")
+    from trikedb.cli import main
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g, ontology={"INGESTS_TO": ""})
+    db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM_CONTACTS")
+    db.set_node("crm-sync-job", type="job")
+    db.set_node("RAW_CRM_CONTACTS", type="table")
+    assert main(["find", str(g), "CRMを同期しているジョブ", "-w", "type=job"]) == 0
+    assert "crm-sync-job" in capsys.readouterr().out
+    assert main(["find", str(g), "無関係な質問", "-w", "type=nothing"]) == 1
+
+
 def test_an_unknown_node_is_distinguishable_from_an_empty_one(tmp_path):
     """`node` on a name nobody ever wrote returns the same shape as a node
     with nothing attached. An agent reading that has no way to tell it got
@@ -2734,6 +2751,36 @@ def test_engines_agree_across_the_sparql_surface(name):
     query = _AGREEMENT_QUERIES[name]
     assert (_agreement_graph("rdflib").sparql(query)
             == _agreement_graph("oxigraph").sparql(query))
+
+
+@pytest.mark.parametrize("engine", ["oxigraph", "rdflib"])
+def test_ask_is_answered_by_the_engine_that_was_asked_for(engine):
+    """pyoxigraph answers ASK with QueryBoolean, not bool, so an
+    isinstance(result, bool) test missed every ASK and fell through to
+    rdflib — which then evicted the oxigraph store from the one-entry graph
+    cache, so the next read rebuilt it. Silent: the answers were right."""
+    pytest.importorskip("pyoxigraph") if engine == "oxigraph" else None
+    db = TrikeDB(autosave=False, sparql_engine=engine, ontology={"P": ""})
+    db.add("a", "P", "b")
+    assert db.sparql("ASK { t:a t:P t:b }") is True
+    assert db.sparql("ASK { t:a t:P t:zzz }") is False
+    # the fall-through was invisible except through the cache it left behind
+    assert db._rdf_cache[0] == ("urn:trikedb:", engine)
+
+
+@pytest.mark.parametrize("engine", ["oxigraph", "rdflib"])
+def test_construct_and_describe_return_triples(engine):
+    """Both answer with a graph, so rdflib's `result.vars` is None and the
+    binding loop raised TypeError on it. They now come back in the same
+    shape a triple has everywhere else."""
+    pytest.importorskip("pyoxigraph") if engine == "oxigraph" else None
+    db = TrikeDB(autosave=False, sparql_engine=engine, ontology={"P": ""})
+    db.add("a", "P", "b")
+    db.add("c", "P", "d")
+    built = db.sparql("CONSTRUCT { ?s ?p ?o } WHERE { ?s t:P ?o . ?s ?p ?o }")
+    assert {"s": "a", "p": "P", "o": "b"} in built
+    assert len(built) == 2
+    assert db.sparql("DESCRIBE t:a") == [{"s": "a", "p": "P", "o": "b"}]
 
 
 def test_undefined_aggregates_are_not_compared_between_engines():

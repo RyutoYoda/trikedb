@@ -836,6 +836,12 @@ class TrikeDB:
         result = self._query_graph(base).query(prefixed)
         if result.type == "ASK":
             return result.askAnswer
+        if result.type in ("CONSTRUCT", "DESCRIBE"):
+            # These answer with triples, not bindings, so `result.vars` is
+            # None and the binding loop below raised TypeError on it. Give
+            # them the same shape a triple has everywhere else in the API.
+            return [{"s": _shorten(s, base), "p": _shorten(p, base),
+                     "o": _shorten(o, base)} for s, p, o in result.graph]
 
         rows = []
         for binding in result:
@@ -854,9 +860,17 @@ class TrikeDB:
         having to parse the query to find out which form it is.
         """
         result = self._query_graph(base, "oxigraph").query(prefixed)
-        if isinstance(result, bool):                       # ASK
-            return result
-        if not hasattr(result, "variables"):               # CONSTRUCT/DESCRIBE
+        if hasattr(result, "variables"):                   # SELECT
+            pass
+        elif hasattr(result, "__bool__") and not hasattr(result, "__iter__"):
+            # ASK. pyoxigraph answers with QueryBoolean, not bool, so an
+            # isinstance(result, bool) test silently missed every ASK and sent
+            # it to rdflib — which also evicted the oxigraph store from the
+            # one-entry graph cache, so the next read rebuilt it. An ASK cost
+            # ~100ms instead of ~0.1ms and the engine reported for it was a
+            # lie.
+            return bool(result)
+        else:                                              # CONSTRUCT/DESCRIBE
             return NotImplemented
 
         # oxigraph terms stringify to N-Triples (`<urn:trikedb:a>`), so the

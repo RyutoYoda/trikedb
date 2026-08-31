@@ -26,16 +26,14 @@ flowchart TB
     SF("file<br/>graph.yaml · graph.json")
     SO("object<br/>s3:// · gs:// · az://")
     SW("table row<br/>snowflake:// · bigquery://")
-    PO("oxigraph<br/>runs SPARQL")
-    PR("rdflib.Graph<br/>owlrl · pyshacl · exports")
+    PO("oxigraph<br/>answers every read query")
+    PR("rdflib.Graph<br/>updates · owlrl · pyshacl · exports")
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
-    PD("no engine at all<br/>the document as JSON")
-    RA("agent<br/>MCP")
-    RP("app<br/>REST · Python")
+    PD("no engine at all<br/>JSON-LD · the document inside the page")
+    RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
-    RH("person<br/>HTML workbench")
 
     WA --> G
     WC --> G
@@ -55,11 +53,11 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    PO --> RA
-    PR --> RP
+    PO --> RQ
+    PR --> RQ
     PN --> RG
     PV --> RS
-    PD --> RH
+    PD --> RQ
 
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
@@ -67,15 +65,18 @@ flowchart TB
     classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
     classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
     class LA,LG,LB,LC,LD,LE lbl
-    class WA,WC,WI,WP,WU,RA,RP,RG,RS,RH iface
+    class WA,WC,WI,WP,WU,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
     class PO,PR,PN,PV,PD proj
 ```
 
 Dotted arrows are derived — built on demand and thrown away. Each column is one
-real path end to end: `oxigraph → agent over MCP`, `SQL views → dbt`,
-`no engine at all → the HTML workbench`.
+the projections are not paired one-to-one with the interfaces: **oxigraph
+answers every read query, whichever interface asked** — MCP, the CLI, REST,
+Python, the workbench page. rdflib is what updates, OWL, SHACL and the
+exporters need. The two columns on the right are the genuinely separate
+paths: `networkx → graph algorithms`, `SQL views → dbt`.
 
 | Layer | Owns | Does *not* own |
 |---|---|---|
@@ -284,10 +285,11 @@ rdflib stays no matter how fast the alternative gets.
 
 | Operation | Engine | Changes the graph? | Why that engine |
 |---|---|---|---|
-| `sparql()` — SELECT, ASK | **oxigraph** | no | only an answer is needed, and it is 6–40x faster |
+| `sparql()` — SELECT, ASK | **oxigraph** | no | only an answer is needed, and it is faster: measured 7–47x on 8,000 triples, depending on the query (2-hop 10x, aggregates 34x, FILTER REGEX 47x, property paths 7x) |
 | `sparql()` — INSERT, DELETE | rdflib | **yes** | runs the update on a graph, then diffs it back |
 | `infer()` — OWL-RL | rdflib | only with `apply=True` | `owlrl` takes an `rdflib.Graph` |
 | `validate()` — SHACL | rdflib | no | `pyshacl` takes an `rdflib.Graph` |
+| `sparql()` — CONSTRUCT, DESCRIBE | rdflib | no | they answer with a graph, not bindings; returned as `{s, p, o}` rows |
 | `to_rdflib()`, `to_jsonld()` | rdflib | no | exports; rdflib *is* the format |
 | `triples()`, `query()` | none | no | pattern matching over a Python list |
 | `search()`, `find()` | none | no | static embeddings; no SPARQL involved |
@@ -328,7 +330,7 @@ Dependencies point inward only.
 flowchart LR
     subgraph adapters["Interface adapters"]
         direction TB
-        CLI("cli.py<br/>18 subcommands")
+        CLI("cli.py<br/>19 subcommands")
         MCP("mcp_server.py<br/>11 MCP tools")
         SERVE("serve.py<br/>UI + REST + remote MCP")
         HTML("html.py<br/>workbench export")
@@ -452,7 +454,10 @@ stored twice.
   module plus a CLI subcommand. Never import one adapter from another;
   compose them in a `serve.py`-style module.
 - **Anything an agent can do must exist in all three interfaces** — Python
-  API, CLI, MCP. Parity is a feature, not a coincidence.
+  API, CLI, MCP. Parity is a feature, not a coincidence. It is also the rule
+  most easily broken by accident: `find` sat in the API and in MCP with no
+  CLI subcommand for several releases, so the rule was documented and
+  violated at the same time.
 - **A cache is a correctness problem before it is a speed problem.** Two live
   here: the built query graph and the `(s, p, o)` index behind `add()`. Both
   fail *silently* when stale — answering from a graph that moved, or deciding

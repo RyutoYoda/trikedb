@@ -26,16 +26,14 @@ flowchart TB
     SF("ファイル<br/>graph.yaml · graph.json")
     SO("オブジェクト<br/>s3:// · gs:// · az://")
     SW("テーブルの行<br/>snowflake:// · bigquery://")
-    PO("oxigraph<br/>SPARQL を実行する")
-    PR("rdflib.Graph<br/>owlrl · pyshacl · エクスポート")
+    PO("oxigraph<br/>読み取りクエリを全部答える")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 各形式へ出力")
     PN("networkx<br/>グラフアルゴリズム")
     PV("SQL ビュー<br/>ウェアハウスの行の上に")
-    PD("エンジンなし<br/>文書を JSON として")
-    RA("エージェント<br/>MCP")
-    RP("アプリ<br/>REST · Python")
+    PD("エンジンなし<br/>JSON-LD · ページに埋め込む文書")
+    RQ("エージェント MCP · CLI · REST · Python · HTML<br/>グラフを読むものすべて")
     RG("プログラム<br/>Python")
     RS("SQL<br/>BI · dbt · ノートブック")
-    RH("人<br/>HTML ワークベンチ")
 
     WA --> G
     WC --> G
@@ -55,11 +53,11 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    PO --> RA
-    PR --> RP
+    PO --> RQ
+    PR --> RQ
     PN --> RG
     PV --> RS
-    PD --> RH
+    PD --> RQ
 
     classDef lbl fill:none,stroke:none,color:#8b8b8b
     classDef iface fill:#1f2937,stroke:#6b7280,color:#e5e7eb,rx:10,ry:10
@@ -67,7 +65,7 @@ flowchart TB
     classDef store fill:#1e2b2b,stroke:#0e7490,color:#cffafe,rx:10,ry:10
     classDef proj fill:#2a2135,stroke:#7c3aed,color:#ede9fe,rx:10,ry:10
     class LA,LG,LB,LC,LD,LE lbl
-    class WA,WC,WI,WP,WU,RA,RP,RG,RS,RH iface
+    class WA,WC,WI,WP,WU,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
     class PO,PR,PN,PV,PD proj
@@ -269,10 +267,11 @@ rdflib が残る理由である。
 
 | 操作 | エンジン | グラフを変えるか？ | なぜそのエンジンか |
 |---|---|---|---|
-| `sparql()` — SELECT, ASK | **oxigraph** | いいえ | 答えだけが必要で、6〜40倍速い |
+| `sparql()` — SELECT, ASK | **oxigraph** | いいえ | 答えだけが必要で、そして速い。8,000トリプルで実測 7〜47倍（2ホップ10倍、集約34倍、FILTER REGEX 47倍、プロパティパス7倍） |
 | `sparql()` — INSERT, DELETE | rdflib | **はい** | グラフ上で更新を走らせ、差分を戻す |
 | `infer()` — OWL-RL | rdflib | `apply=True` のときだけ | `owlrl` が `rdflib.Graph` を取る |
 | `validate()` — SHACL | rdflib | いいえ | `pyshacl` が `rdflib.Graph` を取る |
+| `sparql()` — CONSTRUCT, DESCRIBE | rdflib | いいえ | 束縛ではなくグラフを返す形式。`{s, p, o}` の行として返す |
 | `to_rdflib()`, `to_jsonld()` | rdflib | いいえ | エクスポート。rdflib *が*形式である |
 | `triples()`, `query()` | なし | いいえ | Python のリストに対するパターンマッチ |
 | `search()`, `find()` | なし | いいえ | 静的な埋め込み。SPARQL は関与しない |
@@ -311,7 +310,7 @@ rdflib が残る理由である。
 flowchart LR
     subgraph adapters["インターフェースアダプタ"]
         direction TB
-        CLI("cli.py<br/>18 のサブコマンド")
+        CLI("cli.py<br/>19 のサブコマンド")
         MCP("mcp_server.py<br/>11 の MCP ツール")
         SERVE("serve.py<br/>UI + REST + リモート MCP")
         HTML("html.py<br/>ワークベンチのエクスポート")
@@ -434,7 +433,10 @@ flowchart LR
   CLI サブコマンド。アダプタから別のアダプタを import しないこと。`serve.py` 型の
   モジュールで合成する。
 - **エージェントができることは3つのインターフェースすべてに存在しなければ
-  ならない** — Python API、CLI、MCP。同等性は偶然ではなく機能である。
+  ならない** — Python API、CLI、MCP。同等性は偶然ではなく機能である。そして
+  うっかり破りやすい規則でもある。`find` は API と MCP にあって CLI
+  サブコマンドが無い状態が数リリース続いた。規則を書いておきながら同時に
+  破っていたことになる。
 - **キャッシュは速度の問題である前に正しさの問題である。** ここには2つある:
   構築されたクエリグラフと、`add()` の裏の `(s, p, o)` インデックス。どちらも
   古くなったとき*静かに*失敗する — 動いてしまったグラフから答えるか、トリプルが

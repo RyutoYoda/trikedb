@@ -61,6 +61,19 @@ def main(argv=None) -> int:
     p_search.add_argument("--model", default=None, help="model2vec model name override")
     p_search.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
+    p_find = sub.add_parser(
+        "find", help="semantic recall, then filter on node properties ([semantic] extra)"
+    )
+    p_find.add_argument("file")
+    p_find.add_argument("query", help='natural-language question, e.g. "CRMを同期しているのは何？"')
+    p_find.add_argument(
+        "-w", "--where", action="append", default=[], metavar="key=value",
+        help="keep only nodes whose properties match exactly; repeat to add conditions",
+    )
+    p_find.add_argument("-k", type=int, default=10, help="max results (default 10)")
+    p_find.add_argument("--model", default=None, help="model2vec model name override")
+    p_find.add_argument("--json", action="store_true", help="output JSON instead of a table")
+
     p_import = sub.add_parser(
         "import", help="merge triples from CSV/TSV, Markdown tables, or another YAML graph"
     )
@@ -363,6 +376,28 @@ def _cmd_node(args) -> int:
     return 0 if record["exists"] else 1
 
 
+def _cmd_find(args) -> int:
+    db = TrikeDB(args.file)
+    where = _parse_attrs(args.where) if args.where else None
+    try:
+        hits = db.find(args.query, where=where, k=args.k, model=args.model)
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        return _print_rows(hits, True)
+    if not hits:
+        print("no match")
+        return 1
+    for h in hits:
+        print(h["node"])
+        for k, v in (h.get("props") or {}).items():
+            print(f"    {k}: {v}")
+        for pred, obj in (h.get("facts") or []):
+            print(f"    -> {pred} {obj}")
+    return 0
+
+
 def _cmd_ontology(args) -> int:
     db = TrikeDB(args.file)
     if args.set:
@@ -602,6 +637,7 @@ _COMMANDS = {
     "query": _cmd_query,
     "sparql": _cmd_sparql,
     "search": _cmd_search,
+    "find": _cmd_find,
     "import": _cmd_import,
     "add": _cmd_add,
     "rm": _cmd_rm,
