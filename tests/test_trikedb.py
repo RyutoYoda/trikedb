@@ -911,6 +911,104 @@ def test_workspace_union(tmp_path):
     assert rows == [{"env": "ACME_DWH"}]
 
 
+def test_a_triple_term_cannot_be_empty():
+    """None is the one that matters: str(None) is "None", and the graph grows
+    a node by that name that joins every other missing value to it."""
+    db = TrikeDB()
+    for bad in (None, "", "   "):
+        with pytest.raises(ValueError, match="triple s is empty"):
+            db.add(bad, "P", "o")
+        with pytest.raises(ValueError, match="triple p is empty"):
+            db.add("s", bad, "o")
+        with pytest.raises(ValueError, match="triple o is empty"):
+            db.add("s", "P", bad)
+    from trikedb.db import Triple
+
+    with pytest.raises(ValueError, match="triple o is empty"):
+        Triple.from_dict({"s": "a", "p": "P", "o": None})
+    assert db.add("s", "P", 42).o == "42"      # a non-string term still coerces
+
+
+def test_a_malformed_document_says_which_key_and_which_file(tmp_path):
+    """Left alone these surface as .items() on a list or dict() on a string,
+    several frames from the file that needs fixing."""
+    for body, key, kind in [("triples: not-a-list\n", "triples", "list"),
+                            ("nodes: [a, b]\n", "nodes", "dict"),
+                            ("ontology: 5\ntriples: []\n", "ontology", "mapping")]:
+        g = tmp_path / f"{key}.yaml"
+        g.write_text(body)
+        with pytest.raises(ValueError) as e:
+            TrikeDB(g)
+        assert key in str(e.value) and kind in str(e.value) and g.name in str(e.value)
+
+
+def test_a_query_with_no_patterns_is_refused():
+    """A join over nothing is one empty row — a true answer to a question
+    nobody meant to ask."""
+    with pytest.raises(ValueError, match="at least one pattern"):
+        TrikeDB().query([])
+
+
+def test_an_unknown_sparql_engine_is_refused():
+    """Falling back silently means the engine you asked to compare against
+    is not the one that answered."""
+    with pytest.raises(ValueError, match="unknown sparql_engine"):
+        TrikeDB(sparql_engine="wat")
+    TrikeDB(sparql_engine="rdflib")
+
+
+def test_an_unknown_node_is_distinguishable_from_an_empty_one(tmp_path):
+    """`node` on a name nobody ever wrote returns the same shape as a node
+    with nothing attached. An agent reading that has no way to tell it got
+    an answer from a name it made up."""
+    from trikedb.cli import main
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g)
+    db.add("a", "P", "b")
+    db.set_node("bare")
+    assert main(["node", str(g), "typo-nobody-wrote"]) == 1
+    assert main(["node", str(g), "a"]) == 0
+    assert main(["node", str(g), "bare"]) == 0
+
+
+def test_a_missing_workspace_member_is_an_error(tmp_path):
+    """Silently unioning zero triples for a member that is not there turns a
+    typo into "the graph is smaller than I thought", which nothing else in
+    the output distinguishes from a graph that really is that small."""
+    ws = tmp_path / "workspace.yaml"
+    ws.write_text("graphs:\n  finance: nope.yaml\n")
+    with pytest.raises(FileNotFoundError) as e:
+        TrikeDB(ws)
+    assert "finance" in str(e.value) and "nope.yaml" in str(e.value)
+
+
+def test_a_workspace_needs_at_least_one_member(tmp_path):
+    ws = tmp_path / "workspace.yaml"
+    ws.write_text("graphs: {}\n")
+    with pytest.raises(ValueError, match="at least one member"):
+        TrikeDB(ws)
+
+
+def test_an_unhandled_url_scheme_is_an_error():
+    """`s2://` is a typo for `s3://`, not the name of a local file. Without
+    this it becomes one, and the graph comes back empty."""
+    with pytest.raises(ValueError) as e:
+        TrikeDB("s2://bucket/graph.yaml")
+    assert "s2://" in str(e.value) and "s3://" in str(e.value)
+    TrikeDB("memory://bucket/graph.yaml")      # a handled scheme still builds
+    TrikeDB("relative/path/graph.yaml")        # and a plain path is untouched
+
+
+def test_a_parse_error_names_the_file(tmp_path):
+    """PyYAML says "<unicode string>". In a workspace of five members that
+    leaves the reader opening files one at a time."""
+    bad = tmp_path / "broken.yaml"
+    bad.write_text("triples:\n  - {s: a, p: P\n")
+    with pytest.raises(ValueError, match="broken.yaml is not valid YAML"):
+        TrikeDB(bad)
+
+
 def test_workspace_is_read_only(tmp_path):
     db = TrikeDB(_make_workspace(tmp_path))
     for fn in (lambda: db.add("a", "OWNS_BUDGET", "b"),

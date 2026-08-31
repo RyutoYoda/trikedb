@@ -19,12 +19,26 @@ class OntologyError(ValueError):
     """Raised when a triple uses a predicate not declared in the ontology."""
 
 
+from .storage import check_scheme as _check_scheme
 from .storage import exists as _exists
 from .storage import is_remote as _is_remote
 from .storage import read_text as _read_text
 from .storage import serialization as _serialization
 from .storage import version as _version_of
 from .storage import write_text as _write_text
+
+
+def _term(value, field: str, whole=None) -> str:
+    """A triple's three terms are names, and a name has to be something.
+
+    ``None`` is the one that matters: left alone it becomes the string
+    ``"None"``, and the graph grows a node called None that joins to every
+    other missing value in it.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        shown = f": {whole!r}" if whole is not None else ""
+        raise ValueError(f"triple {field} is empty{shown}")
+    return str(value)
 
 
 @dataclass
@@ -46,9 +60,10 @@ class Triple:
     def from_dict(cls, data: dict) -> "Triple":
         d = dict(data)
         try:
-            s, p, o = str(d.pop("s")), str(d.pop("p")), str(d.pop("o"))
+            s, p, o = d.pop("s"), d.pop("p"), d.pop("o")
         except KeyError as exc:
             raise ValueError(f"triple is missing required key {exc}: {data!r}") from None
+        s, p, o = _term(s, "s", data), _term(p, "p", data), _term(o, "o", data)
         return cls(s, p, o, d)
 
 
@@ -134,6 +149,7 @@ class TrikeDB:
         connection=None,
         sparql_engine: Optional[str] = None,
     ):
+        _check_scheme(path)
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
             path if _is_remote(path) else (Path(path) if path else None)
@@ -178,6 +194,12 @@ class TrikeDB:
         #: worth doing if you ever need to compare the two on a real query,
         #: since they are separate SPARQL 1.1 implementations. Updates, OWL
         #: inference and SHACL always go through rdflib.
+        if sparql_engine is not None and sparql_engine not in ("oxigraph", "rdflib"):
+            # Falling back silently means the engine you asked to compare
+            # against is not the one that answered.
+            raise ValueError(
+                f"unknown sparql_engine {sparql_engine!r} - use 'oxigraph' or 'rdflib'"
+            )
         self.sparql_engine = sparql_engine or (
             "oxigraph" if _oxigraph_available() else "rdflib")
         if ontology is not None:
@@ -215,7 +237,12 @@ class TrikeDB:
         # Version first, content second — the other order can hand us a token
         # that belongs to bytes we never saw. See storage.version.
         self._version = _version_of(self.path, self._connection)
-        data = _parse_document(_read_text(self.path, connection=self._connection))
+        try:
+            data = _parse_document(_read_text(self.path, connection=self._connection))
+        except yaml.YAMLError as exc:
+            # PyYAML reports "<unicode string>", never the file it came from,
+            # which is no help at all in a workspace of five members.
+            raise ValueError(f"{self.path} is not valid YAML: {exc}") from exc
         if not isinstance(data, dict):
             # Valid YAML that isn't a mapping — a bare string or list. Reaching
             # .get() on it blames whichever key we happened to ask for first,
@@ -226,12 +253,27 @@ class TrikeDB:
                 f"{self.path} does not hold a graph: expected a YAML mapping "
                 f"with triples/nodes/ontology keys, found {type(data).__name__}"
             )
+        for key, want in (("triples", list), ("nodes", dict), ("graphs", dict)):
+            if key in data and data[key] is not None and not isinstance(data[key], want):
+                # Left to itself this surfaces as .items() on a list or a
+                # dict() on a string, several frames away from the file that
+                # actually needs fixing.
+                raise ValueError(
+                    f"{self.path}: '{key}:' must be a {want.__name__}, "
+                    f"found {type(data[key]).__name__}"
+                )
         graphs = data.get("graphs")
         if isinstance(graphs, dict) and not data.get("triples"):
             self._load_workspace(graphs)
             return
         onto = data.get("ontology") or {}
         preds = onto.get("predicates", onto) if isinstance(onto, dict) else onto
+        if not isinstance(preds, (dict, list, tuple)):
+            raise ValueError(
+                f"{self.path}: 'ontology:' must be a mapping of predicate to "
+                f"description (or a list of predicates), found "
+                f"{type(preds).__name__}"
+            )
         if isinstance(preds, dict):
             for k, v in preds.items():
                 self.ontology.setdefault(str(k), str(v or ""))
@@ -261,6 +303,11 @@ class TrikeDB:
         - **A triple's `graph` attribute is the workspace key**, not the
           member's path or filename.
         """
+        if not graphs:
+            raise ValueError(
+                f"{self.path}: 'graphs:' is empty — a workspace needs at least "
+                "one member ({name: path})"
+            )
         self.workspace = {str(k): str(v) for k, v in graphs.items()}
         self.read_only = True
         base_dir = None if _is_remote(self.path) else Path(self.path).parent
@@ -271,6 +318,14 @@ class TrikeDB:
             # warehouse has to reach it the same way this graph did, and a
             # host that cannot open its own connection cannot open one here
             # either.
+            if not _exists(gpath, self._connection):
+                # Not the same as an empty member: the workspace named this
+                # file, so a typo here silently drops a whole graph out of
+                # the union and every query just returns less.
+                raise FileNotFoundError(
+                    f"{self.path}: workspace member '{name}' points at "
+                    f"{gpath}, which does not exist"
+                )
             sub = TrikeDB(gpath, connection=self._connection)
             for k, v in sub.ontology.items():
                 self.ontology.setdefault(k, v)
@@ -371,7 +426,7 @@ class TrikeDB:
                 f"predicate {p!r} is not in the ontology "
                 f"(allowed: {sorted(self.ontology)})"
             )
-        key = (str(s), str(p), str(o))
+        key = (_term(s, "s"), _term(p, "p"), _term(o, "o"))
         index = self._spo_index()
         existing = index.get(key)
         if existing is not None:
@@ -527,6 +582,10 @@ class TrikeDB:
         >>> db.query(["?src PROVIDES ?job", "?job INGESTS_TO ?table"])
         [{'src': ..., 'job': ..., 'table': ...}, ...]
         """
+        if not patterns:
+            # The identity of a join over nothing is one empty row, which is
+            # a true answer to a question nobody meant to ask.
+            raise ValueError("query needs at least one pattern, got none")
         parsed = [self._parse_pattern(pat) for pat in patterns]
         bindings: list = [{}]
         for pat in parsed:

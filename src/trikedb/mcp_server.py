@@ -214,6 +214,9 @@ def build_server(
         """Everything known about a node: properties plus its outgoing and incoming triples."""
         return {
             "name": name,
+            # Without this an agent cannot tell "no node by that name" from
+            # "a node with nothing attached", and both read as an answer.
+            "exists": name in db.nodes(),
             "properties": db.node(name),
             "outgoing": [t.to_dict() for t in db.triples(s=name)],
             "incoming": [t.to_dict() for t in db.triples(o=name)],

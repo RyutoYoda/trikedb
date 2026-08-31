@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .db import OntologyError, TrikeDB
+from .storage import ConcurrentWriteError
 
 
 def main(argv=None) -> int:
@@ -227,9 +228,13 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         return _COMMANDS[args.command](args)
-    except (OntologyError, ValueError) as exc:
-        # A rejected predicate or a refused type change is the graph doing
-        # its job; a traceback reads like trikedb broke instead.
+    except (OntologyError, ValueError, SyntaxError, OSError,
+            ConcurrentWriteError) as exc:
+        # A rejected predicate, a query that does not parse, a member graph
+        # that is not where the workspace says it is — every one of these is
+        # the graph or the input being wrong, and a traceback reads like
+        # trikedb broke instead. Anything not listed here is a bug in
+        # trikedb, and for those the traceback is the useful answer.
         raise SystemExit(f"error: {exc}")
 
 
@@ -345,13 +350,17 @@ def _cmd_node(args) -> int:
     if args.attr:
         db.set_node(args.name, replace=args.replace, **_parse_attrs(args.attr))
         db.save()
-    print(json.dumps({
+    record = {
         "name": args.name,
+        # An unknown name and a node with nothing on it produce the same empty
+        # record, and "no such node" is the answer people actually wanted.
+        "exists": args.name in db.nodes(),
         "properties": db.node(args.name),
         "outgoing": [t.to_dict() for t in db.triples(s=args.name)],
         "incoming": [t.to_dict() for t in db.triples(o=args.name)],
-    }, ensure_ascii=False, indent=2))
-    return 0
+    }
+    print(json.dumps(record, ensure_ascii=False, indent=2))
+    return 0 if record["exists"] else 1
 
 
 def _cmd_ontology(args) -> int:

@@ -40,6 +40,26 @@ def is_remote(path) -> bool:
     return isinstance(path, str) and path.startswith(REMOTE_PREFIXES)
 
 
+def check_scheme(path) -> None:
+    """Reject a URL whose scheme no backend answers to.
+
+    Without this, ``s2://bucket/kg.yaml`` is not an error: nothing claims
+    it, so it falls through to the local-file branch and becomes a new,
+    empty graph in a file literally named ``s2://bucket/kg.yaml``. The typo
+    reads as "the graph is empty", which is the worst way to learn about it.
+    A path with no ``://`` is a filename and is left alone.
+    """
+    if not isinstance(path, str) or "://" not in path:
+        return
+    scheme = path.split("://", 1)[0]
+    if scheme + "://" not in REMOTE_PREFIXES:
+        raise ValueError(
+            f"{path}: no backend handles '{scheme}://' — supported schemes are "
+            + ", ".join(REMOTE_PREFIXES)
+            + " (a local path is written without a scheme)"
+        )
+
+
 #: Schemes handled by :mod:`trikedb.storage_sql`. Named here, deliberately
 #: duplicating what that module knows, so that a plain path or an ``s3://``
 #: URL never imports it: the SQL backend pulls in a warehouse driver, and
