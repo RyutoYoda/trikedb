@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/RyutoYoda/trikedb/actions/workflows/test.yml"><img src="https://github.com/RyutoYoda/trikedb/actions/workflows/test.yml/badge.svg" alt="tests" /></a>
   <a href="https://pypi.org/project/trikedb/"><img src="https://img.shields.io/pypi/v/trikedb?style=flat&color=4a6fa5&cacheSeconds=300" /></a>
   <img src="https://img.shields.io/pypi/pyversions/trikedb?style=flat&color=4a6fa5" />
   <img src="https://img.shields.io/badge/license-MIT-4a6fa5?style=flat" />

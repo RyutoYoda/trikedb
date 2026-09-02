@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # the floor and the ceiling: requires-python is >=3.10, and a new
+        # release breaking on the newest interpreter is the report that
+        # arrives after someone has already given up on installing it.
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest tests/ -q
+
+  # The graph page is generated, committed and served from docs/. Nothing
+  # else notices when it drifts from the graph it was built from.
+  docs-are-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e "."
+      - run: |
+          python -m trikedb.cli check examples/freebase_sample.yaml --html docs/index.html
+          python -m trikedb.cli check examples/freebase_workspace.yaml --html docs/workspace.html
