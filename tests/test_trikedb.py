@@ -473,6 +473,32 @@ def test_force_layout_keeps_nodes_from_landing_on_each_other():
     assert "Math.min(1200, Math.max(200, ids.length * 12))" in html
 
 
+def test_shacl_targets_the_type_property_not_a_class(tmp_path):
+    """A node's `type` is a property, so it projects as t:type "x" — a
+    literal, not rdf:type t:x. A shape written with sh:targetClass matches
+    nothing and reports Conforms: True: the check passes because it never
+    ran. REFERENCE.md documents targetSubjectsOf instead; this pins the
+    projection that makes that advice necessary."""
+    pytest.importorskip("pyshacl")
+    db = TrikeDB(autosave=False)
+    db.set_node("Slack契約", type="SaaS契約", 契約単位="ユーザー数")
+    db.set_node("Notion契約", type="SaaS契約")
+    rdf = {str(t[1]) for t in db.to_rdflib()}
+    assert "urn:trikedb:type" in rdf
+    assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" not in rdf
+
+    shapes = tmp_path / "s.ttl"
+    shapes.write_text(
+        "@prefix sh: <http://www.w3.org/ns/shacl#> .\n"
+        "@prefix t:  <urn:trikedb:> .\n"
+        "t:S a sh:NodeShape ; sh:targetSubjectsOf t:type ;\n"
+        '  sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .\n',
+        encoding="utf-8")
+    conforms, report = db.validate(str(shapes))
+    assert conforms is False
+    assert "Notion契約" in report
+
+
 def test_an_object_valued_attribute_never_renders_as_object_object():
     """String({}) is "[object Object]". A stray `attrs: {}` key in a
     hand-edited example file made every relation in the shipped demo page

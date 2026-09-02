@@ -723,6 +723,19 @@ boolean に一致しなければならない。`TrikeDB(..., sparql_engine="rdfl
 
 - **SHACL**(`[shacl]`): 本物の形状制約(カーディナリティ・値域)を
   `urn:trikedb:` 名前空間に対して。`trikedb validate` はCIでそのまま使える
+
+  **クラスではなくプロパティを対象にする。** ノードの `type` はノードの
+  *プロパティ*なので、`t:type "table"` というリテラルとして投影される
+  (`rdf:type t:table` ではない)。SHACLの定石どおり `sh:targetClass` から
+  書くと何にも一致せず、`Conforms: True` が返る。**検査が通ったのではなく、
+  検査が走っていない。** `sh:targetSubjectsOf t:type`(型を持つ全ノード)か、
+  SPARQLベースのターゲットを使う。
+
+  ```turtle
+  t:ContractShape a sh:NodeShape ;
+    sh:targetSubjectsOf t:type ;          # sh:targetClass ではなく
+    sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .
+  ```
 - **OWL-RL**(`[owl]`): 述語に特性を宣言して、導かれる事実を実体化。
   推論は**魔法ではなく実体化** — 導出された事実は `inferred: true` タグ付きで
   YAMLに書かれ、diffでレビューできる。その場限りの推移閉包なら

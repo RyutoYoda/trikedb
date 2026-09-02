@@ -770,6 +770,19 @@ return the untouched value.
 - **SHACL** (`[shacl]`): real shape constraints — cardinality, value
   ranges — against the `urn:trikedb:` namespace. `trikedb validate` is
   CI-ready.
+
+  **Target on the property, not on a class.** A node's `type` is a node
+  *property*, so it projects as `t:type "table"` — a literal, not
+  `rdf:type t:table`. A shape written the idiomatic way starts with
+  `sh:targetClass`, matches nothing, and reports `Conforms: True`: the
+  check passes because it never ran. Use `sh:targetSubjectsOf t:type`
+  (every node that has a type) or a SPARQL-based target instead.
+
+  ```turtle
+  t:ContractShape a sh:NodeShape ;
+    sh:targetSubjectsOf t:type ;          # not sh:targetClass
+    sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .
+  ```
 - **OWL-RL** (`[owl]`): declare characteristics, materialize what
   follows. Inference is *materialization, not magic*: derived facts land
   in the YAML tagged `inferred: true`, reviewable in the diff. For
