@@ -75,472 +75,354 @@ triples:
 - s: Nikola Tesla
   p: film.film_character.portrayed_in_films
   o: m.0220wkr
-  attrs: {}
 - s: Nikola Tesla
   p: film.film_subject.films
   o: The Secret of Nikola Tesla
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Puyo Puyo 7
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Angelique Trois
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: 'Assassin''s Creed: Revelations (360 JP)'
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Mario & Sonic at the Olympic Winter Games
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Ayakashi no Shiro
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Sonic Adventure
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Cosmic Walker
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Power Smash 4
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Minna de Puyo Puyo
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Sonic Kart 3DX
-  attrs: {}
 - s: Japan
   p: cvg.computer_game_region.versions_released_in_this_region
   o: Mojipittan
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Sabotage
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Desyat Negrityat
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Crime Is Our Business
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Mirror Crack'd
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Man in the Brown Suit
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: And Then There Were None
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Dead Man's Folly
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Murder on the Orient Express
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Adhey Kangal
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Chupi Chupi Aashey
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Agatha Christie's Seven Dials Mystery
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Passing of Mr. Quin
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Death on the Nile
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Dhund
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: 'Agatha Christie''s Miss Marple: 4:50 from Paddington'
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: A Caribbean Mystery
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Endless Night
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Shubho Mahurat
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Ordeal By Innocence
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Witness for the Prosecution
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Evil under the Sun
-  attrs: {}
 - s: Agatha Christie
   p: film.writer.film
   o: The Mirror Crack'd
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Gumnaam
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: 'Agatha Christie: The Pale Horse'
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Pale Horse
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Ten Little Indians
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Why Didn't They Ask Evans?
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: They Do It with Mirrors
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Le Grand Alibi
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: 'Marple: A Murder Is Announced'
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Murder At The Gallop
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Appointment with Death
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Murder, She Said
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Crooked House
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Ordeal by Innocence
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Alphabet Murders
-  attrs: {}
 - s: Agatha Christie
   p: tv.tv_writer.tv_programs
   o: m.0t_5y45
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Alibi
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Murder Most Foul
-  attrs: {}
 - s: Agatha Christie
   p: tv.tv_character.appeared_in_tv_episodes
   o: m.04hxkym
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Tarka
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Evil Under the Sun
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Murder with Mirrors
-  attrs: {}
 - s: Agatha Christie
   p: film.film_character.portrayed_in_films
   o: m.02vbg_8
-  attrs: {}
 - s: Agatha Christie
   p: film.film_character.portrayed_in_films
   o: m.0cg0qdd
-  attrs: {}
 - s: Agatha Christie
   p: film.film_character.portrayed_in_films
   o: m.04j1d2v
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Towards Zero
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: The Mirror Crack'd From Side To Side
-  attrs: {}
 - s: Agatha Christie
   p: film.film_story_contributor.film_story_credits
   o: Love from a Stranger
-  attrs: {}
 - s: Tupac Shakur
   p: tv.tv_actor.guest_roles
   o: m.09p1r83
-  attrs: {}
 - s: Tupac Shakur
   p: film.music_contributor.film
   o: Def Jam's How to Be a Player
-  attrs: {}
 - s: Tupac Shakur
   p: film.person_or_entity_appearing_in_film.films
   o: m.0jmyz9j
-  attrs: {}
 - s: Tupac Shakur
   p: tv.tv_actor.guest_roles
   o: m.0wk8n31
-  attrs: {}
 - s: Tupac Shakur
   p: film.actor.film
   o: m.0jyn86
-  attrs: {}
 - s: Tupac Shakur
   p: film.person_or_entity_appearing_in_film.films
   o: m.0jmyz7m
-  attrs: {}
 - s: Tupac Shakur
   p: film.actor.film
   o: m.02vcpnk
-  attrs: {}
 - s: Tupac Shakur
   p: film.actor.film
   o: m.02vcykh
-  attrs: {}
 - s: Tupac Shakur
   p: film.film_character.portrayed_in_films
   o: m.0cgcc55
-  attrs: {}
 - s: Tupac Shakur
   p: film.person_or_entity_appearing_in_film.films
   o: m.0cscmvw
-  attrs: {}
 - s: Tupac Shakur
   p: film.film_subject.films
   o: 'Tupac: Hip Hop Genius'
-  attrs: {}
 - s: Tupac Shakur
   p: film.person_or_entity_appearing_in_film.films
   o: m.0jmyz8n
-  attrs: {}
 - s: Tupac Shakur
   p: film.person_or_entity_appearing_in_film.films
   o: m.0jmyz7_
-  attrs: {}
 - s: Tupac Shakur
   p: film.music_contributor.film
   o: 'Tupac: Resurrection'
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.0cs8grc
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.guest_roles
   o: m.08ndrqp
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.guest_roles
   o: m.052d3y6
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_program_guest.appeared_on
   o: m.0j8b4b7
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.01z02gc
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.starring_roles
   o: m.0lhskb3
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.0gfsvdh
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.guest_roles
   o: m.08ndrqz
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.guest_roles
   o: m.0kcptrc
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_personality.tv_regular_appearances
   o: m.071g2d8
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.starring_roles
   o: m.0bmlgdp
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.0cgnzpc
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.guest_roles
   o: m.08ndrq9
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.0z5n9s0
-  attrs: {}
 - s: Caitlyn Jenner
   p: tv.tv_actor.starring_roles
   o: m.040ryd3
-  attrs: {}
 - s: Caitlyn Jenner
   p: film.actor.film
   o: m.0_vcp39
-  attrs: {}
 - s: m.0gfsvdh
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0lhskb3
   p: tv.regular_tv_appearance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0j8b4b7
   p: tv.tv_guest_personal_appearance.person
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.052d3y6
   p: tv.tv_guest_role.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.01z02gc
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0kcptrc
   p: tv.tv_guest_role.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0z5n9s0
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0cgnzpc
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.08ndrq9
   p: tv.tv_guest_role.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.071g2d8
   p: tv.tv_regular_personal_appearance.person
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0cs8grc
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0bmlgdp
   p: tv.regular_tv_appearance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.08ndrqp
   p: tv.tv_guest_role.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.08ndrqz
   p: tv.tv_guest_role.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0_vcp39
   p: film.performance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.040ryd3
   p: tv.regular_tv_appearance.actor
   o: Caitlyn Jenner
-  attrs: {}
 - s: m.0cs8grc
   p: film.performance.film
   o: Grambling's White Tiger
-  attrs: {}
 - s: m.08ndrqp
   p: tv.tv_guest_role.character
   o: Zak Farrell
-  attrs: {}
 - s: m.052d3y6
   p: tv.tv_guest_role.episodes_appeared_in
   o: Tales of a Third Grade Nothing
-  attrs: {}
 - s: m.0j8b4b7
   p: tv.tv_guest_personal_appearance.appearance_type
   o: Him/Herself
-  attrs: {}
 - s: m.0j8b4b7
   p: tv.tv_guest_personal_appearance.episode
   o: Bruce Jenner
-  attrs: {}
 - s: m.01z02gc
   p: film.performance.film
   o: Can't Stop the Music
-  attrs: {}
 - s: m.0lhskb3
   p: tv.regular_tv_appearance.series
   o: I'm a Celebrity...Get Me Out of Here!
-  attrs: {}
 - s: m.0gfsvdh
   p: film.performance.film
   o: Dirty Tennis
-  attrs: {}
 - s: m.0gfsvdh
   p: film.performance.special_performance_type
   o: Him/Herself
-  attrs: {}
 - s: m.08ndrqz
   p: tv.tv_guest_role.episodes_appeared_in
   o: Season 1, Episode 5
-  attrs: {}

@@ -473,6 +473,17 @@ def test_force_layout_keeps_nodes_from_landing_on_each_other():
     assert "Math.min(1200, Math.max(200, ids.length * 12))" in html
 
 
+def test_an_object_valued_attribute_never_renders_as_object_object():
+    """String({}) is "[object Object]". A stray `attrs: {}` key in a
+    hand-edited example file made every relation in the shipped demo page
+    read "attrs: [object Object]"."""
+    db = TrikeDB(autosave=False, ontology={"P": ""})
+    db.add("a", "P", "b", attrs={}, note="fine")
+    html = db.to_html()
+    assert "JSON.stringify" in html          # the guard is in the page
+    assert '"attrs": {}' in html or '"attrs":{}' in html   # the value survives
+
+
 def test_nodes_carry_no_scaling_option():
     """vis rewrites any `scaling` we hand it to {label:{}}, and a node whose
     scaling has no label sizes gets a NaN font size: the box then draws with

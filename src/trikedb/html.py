@@ -548,7 +548,12 @@ searchBox.addEventListener("keydown", (e) => {
 });
 
 // --------------------------------------------------------- detail panel
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// String({}) is "[object Object]", which is what an attribute holding a
+// mapping used to render as. Nothing in the graph should hold one, but the
+// file is hand-edited, and a stray `attrs: {}` key made every relation in
+// the shipped demo read "attrs: [object Object]".
+const show = (v) => (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
+const esc = (s) => show(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const linkify = (s) => esc(s).replace(/(https?:\\/\\/[^\\s<]+)/g,
   '<a href="$1" target="_blank" rel="noopener">$1</a>');
 

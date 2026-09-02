@@ -67,300 +67,225 @@ triples:
 - s: Agatha Christie
   p: music.artist.album
   o: m.0ytq21d
-  attrs: {}
 - s: Agatha Christie
   p: music.artist.album
   o: m.0ycgzyw
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Help Us Change
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Initiated
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.track_contributions
   o: m.0ffbv3q
-  attrs: {}
 - s: Tupac Shakur
   p: music.lyricist.lyrics_written
   o: I Get Around
-  attrs: {}
 - s: Tupac Shakur
   p: music.group_member.membership
   o: m.0l4rhqh
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: Strictly 4 My N.I.G.G.A.Z...
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Still Ballin'
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Baby Don’t Cry (DJ Smoov mix)
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: Poetic Justice
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Runnin' from tha Police
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: Supercop
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: 'Death Row: The Singles Collection'
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Better Dayz
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Running
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.track_contributions
   o: m.0nj8wsb
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Hit'em Up
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.contribution
   o: m.0vx1g4t
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: g.11bbmpspvb
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: P.Y.T. (Playa Young Thugs)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Only Move 4 Tha Money (So We Comin' Up)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Gotta Get Mine
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: Gang Related
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: オール・アイズ・オン・ミー
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.genre
   o: Political hip hop
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.tracks_produced
   o: Hit 'Em Up
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Right Now
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Another Ruff One
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Me & My BoyFriend
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.albums
   o: Stop the Gunfight
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.tracks_produced
   o: Made Niggaz
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Political Soldiers
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Baby Don't Cry (Keep Ya Head Up II)
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.track_contributions
   o: m.0110d5wf
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.track_contributions
   o: m.0nj8ws1
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Homies & Thuggs (original)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Dusted 'n' Disgusted
-  attrs: {}
 - s: Tupac Shakur
   p: music.group_member.membership
   o: m.01v06pp
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: 2 of Americaz Most Wanted
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Girlfriend
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Wanted Dead or Alive
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: One Day at a Time
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: World Wide (remix)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: The Pledge (remix album version)
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: How Much
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: So Many Tears
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Stop the Gunfight (R&B version)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: The Pledge (remix)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: The Thrill Is Gone
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: N.I.G.G.A
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.albums
   o: Playa Cardz Right
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Locked Up (remix)
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: g.11btxh_dbt
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Street Soldiers
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: 15 Years on Death Row
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Please Respect It
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Me & My Homies
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Let's Get It On (remix)
-  attrs: {}
 - s: Tupac Shakur
   p: music.lyricist.lyrics_written
   o: Panther Power
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Against All Odds
-  attrs: {}
 - s: Tupac Shakur
   p: music.producer.releases_produced
   o: Still I Rise
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.track_contributions
   o: m.0q6s702
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Be the Realist
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: I Ain't Mad at Cha
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: I Wonder If Heaven Got a Ghetto
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: Got 2 Survive
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Pac's Life
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: 4 tha Hustlas
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: California Love
-  attrs: {}
 - s: Tupac Shakur
   p: music.composer.compositions
   o: Me and My Girlfriend
-  attrs: {}
 - s: Tupac Shakur
   p: music.featured_artist.recordings
   o: California Love
-  attrs: {}
 - s: Tupac Shakur
   p: music.artist.label
   o: Interscope Records
-  attrs: {}
 - s: Caitlyn Jenner
   p: music.artist.track
   o: Green Shoes Talk
-  attrs: {}
 - s: Green Shoes Talk
   p: music.recording.artist
   o: Caitlyn Jenner
-  attrs: {}
