@@ -739,3 +739,17 @@ uv run pytest
 ## License
 
 MIT
+
+### Bundled data
+
+The graphs under `examples/` and the benchmark inputs under `bench_out/` are
+derived from third-party datasets and keep their original terms:
+
+- **Freebase** — the `examples/freebase_*.yaml` graphs are a small extract of
+  the Freebase dump, licensed [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/).
+- **WebQSP** — the questions and evaluation set under `bench_out/` come from
+  [The Value of Semantic Parse Labeling for KBQA](https://aclanthology.org/P16-2033/)
+  (Yih et al., 2016). Used here for measurement only.
+
+Neither is required to use trikedb; both are shipped so the demo pages and the
+benchmark numbers can be reproduced.

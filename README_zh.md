@@ -596,3 +596,15 @@ uv run pytest
 ## 许可证
 
 MIT
+
+### 随仓库分发的数据
+
+`examples/` 下的图和 `bench_out/` 下的基准输入来自第三方数据集，沿用其原有条款。
+
+- **Freebase** — `examples/freebase_*.yaml` 是 Freebase 转储的一小部分摘录，
+  采用 [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/)
+- **WebQSP** — `bench_out/` 中的问题与评测集来自
+  [The Value of Semantic Parse Labeling for KBQA](https://aclanthology.org/P16-2033/)
+  (Yih et al., 2016)，此处仅用于测量
+
+两者都不是使用 trikedb 的必需项，随仓库分发只是为了能复现演示页面和基准数字。

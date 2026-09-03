@@ -596,3 +596,17 @@ uv run pytest
 ## ライセンス
 
 MIT
+
+### 同梱しているデータ
+
+`examples/` のグラフと `bench_out/` のベンチマーク入力は第三者のデータセット
+由来で、元の条件をそのまま引き継ぎます。
+
+- **Freebase** — `examples/freebase_*.yaml` は Freebase ダンプの一部を抜き出した
+  もので、[CC BY 2.5](https://creativecommons.org/licenses/by/2.5/) です
+- **WebQSP** — `bench_out/` の質問と評価セットは
+  [The Value of Semantic Parse Labeling for KBQA](https://aclanthology.org/P16-2033/)
+  (Yih et al., 2016) のものです。計測のためだけに使っています
+
+どちらも trikedb を使うのに必要なものではありません。デモページとベンチマークの
+数字を再現できるように同梱しています。
