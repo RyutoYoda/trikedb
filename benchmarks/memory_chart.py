@@ -1,15 +1,20 @@
-"""Render memory_data.json as the two panels the comparison comes down to.
+"""Render memory_data.json as a cost-quality plot: tokens against accuracy.
 
     python benchmarks/memory_bench.py sweep bench_out/memory \
         --json benchmarks/memory_data.json
     python benchmarks/memory_chart.py            # -> benchmarks/memory.png
 
-Tokens on top, accuracy underneath, one shared x axis — the size of the
-project's knowledge. That order is the argument: the panels answer "what does
-each question cost" and then "did the cheap one give up any accuracy for it",
-and reversing them turns a result into a pair of unrelated charts. The token
-axis is logarithmic because the gap is multiplicative and a linear axis draws
-the graph's line flat against zero, which reads as "no data".
+One panel, not two. An earlier version stacked tokens over accuracy on a
+shared x axis of corpus size, and it asked the reader to hold a point in the
+top panel against the point below it and do the division — which is the whole
+finding, performed in the reader's head. Here both quantities are position:
+tokens across, accuracy up, so **up and to the left is better** and "the same
+answers for fewer tokens" becomes a place on the page rather than arithmetic.
+
+It also separates what the line chart merged. Plotted against corpus size the
+grep control sat within a few hundred tokens of the graph and the two curves
+overlapped; plotted against accuracy they are far apart vertically, which is
+the difference that actually matters.
 
 Needs plotly and kaleido:  pip install plotly kaleido
 """
@@ -21,7 +26,6 @@ import math
 from pathlib import Path
 
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 HERE = Path(__file__).resolve().parent
 
@@ -31,64 +35,52 @@ INK_MUTED = "#52514e"
 GRID = "#e6e5e1"
 RULE = "#c9c7c0"
 
-#: The same two hues the accuracy chart uses for the same meaning — blue is
-#: the condition without a graph, orange is the one with. `md_grep` is the
-#: honest middle (retrieval, but over text) and gets a third hue rather than a
-#: tint of either, because reading it as "a lighter kind of markdown" is
-#: exactly the wrong reading: it is the control that isolates what the *graph*
-#: contributes on top of retrieving at all.
+#: Blue is the file, orange the graph, green the text-retrieval control — the
+#: same meanings these hues carry in every other figure in this directory.
 MD = "#2a78d6"
 GRAPH = "#eb6834"
 MD_GREP = "#1baf7a"
 
-#: Two lines, not three. `md_grep` is a control and its numbers matter, but on
-#: this figure it sits within a few hundred tokens of the graph's line, so the
-#: top panel showed two curves where the legend promised three and the reader
-#: had to work out which was missing. It lives in the table in README.md.
-SERIES = [("md", MD, "top center"), ("graph", GRAPH, "bottom center")]
-PLOTTED = ("md", "graph", "md_grep")
-
-#: A translated doc deserves a translated figure. Only the words move; every
-#: number and every colour is the same file of data.
 TEXT = {
     "en": {
-        "title": "The file's cost grows with the project. The graph's does not.",
-        "sub": ("WebQSP · 100 questions · qwen3:8b · the identical corpus "
-                "delivered as a CLAUDE.md / AGENTS.md and as a trikedb graph"),
-        "x": "facts in the project's knowledge",
-        "y1": "prompt tokens per question", "y2": "Hits@1",
-        "md": "the whole CLAUDE.md / AGENTS.md in the prompt",
-        "md_grep": "matching lines of AGENTS.md",
-        "graph": "trikedb retrieval, 15 facts",
-        "none": "no context at all",
-        "gap": "<b>{cut:.1f}% fewer</b> tokens<br>at 15 facts returned",
-        "window": "↑ past here the file no longer fits the window",
+        "title": "Up and to the left is better: fewer tokens, better answers",
+        "sub": ("WebQSP · 100 questions · qwen3:8b · one corpus delivered as a "
+                "CLAUDE.md / AGENTS.md and as a trikedb graph · each point is "
+                "one corpus size, 492 to 3,998 facts"),
+        "x": "prompt tokens per question", "y": "Hits@1",
+        "md": "the whole CLAUDE.md / AGENTS.md",
+        "graph": "trikedb, 15 facts returned",
+        "md_grep": "grep the file, 15 lines",
+        "tuned": "trikedb at 492 facts,<br>returning more",
+        "none": "no context at all — {floor:.0f}%",
+        "grow": "the file grows →",
+        "flat": "every corpus size, 492 to 3,998 facts,<br>lands in this one spot",
     },
     "jp": {
-        "title": "ファイルのコストはプロジェクトと共に増える。グラフは増えない。",
-        "sub": ("WebQSP · 100問 · qwen3:8b · 同一のコーパスを "
-                "CLAUDE.md / AGENTS.md と trikedb グラフの両方で渡した"),
-        "x": "プロジェクトの知識に入っている事実の数",
-        "y1": "1問あたりのプロンプトトークン", "y2": "Hits@1",
-        "md": "CLAUDE.md / AGENTS.md 全文をプロンプトに",
-        "md_grep": "AGENTS.md の該当行だけ",
-        "graph": "trikedb で検索、15件",
-        "none": "文脈なし",
-        "gap": "トークン <b>{cut:.1f}% 削減</b><br>（15件返した場合）",
-        "window": "↑ これ以上はファイルが窓に入らない",
+        "title": "左上が良い：トークンは少なく、精度は高い",
+        "sub": ("WebQSP · 100問 · qwen3:8b · 同一コーパスを CLAUDE.md / AGENTS.md "
+                "と trikedb グラフで渡した · 点1つがコーパスサイズ1つ、492〜3,998件"),
+        "x": "1問あたりのプロンプトトークン", "y": "Hits@1",
+        "md": "CLAUDE.md / AGENTS.md 全文",
+        "graph": "trikedb、15件返す",
+        "md_grep": "ファイルを grep、15行",
+        "tuned": "492件のとき<br>返す件数を増やす",
+        "none": "文脈なし — {floor:.0f}%",
+        "grow": "ファイルは育つ →",
+        "flat": "492〜3,998件、どのサイズも<br>この一点に集まる",
     },
     "zh": {
-        "title": "文件的成本随项目增长，图谱的不会。",
-        "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料分别以 "
-                "CLAUDE.md / AGENTS.md 和 trikedb 图谱交付"),
-        "x": "项目知识中的事实条数",
-        "y1": "每题的提示词 token 数", "y2": "Hits@1",
-        "md": "把整个 CLAUDE.md / AGENTS.md 放进提示",
-        "md_grep": "只放 AGENTS.md 中匹配的行",
-        "graph": "trikedb 检索，15 条",
-        "none": "没有任何上下文",
-        "gap": "token <b>减少 {cut:.1f}%</b><br>（返回 15 条时）",
-        "window": "↑ 再大文件就装不进上下文窗口",
+        "title": "越靠左上越好：token 更少，答得更准",
+        "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料分别以 CLAUDE.md / "
+                "AGENTS.md 和 trikedb 图谱交付 · 每个点是一种语料规模，492〜3,998 条"),
+        "x": "每题的提示词 token 数", "y": "Hits@1",
+        "md": "整份 CLAUDE.md / AGENTS.md",
+        "graph": "trikedb，返回 15 条",
+        "md_grep": "grep 文件，15 行",
+        "tuned": "492 条语料下<br>增加返回条数",
+        "none": "没有任何上下文 — {floor:.0f}%",
+        "grow": "文件不断变大 →",
+        "flat": "492〜3,998 条，任何规模<br>都落在这一个位置",
     },
 }
 
@@ -96,156 +88,120 @@ TEXT = {
 def main(lang: str = "en") -> None:
     rows = json.loads((HERE / "memory_data.json").read_text())
     warm = [r for r in rows if "/cold" not in r["condition"]]
-    floor = next((r["hits_at_1"] for r in warm if r["condition"] == "none"), None)
-    by = {name: sorted((r for r in warm if r["condition"] == name),
-                       key=lambda r: r["corpus_triples"])
-          for name in PLOTTED}
-
-    # The bracket's ratio is raw tokens at a fixed retrieval size, taken at
-    # the largest corpus where the file still fits the window. It is not a
-    # like-for-like saving and the title no longer claims it is: at the
-    # smallest corpus this retrieval size scores five points below the file,
-    # so the same ratio there would be comparing a cheap wrong answer against
-    # an expensive right one. README.md carries the accuracy-matched table.
-    fitting = [r for r in by["md"] if not r["truncated"]] or by["md"]
-    biggest = fitting[-1]
-    paired = next(r for r in by["graph"]
-                  if r["corpus_triples"] == biggest["corpus_triples"])
-    ratio = biggest["median_prompt_tokens"] / paired["median_prompt_tokens"]
-    # A percentage, because "78x" makes the reader work out which direction is
-    # cheaper. "98.7% fewer" does not.
-    cut = 100 * (1 - paired["median_prompt_tokens"]
-                 / biggest["median_prompt_tokens"])
-    words = {k: v.format(ratio=ratio, cut=cut) if "{" in v else v
+    floor = next((r["hits_at_1"] for r in warm if r["condition"] == "none"), 0)
+    words = {k: v.format(floor=floor) if "{floor" in v else v
              for k, v in TEXT[lang].items()}
 
-    # Every size any condition reached, not just the file arm's. The file
-    # stops before the graph does — that is the finding — and taking the
-    # ticks from it leaves the last two corpus sizes unlabelled.
-    sizes = sorted({r["corpus_triples"] for r in warm})
+    def series(name):
+        return sorted((r for r in warm if r["condition"] == name),
+                      key=lambda r: r["corpus_triples"])
 
-    figure = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                           vertical_spacing=0.08, row_heights=[0.52, 0.48])
+    figure = go.Figure()
 
-    for name, color, side in SERIES:
-        points = by[name]
+    # Each condition is a path through the plane as the corpus grows. The
+    # file's runs down and to the right — dearer *and* worse — and the graph's
+    # barely moves, which is the finding stated as a shape rather than a ratio.
+    for name, color, label in (
+        ("md_grep", MD_GREP, lambda r, i, n: ""),
+        ("md", MD, lambda r, i, n: f"{r['corpus_triples']:,}"),
+        ("graph", GRAPH, lambda r, i, n: ""),
+    ):
+        points = series(name)
         if not points:
             continue
-        x = [r["corpus_triples"] for r in points]
-
-        def ends(values, fmt):
-            """The value written on the first and last point, nothing between.
-
-            Labelling every point stacks five numbers along a line that is
-            almost flat; labelling none makes the reader decode a log axis to
-            learn that 409 and 375 are the same number twice.
-            """
-            return [fmt(v) if i in (0, len(values) - 1) else ""
-                    for i, v in enumerate(values)]
-
-        tokens = [r["median_prompt_tokens"] for r in points]
         figure.add_trace(go.Scatter(
-            x=x, y=tokens, mode="lines+markers+text", name=words[name],
-            legendgroup=name, text=ends(tokens, lambda v: f"{v:,}"),
-            textposition=side, textfont=dict(size=13, color=color),
-            cliponaxis=False,
-            line=dict(color=color, width=3), marker=dict(size=9, color=color),
-            hovertemplate="%{x:,} facts<br>%{y:,} prompt tokens<extra></extra>",
-        ), row=1, col=1)
-        # A truncated prompt is drawn hollow. It is still the real score of a
-        # real configuration — a file that outgrew the window — but it is a
-        # different failure from getting lost in a file that fit, and one
-        # marker for both would merge them.
-        hits = [r["hits_at_1"] for r in points]
+            x=[r["median_prompt_tokens"] for r in points],
+            y=[r["hits_at_1"] for r in points],
+            mode="lines+markers+text", name=words[name],
+            legendrank={"md": 1, "graph": 2, "md_grep": 3}[name],
+            text=[label(r, i, len(points)) for i, r in enumerate(points)],
+            textposition="bottom center", cliponaxis=False,
+            textfont=dict(size=12, color=color),
+            line=dict(color=color, width=2),
+            marker=dict(size=13, color=color,
+                        line=dict(color=SURFACE, width=1.5)),
+            customdata=[r["corpus_triples"] for r in points],
+            hovertemplate=(f"{words[name]}<br>%{{customdata:,}} facts"
+                           "<br>%{x:,} tokens<br>%{y:.1f}%<extra></extra>"),
+        ))
+
+    # The knob, drawn only where it was measured. Returning more facts buys
+    # accuracy the file cannot buy at any price — it is already sending
+    # everything — and these points sit above *and* left of the file's best,
+    # which is the one comparison in the figure that is unambiguous.
+    tuned = sorted((r for r in warm if r["condition"].startswith("graph@")
+                    and r["corpus_triples"] == 492),
+                   key=lambda r: r["median_prompt_tokens"])
+    base = next((r for r in series("graph") if r["corpus_triples"] == 492), None)
+    if tuned and base:
+        chain = [base] + tuned
         figure.add_trace(go.Scatter(
-            x=x, y=hits, mode="lines+markers+text",
-            name=words[name], legendgroup=name, showlegend=False,
-            text=ends(hits, lambda v: f"{v:.0f}%"),
-            textposition=side, textfont=dict(size=13, color=color),
-            cliponaxis=False,
-            line=dict(color=color, width=3),
-            marker=dict(size=11, color=[SURFACE if r["truncated"] else color
-                                        for r in points],
-                        line=dict(color=color, width=3)),
-            hovertemplate="%{x:,} facts<br>%{y:.1f}% Hits@1<extra></extra>",
-        ), row=2, col=1)
-
-    # The gap itself, drawn as a bracket between the two lines at the widest
-    # point that still fits. A reader will not divide two log-axis positions
-    # by eye, and that division is the entire result.
-    # On a log axis these two take different units, which is not a thing you
-    # find out from the rendering: a shape is placed from the data value, an
-    # annotation from its log10. Give both the same number and one of them
-    # lands somewhere the eye reads as "the code did not run".
-    low, high = (paired["median_prompt_tokens"], biggest["median_prompt_tokens"])
-    figure.add_shape(type="line", x0=biggest["corpus_triples"],
-                     x1=biggest["corpus_triples"], y0=low, y1=high,
-                     line=dict(color=INK_MUTED, width=1.5), row=1, col=1)
-    figure.add_annotation(
-        x=math.log10(biggest["corpus_triples"]), xshift=10,
-        y=(math.log10(low) + math.log10(high)) / 2,
-        text=words["gap"], showarrow=False, xanchor="left",
-        font=dict(size=19, color=INK), row=1, col=1)
-
-    if floor is not None:
-        figure.add_hline(y=floor, row=2, col=1,
-                         line=dict(color=RULE, width=1, dash="dot"))
-        figure.add_annotation(x=0.995, xref="x domain", y=floor, yshift=11,
-                              text=f"{words['none']} — {floor:.0f}%",
-                              showarrow=False, xanchor="right",
-                              font=dict(size=13, color=INK_MUTED), row=2, col=1)
-
-    # Where the file arm stops. It is not missing data: past this size the
-    # rendered file no longer fits the reader's context window, and the arm
-    # cannot be run at all rather than merely running worse.
-    if biggest["corpus_triples"] < max(sizes):
+            x=[r["median_prompt_tokens"] for r in chain],
+            y=[r["hits_at_1"] for r in chain],
+            mode="lines+markers", showlegend=False,
+            line=dict(color=GRAPH, width=1.5, dash="dot"),
+            marker=dict(size=13, color=SURFACE,
+                        line=dict(color=GRAPH, width=2.5)),
+            hovertemplate=("492 facts<br>%{x:,} tokens"
+                           "<br>%{y:.1f}%<extra></extra>"),
+        ))
         figure.add_annotation(
-            x=math.log10(biggest["corpus_triples"]), xshift=14,
-            y=math.log10(biggest["median_prompt_tokens"]), yshift=-2,
-            text=words["window"], showarrow=False, xanchor="left",
-            font=dict(size=12, color=MD), row=1, col=1)
+            x=math.log10(tuned[-1]["median_prompt_tokens"]),
+            y=tuned[-1]["hits_at_1"], yshift=30,
+            text=words["tuned"], showarrow=False,
+            font=dict(size=12, color=GRAPH))
 
+    figure.add_hline(y=floor, line=dict(color=RULE, width=1, dash="dot"))
+    figure.add_annotation(x=0.995, xref="x domain", y=floor, yshift=12,
+                          text=words["none"], showarrow=False,
+                          xanchor="right", font=dict(size=12, color=INK_MUTED))
+
+    md_points = series("md")
+    if len(md_points) > 1:
+        figure.add_annotation(
+            x=math.log10(md_points[-1]["median_prompt_tokens"]),
+            y=md_points[-1]["hits_at_1"], yshift=-2, xshift=12,
+            xanchor="left", text=words["grow"], showarrow=False,
+            font=dict(size=12, color=MD))
+    graph_points = series("graph")
+    if graph_points:
+        # Drawn with an arrow, because the grep control clusters in the same
+        # corner: a floating caption there could be read as belonging to
+        # either series, which is the one thing this figure must not be
+        # ambiguous about.
+        figure.add_annotation(
+            x=math.log10(sum(r["median_prompt_tokens"] for r in graph_points)
+                         / len(graph_points)),
+            y=sum(r["hits_at_1"] for r in graph_points) / len(graph_points),
+            text=words["flat"], showarrow=True, arrowhead=0, arrowwidth=1.2,
+            arrowcolor=GRAPH, ax=64, ay=76, xanchor="left",
+            font=dict(size=12, color=GRAPH))
+
+    priced = [r for r in warm if r["condition"] != "none"]
     figure.update_layout(
         title=dict(
             text=(f"{words['title']}<br>"
                   f"<span style='font-size:13px;color:{INK_MUTED}'>"
                   f"{words['sub']}</span>"),
-            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.955,
-        ),
+            font=dict(size=21, color=INK), x=0.01, xanchor="left", y=0.94),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=14),
-        legend=dict(orientation="h", y=-0.13, x=0, font=dict(size=14)),
-        margin=dict(l=78, r=30, t=112, b=68), width=1000, height=700,
+        legend=dict(orientation="h", y=-0.17, x=0, font=dict(size=13)),
+        xaxis=dict(
+            type="log", gridcolor=GRID, zeroline=False,
+            title=dict(text=words["x"], font=dict(size=14)),
+            # Explicit ticks: across two decades plotly labels the minor ones
+            # too, and the axis reads "5 2 5 2" instead of round numbers.
+            tickvals=[300, 1_000, 3_000, 10_000, 30_000],
+            ticktext=["300", "1k", "3k", "10k", "30k"],
+            range=[math.log10(0.62 * min(r["median_prompt_tokens"] for r in priced)),
+                   math.log10(2.6 * max(r["median_prompt_tokens"] for r in priced))],
+        ),
+        yaxis=dict(gridcolor=GRID, zeroline=False, ticksuffix="%",
+                   title=dict(text=words["y"], font=dict(size=14)),
+                   range=[floor - 4, 95]),
+        margin=dict(l=78, r=40, t=110, b=96), width=1000, height=620,
     )
-    # A log x axis, because the tiers are multiplicative (495, 1195, 1647,
-    # 2282, 4113) and on a linear axis the first three crowd into the left
-    # quarter — which is where the whole comparison happens.
-    #
-    # Applied to *both* rows, not just the labelled one. `shared_xaxes` links
-    # the two axes' ranges but not their scale type, so setting it on row 2
-    # alone leaves row 1 linear: the panels then plot the same corpus sizes at
-    # different horizontal positions, and the two halves of one finding stop
-    # lining up — visible only if you notice the leftmost markers disagree.
-    figure.update_xaxes(type="log", showgrid=False, zeroline=False,
-                        linecolor=RULE)
-    figure.update_xaxes(tickvals=sizes, ticktext=[f"{s:,}" for s in sizes],
-                        title=dict(text=words["x"], font=dict(size=14)),
-                        row=2, col=1)
-    # Clamped to the data. Left to itself the axis runs down to 5 tokens to
-    # reach a round decade, and three quarters of the panel is then empty
-    # space under the flat line.
-    # Explicit ticks. Left alone across two and a half decades plotly labels
-    # the minor ticks too, so the axis reads "5 2 5 2 5 2" between the
-    # decades and every number on it has to be decoded.
-    figure.update_yaxes(title=dict(text=words["y1"], font=dict(size=13)),
-                        type="log", gridcolor=GRID, zeroline=False,
-                        range=[math.log10(230), math.log10(90_000)],
-                        tickvals=[300, 1_000, 3_000, 10_000, 30_000],
-                        ticktext=["300", "1k", "3k", "10k", "30k"],
-                        row=1, col=1)
-    figure.update_yaxes(title=dict(text=words["y2"], font=dict(size=13)),
-                        range=[0, 100], ticksuffix="%", gridcolor=GRID,
-                        zeroline=False, row=2, col=1)
     out = HERE / ("memory.png" if lang == "en" else f"memory_{lang}.png")
     figure.write_image(out, scale=2)
     print(f"wrote {out}")
