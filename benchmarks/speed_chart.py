@@ -1,15 +1,4 @@
-"""Render where the time goes in one answered question.
-
-    python benchmarks/speed_chart.py          # -> benchmarks/speed.png
-
-One stacked bar. The point is a ratio, and a ratio is the one thing a stacked
-bar says better than a table: of the 22.5 s a graph-grounded answer costs,
-trikedb spends 0.59 s finding the facts and the reader spends the rest reading
-them. Numbers come from `webqsp_bench.py latency` and from timing the retrieval
-directly; both are medians on an idle machine.
-
-Needs plotly and kaleido:  pip install plotly kaleido
-"""
+"""Historical independent latency measurements; never subtract medians."""
 
 from __future__ import annotations
 
@@ -29,67 +18,29 @@ READER = "#c9d9ee"
 
 #: A translated doc deserves a translated figure. Only the words move.
 TEXT = {
-    "en": {"title": "trikedb is 3% of the time an answer takes",
-           "sub": "median seconds for one WebQSP question, 250 triples of context",
-           "trikedb": "load the graph, retrieve the facts",
-           "reader": "read the context, write the answer", "unit": " s"},
-    "jp": {"title": "1問の時間のうち trikedb は3%",
-           "sub": "WebQSP 1問あたりの秒数の中央値・文脈250トリプル",
-           "trikedb": "グラフを読み込み、事実を取得する",
-           "reader": "文脈を読み、答えを書く", "unit": " 秒"},
-    "zh": {"title": "trikedb 只占一题时间的 3%",
-           "sub": "每道 WebQSP 题的秒数中位数 · 250 条三元组的上下文",
-           "trikedb": "载入图谱，检索事实",
-           "reader": "读上下文，写答案", "unit": " 秒"},
+ "en": {"title": "Retrieval and model request time, measured separately", "sub": "Historical medians · retrieval n=30; model requests n=20 · not an end-to-end breakdown", "trikedb": "Graph load + retrieval", "reader": "qwen3:8b HTTP request", "unit": " s"},
+ "jp": {"title": "検索とモデル応答の時間を別々に測定", "sub": "過去の中央値 · 検索30問、モデル20問 · 合計時間の内訳ではありません", "trikedb": "グラフ読込＋検索", "reader": "qwen3:8b HTTP応答", "unit": " 秒"},
+ "zh": {"title": "分别测量检索与模型请求时间", "sub": "历史中位数 · 检索30题，模型20题 · 不是端到端时间分解", "trikedb": "图谱载入＋检索", "reader": "qwen3:8b HTTP请求", "unit": " 秒"},
 }
 
 
 def main(lang: str = "en") -> None:
     words = TEXT[lang]
     data = json.loads((HERE / "speed_data.json").read_text())
-    total = data["trikedb_secs"] + data["reader_secs"]
-
-    figure = go.Figure()
-    for name, secs, color, label in (
-        ("trikedb", data["trikedb_secs"], TRIKEDB,
-         f"<b>trikedb {data['trikedb_secs']:.2f}{words['unit']}</b><br>{words['trikedb']}"),
-        (data["reader"], data["reader_secs"], READER,
-         f"<b>{data['reader']} {data['reader_secs']:.1f}{words['unit']}</b><br>{words['reader']}"),
-    ):
-        figure.add_trace(go.Bar(
-            x=[secs], y=["one question"], orientation="h", name=name,
-            marker=dict(color=color, line=dict(color=SURFACE, width=2)),
-            hovertemplate=name + " %{x:.2f} s<extra></extra>",
-        ))
-        # trikedb's slice is 3% of the width, so its label cannot sit inside
-        # it or centre on it without running off the left edge. Point at it.
-        if name == "trikedb":
-            figure.add_annotation(
-                x=secs / 2, y=0, text=label, font=dict(size=15, color=TRIKEDB),
-                showarrow=True, arrowhead=0, arrowwidth=1.5, arrowcolor=TRIKEDB,
-                ax=90, ay=72, xanchor="left", align="left",
-            )
-        else:
-            figure.add_annotation(
-                x=data["trikedb_secs"] + secs / 2, y=0, text=label,
-                showarrow=False, font=dict(size=15, color=INK), align="center",
-            )
-
+    values = [data["reader_secs"], data["trikedb_secs"]]
+    figure = go.Figure(go.Bar(
+        x=values, y=[words["reader"], words["trikedb"]], orientation="h",
+        marker_color=[READER, TRIKEDB],
+        text=[f"{v:.2f}{words['unit']}" for v in values], textposition="outside",
+        cliponaxis=False,
+    ))
     figure.update_layout(
-        title=dict(
-            text=(f"{words['title']}<br>"
-                  f"<span style='font-size:14px;color:{INK_MUTED}'>"
-                  f"{words['sub']}</span>"),
-            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.9,
-        ),
-        barmode="stack", bargap=0.7,
-        paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
-        font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=15),
-        xaxis=dict(range=[0, total * 1.02], showgrid=False, zeroline=False,
-                   ticksuffix=words["unit"], tickfont=dict(color=INK_MUTED)),
-        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-        showlegend=False,
-        margin=dict(l=16, r=16, t=104, b=112), width=960, height=300,
+        title=dict(text=words["title"] + "<br><sup>" + words["sub"] + "</sup>",
+                   x=0.02, font_size=22),
+        paper_bgcolor=SURFACE, plot_bgcolor=SURFACE, showlegend=False,
+        font=dict(family="Arial, sans-serif", size=16, color=INK),
+        xaxis=dict(range=[0, max(values)*1.18], ticksuffix=words["unit"]),
+        margin=dict(l=235, r=45, t=100, b=55), width=1100, height=370,
     )
     out = HERE / ("speed.png" if lang == "en" else f"speed_{lang}.png")
     figure.write_image(out, scale=2)

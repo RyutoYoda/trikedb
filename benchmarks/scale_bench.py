@@ -5,9 +5,9 @@ notes/provenance on a third of the edges) at increasing sizes and times
 the operations an agent or a human actually performs:
 
     load        TrikeDB(path)          — cost of "read the whole file"
-    save        db.save()              — cost of one mutation with autosave
+    save        db.save()              — full serialization, no mutation
     query       2-hop pattern join     — db.query([...])
-    sparql      2-hop SELECT via rdflib
+    sparql      2-hop SELECT via the default engine; first call
     search      semantic search        — if the [semantic] extra is present
     html        db.to_html()           — workbench generation + file size
 
@@ -47,7 +47,7 @@ def bench(n: int, tmp: Path) -> dict:
     print(f"== {n} triples", file=sys.stderr, flush=True)
     path = tmp / f"bench_{n}.yaml"
     build(path, n)
-    row = {"triples": n, "file_kb": round(path.stat().st_size / 1024)}
+    row = {"requested_size": n, "repetitions": 1, "triples": n, "file_kb": round(path.stat().st_size / 1024)}
 
     t0 = time.perf_counter()
     db = TrikeDB(path, autosave=False)

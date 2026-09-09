@@ -47,36 +47,36 @@ SERIES = [
 
 TEXT = {
     "en": {
-        "title": "In a real agent, the file grows and the graph does not",
+        "title": "Agent input tokens and local answer-match rate",
         "sub": ("WebQSP · 30 questions · claude-haiku-4.5 and Codex · file/graph turns vary · tokens as each harness reports them"),
         "x": "facts in the project's knowledge",
-        "y1": "tokens processed per question", "y2": "Hits@1",
+        "y1": "tokens processed per question", "y2": "Local answer match",
         "claude md": "Claude Code · CLAUDE.md",
-        "claude graph_oneshot": "Claude Code · trikedb",
+        "claude graph_oneshot": "Claude Code · pre-retrieved trikedb",
         "codex md": "Codex · AGENTS.md",
-        "codex graph_oneshot": "Codex · trikedb",
+        "codex graph_oneshot": "Codex · pre-retrieved trikedb",
     },
     "jp": {
-        "title": "実エージェントでも、ファイルは増えグラフは増えない",
+        "title": "エージェントの入力トークンと独自採点の比較",
         "sub": ("WebQSP · 30問 · claude-haiku-4.5 と Codex · 全文条件は1〜3ターン · "
                 "各ハーネスが報告したトークン数"),
         "x": "プロジェクトの知識に入っている事実の数",
-        "y1": "1問あたりの処理トークン", "y2": "Hits@1",
+        "y1": "1問あたりの処理トークン", "y2": "Local answer match",
         "claude md": "Claude Code · CLAUDE.md",
-        "claude graph_oneshot": "Claude Code · trikedb",
+        "claude graph_oneshot": "Claude Code · pre-retrieved trikedb",
         "codex md": "Codex · AGENTS.md",
-        "codex graph_oneshot": "Codex · trikedb",
+        "codex graph_oneshot": "Codex · pre-retrieved trikedb",
     },
     "zh": {
-        "title": "在真实智能体里，文件会变大，图谱不会",
+        "title": "智能体输入token与本地答案匹配率",
         "sub": ("WebQSP · 30 题 · claude-haiku-4.5 与 Codex · 全文条件为1至3轮 · "
                 "各 harness 自己报告的 token 数"),
         "x": "项目知识中的事实条数",
-        "y1": "每题处理的 token 数", "y2": "Hits@1",
+        "y1": "每题处理的 token 数", "y2": "Local answer match",
         "claude md": "Claude Code · CLAUDE.md",
-        "claude graph_oneshot": "Claude Code · trikedb",
+        "claude graph_oneshot": "Claude Code · pre-retrieved trikedb",
         "codex md": "Codex · AGENTS.md",
-        "codex graph_oneshot": "Codex · trikedb",
+        "codex graph_oneshot": "Codex · pre-retrieved trikedb",
     },
 }
 
@@ -125,8 +125,9 @@ def main(lang: str = "en") -> None:
             font=dict(size=21, color=INK), x=0.01, xanchor="left", y=0.955),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=14),
-        legend=dict(orientation="h", y=-0.14, x=0, font=dict(size=13)),
-        margin=dict(l=82, r=34, t=112, b=74), width=1000, height=650,
+        legend=dict(orientation="h", y=-0.14, x=0, font=dict(size=12),
+                    entrywidth=0.5, entrywidthmode="fraction"),
+        margin=dict(l=82, r=34, t=112, b=110), width=1100, height=700,
     )
     figure.update_xaxes(type="log", showgrid=False, zeroline=False,
                         linecolor=GRID)
@@ -134,13 +135,13 @@ def main(lang: str = "en") -> None:
                         title=dict(text=words["x"], font=dict(size=14)),
                         row=2, col=1)
     figure.update_yaxes(title=dict(text=words["y1"], font=dict(size=14)),
-                        type="log", gridcolor=GRID, zeroline=False,
-                        range=[math.log10(15_000), math.log10(160_000)],
+                        type="linear", gridcolor=GRID, zeroline=False,
+                        range=[0, 130_000],
                         # Explicit ticks: the range spans barely one decade, so
                         # plotly falls back to minor ticks and labels the axis
                         # "4 5 6 7 8 9 100k", which reads as single digits.
-                        tickvals=[20_000, 30_000, 50_000, 100_000],
-                        ticktext=["20k", "30k", "50k", "100k"],
+                        tickvals=[0, 30_000, 60_000, 90_000, 120_000],
+                        ticktext=["0", "30k", "60k", "90k", "120k"],
                         row=1, col=1)
     figure.update_yaxes(title=dict(text=words["y2"], font=dict(size=14)),
                         range=[0, 100], ticksuffix="%", gridcolor=GRID,

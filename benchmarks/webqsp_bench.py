@@ -17,7 +17,7 @@ Method
 2. Run both prompt sets through the SAME model (any LLM). The model
    must return [{"id": ..., "answer": ...}] per file.
 3. `score` grades with a containment match: a prediction is a hit if
-   any gold answer is a substring of it (or vice versa),
+   any gold answer is a substring of it,
    case-insensitive.
 
 Usage
@@ -77,8 +77,8 @@ def _methods():
 
 #: Answer-in-context is not the same quantity as Hits@1 and must not be read
 #: as a cap on it: a model also answers from what it already knows. Measured
-#: on the 300-question set, 24 of its correct answers were not in the
-#: retrieved context at all.
+#: on the saved hybrid 300-question set, 3 correct answers lacked a
+#: matching gold string in the retrieved context.
 DEFAULT_RETRIEVAL = "1-hop + CVT"
 DEFAULT_CAP = 250
 
@@ -321,6 +321,9 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
         eval_set = eval_set[:limit]
     client = _ollama_client(host)
 
+    from run_manifest import check_resume
+    check_resume(out, dict(model=model, condition=condition, style=style, limit=limit,
+                           workers=workers), [eval_path, Path(__file__)])
     done = set()
     if out.exists():
         for line in out.read_text().splitlines():
@@ -375,6 +378,22 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
           file=sys.stderr)
 
 
+def validate_records(records, gold):
+    """Reject duplicate/foreign IDs instead of silently changing denominators."""
+    if not records:
+        raise ValueError("No answer records")
+    seen = set()
+    for record in records:
+        ident = record["id"]
+        if ident in seen or ident not in gold:
+            raise ValueError(f"Duplicate or unknown question ID: {ident}")
+        seen.add(ident)
+    for field in ("model", "condition", "style", "cap", "cache", "num_ctx", "harness", "retrieval", "session"):
+        if len({json.dumps(r.get(field), sort_keys=True) for r in records}) > 1:
+            raise ValueError(f"Mixed benchmark configuration: {field}")
+    return records
+
+
 def _wilson(hits: int, n: int, z: float = 1.96):
     """95% confidence interval for a proportion, Wilson's method.
 
@@ -386,6 +405,8 @@ def _wilson(hits: int, n: int, z: float = 1.96):
     """
     import math
 
+    if n <= 0 or not 0 <= hits <= n:
+        raise ValueError("Wilson interval requires 0 <= hits <= n and n > 0")
     p = hits / n
     denominator = 1 + z * z / n
     centre = (p + z * z / (2 * n)) / denominator
@@ -422,13 +443,13 @@ def compare(eval_path: Path, baseline: Path, candidate: Path) -> None:
     gold = {e["id"]: e["answers"] for e in json.load(open(eval_path))}
 
     def load(path):
-        return {r["id"]: r["answer"]
-                for r in (json.loads(line) for line in path.read_text().splitlines()
-                          if line.strip())
-                if r["id"] in gold}
+        records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        return {r["id"]: r["answer"] for r in validate_records(records, gold)}
 
     a, b = load(baseline), load(candidate)
     shared = [i for i in a if i in b]
+    if not shared:
+        raise ValueError("No shared question IDs")
     wins_b = sum(1 for i in shared
                  if hits_at_1(b[i], gold[i]) and not hits_at_1(a[i], gold[i]))
     wins_a = sum(1 for i in shared
@@ -469,12 +490,14 @@ def latency(eval_path: Path, model: str, condition: str, style: str,
         _ask(client, model, item["question"], triples, style)
         return time.perf_counter() - started
 
+    if n <= 0 or workers <= 0 or len(eval_set) < 2:
+        raise ValueError("Need positive n/workers and at least two questions")
+    first = once(eval_set[0])  # warm up before submitting concurrent requests
     if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            times = list(pool.map(once, eval_set))
+            warm = list(pool.map(once, eval_set[1:]))
     else:
-        times = [once(item) for item in eval_set]
-    warm = times[1:]
+        warm = [once(item) for item in eval_set[1:]]
     tokens = statistics.median(
         len(_ask(lambda m, prompt: prompt, model, item["question"],
                  item["triples"] if condition == "graph" else None, style)) // 4
@@ -484,8 +507,10 @@ def latency(eval_path: Path, model: str, condition: str, style: str,
         "style": style, "workers": workers, "n": len(warm),
         "median_secs": round(statistics.median(warm), 2),
         "mean_secs": round(statistics.mean(warm), 2),
-        "cold_first_secs": round(times[0], 2),
+        "cold_first_secs": round(first, 2),
         "approx_prompt_tokens": int(tokens),
+        "measurement": "model HTTP request only; retrieval excluded",
+        "raw_secs": warm,
     }, indent=1))
 
 
@@ -500,7 +525,7 @@ def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
                    if path.suffix == ".jsonl" else json.loads(text))
         # Score only what this eval set has gold for, so a partial or a
         # differently-sampled answer file is a smaller n rather than a KeyError.
-        answers = [a for a in answers if a["id"] in gold]
+        answers = validate_records(answers, gold)
         hit = sum(hits_at_1(a["answer"], gold[a["id"]]) for a in answers)
         f = sum(f1(a["answer"], gold[a["id"]]) for a in answers)
         n = len(answers)
@@ -509,6 +534,7 @@ def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
               f"   [{lo:.1f}, {hi:.1f}]")
         rows.append({"answers": path.name, "hits_at_1": round(100 * hit / n, 1),
                      "f1": round(100 * f / n, 1), "n": n,
+                     "eval_n": len(gold), "missing": len(gold) - n,
                      "hits_ci95": [round(lo, 1), round(hi, 1)]})
     if out_json:
         # The chart reads this, so the picture and the table cannot disagree.

@@ -381,6 +381,8 @@ db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
 
 40,800トリプルで `benchmarks/backend_bench.py` により測定、3回の中央値、Apple silicon:
 
+過去のバックエンド測定の「+1件」は同じ事実を繰り返しており、追加は初回のみです。読込・保存時間として扱ってください。[ベンチマーク監査](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/VALIDATION.md)も参照してください。
+
 | バックエンド | 開く | 1ホップ | 2ホップ結合 | 1件書き込み |
 |---|---|---|---|---|
 | ローカル `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |

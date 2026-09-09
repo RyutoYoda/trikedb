@@ -459,6 +459,8 @@ Both are tunable, and neither needs a change to how you write the graph.
 Measured on 40,800 triples with `benchmarks/backend_bench.py`, medians of
 three, Apple silicon:
 
+Historical backend timings: the +1-fact column repeated the same fact, so only the first repetition added data. Treat it as reload/save latency. See [benchmark audit](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/VALIDATION.md).
+
 | backend | open | 1-hop | 2-hop join | write 1 fact |
 |---|---|---|---|---|
 | local `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |

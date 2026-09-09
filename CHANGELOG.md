@@ -3,6 +3,14 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.36.1
+
+- Audit benchmark methodology, saved numeric summaries and all six chart families; document selection bias, local scoring, cache uncertainty and incomplete historical provenance.
+- Replace the invalid 3% latency decomposition with independent measurements. Report the 86% versus 82% memory comparison as nonsignificant (paired p=0.454), alongside the verified 88.4% median input-token reduction.
+- Validate log IDs/configurations, fingerprint resumable runs, honor retrieval selection, reject incomplete corpus tiers/paths and surface retrieval failures.
+- Fix agent JSON parsing/accounting and continuation guards; use unique temporary workspaces. Scope backend cleanup to exact owned rows and add a distinct fact on each write repetition.
+- Regenerate three-language charts with clearer scales, labels and legends. Deployment remains pinned to the independently tested 0.36.0 runtime; no deployment or CI changes.
+
 ## 0.36.0
 
 - Share and serialize REST/MCP graph state; keep the committed S3/SQL version token to prevent lost updates. Use atomic local replacement and roll back failed batches/imports.

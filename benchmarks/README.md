@@ -4,6 +4,8 @@
   &nbsp;·&nbsp; <a href="https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_zh.md">简体中文</a>
 </p>
 
+**Evaluation boundary:** historical local substring answer matching, not the official WebQSP metric. Memory/agent corpora were built using gold-answer paths and filtered for reachable questions; this is a selected synthetic task. The 50-fact result is 86% versus full-file 82% (100 paired questions, McNemar p=0.454), which does not establish higher accuracy. Median input tokens fall 88.4%. See [audit and reproducibility notes](VALIDATION.md).
+
 # Benchmarks
 
 Historical measurements; 8B uses 300 questions and 27B uses 150. F1 was rescored on 2026-09-09; timings were not rerun. Graph conditions include grounding instructions.
@@ -11,10 +13,10 @@ Historical measurements; 8B uses 300 questions and 27B uses 150. F1 was rescored
 | | |
 |---|---|
 | **Retrieval** | trikedb put the gold answer in front of the model for **89.3%** of questions |
-| **Speed** | **0.59 s** of the 22.5 s an answer takes — no server, no index, one file |
+| **Speed** | **0.59 s** reported retrieval; **22.48 s** independently measured model request |
 | **Scale** | fast to **100,000 triples**; semantic search gives out first, at 30,000 |
 | **End to end** | a laptop-sized 8B reader then answers **77.7%** correctly, against **42.7%** with no graph |
-| **Against a file** | beating a `CLAUDE.md` / `AGENTS.md` on accuracy costs **88.4% fewer tokens** — and the gap widens as the file grows |
+| **Against a file** | At 492 facts, 88.4% fewer median input tokens; answer matching 86% versus 82% (not significant) |
 
 ## Accuracy
 
@@ -76,14 +78,7 @@ ratio is not a like-for-like saving. How many facts trikedb returns is a knob
 | **trikedb, 50 facts** | **86.0%** | **1,117** | **88.4%, and 4 points ahead** |
 | trikedb, 150 facts | 88.0% | 3,125 | 67.7%, and 6 points ahead |
 
-So the like-for-like figure at 492 facts is **88.4% fewer tokens at higher
-accuracy**, not the 95.8% the first table's raw tokens suggest.
-
-At 1,625 facts 15 facts already matches the file (72.0% against 71.0%) and the
-saving is 98.7% — but that is the flattering end of the range and worth
-reading with its condition attached. The file scored 82.0% at 492 facts and
-71.0% at 1,625: it got worse as it grew, which lowered the bar. 88.4% is the
-number measured where the file is at its best, so it is the one to quote.
+Measured token reductions depend on the retrieval budget; the 50-fact accuracy difference is not significant (p=0.454). Choosing the budget on these same test questions is exploratory tuning, not held-out validation.
 
 The whole-file arm deliberately sends all Markdown content. Its observed 82% at 492 facts is a result for that prompt, reader and sample, not a ceiling for files. Markdown can also be indexed, split into sections, or retrieved semantically. The 88.4% token reduction with 86% versus 82% accuracy is an observation on these 100 questions, not a universal accuracy advantage.
 
@@ -134,7 +129,7 @@ at 3,998 — it starts working to find things in a file that large, and that is
 part of why its token count climbs. Most of each number is the harness's own
 prompt — 31,014 tokens for Claude Code with no project knowledge at all —
 which neither arm avoids.
-Codex is the cleaner result: as the corpus grows its file arm gets both more
+In these Codex runs: as the corpus grows its file arm gets both more
 expensive and *less* accurate (73.3% → 56.7%) while the graph arm holds
 66.7% on a flat 20,510 tokens.
 
@@ -149,11 +144,7 @@ the configuration the rows above use, and it is what a context hook does.
 
 ![Where the time goes in one question](speed.png)
 
-Retrieval is 0.59 s: building the whole 4,640-triple subgraph into a graph
-(effectively instant) and running `search()` + `find()` over it. No server, no
-index to build, no second store. Everything else is the model reading 4,377
-tokens of context — which is also why a 27B reader costs 70.4 s per question
-instead of 22.5 s.
+The published retrieval median is **0.59 s over 30 questions** (graph construction plus hybrid retrieval). The independent model HTTP-request median is **22.48 s over 20 questions**, excluding retrieval. These are different samples: subtracting or stacking them does not measure end-to-end time. The earlier 3% time-share chart was incorrect. The model measurement survives in a saved summary; individual retrieval timings were not retained, so 0.59 s is a historical reported value, not a fresh verification. Semantic search uses embeddings and a cache. Prompt sizes below are character-count estimates, not tokenizer measurements.
 
 | retrieval | answer in context | prompt |
 |---|---|---|
@@ -178,21 +169,7 @@ triples, and a slight loss at 100.
 | 73,333 | 71 ms | 1.6 s | 1.0 s | 94 ms | 1.9 s | 13.5 s |
 | 204,000 | 147 ms | 4.6 s | 3.2 s | 297 ms | 6.0 s | 41.9 s |
 
-The features do not degrade together, so there is no single size limit:
-
-- **to ~1,000** — everything is instant and the whole graph fits in a pull
-  request. This is the size the tool is shaped for.
-- **to ~10,000** — still comfortable everywhere, semantic search included.
-  Reviewing the whole graph stops being realistic; reviewing diffs does not.
-- **to ~100,000** — SPARQL stays fast. Semantic search (13 s), the HTML
-  workbench (17 MB) and saving as YAML stop being pleasant. Naming the file
-  `.json` keeps open and save an order of magnitude cheaper.
-- **past ~500,000** — it works and it is outside the design. GitHub stops
-  rendering the diff.
-
-What does *not* degrade: a one-fact change is one line of diff at any size, and
-the backend never affects query time — a `snowflake://` row, an `s3://` object
-and a local file answer identically, because the graph is answered from memory.
+These historical observations cover 733–204,000 triples in one synthetic graph family on Apple silicon. They do not establish a universal capacity limit or behavior beyond the measured range. Open/save/SPARQL are medians of 3; HTML and search are each one timed sample after warm-up. Search timing excludes initial model/index warm-up. Queries run in memory after loading; end-to-end latency still depends on the storage backend. The older backend +1-fact experiment added the same fact repeatedly, so its historical column measures reload/save with only the first repetition adding a fact.
 
 ## Reproduce
 
@@ -208,7 +185,7 @@ for cond in nograph graph; do
 done
 
 uv run --extra all python benchmarks/webqsp_bench.py score \
-    bench_out/hybrid/eval_set.json bench_out/ans_*.jsonl
+    bench_out/hybrid/eval_set.json bench_out/ans_nograph.jsonl bench_out/ans_graph.jsonl
 uv run --extra all python benchmarks/webqsp_bench.py compare \
     bench_out/hybrid/eval_set.json bench_out/ans_nograph.jsonl bench_out/ans_graph.jsonl
 ```
@@ -218,7 +195,7 @@ be re-runnable without an API key. `score` prints Wilson intervals; `compare`
 runs the paired test, which is the right one here because both runs answer the
 same questions with the same model.
 
-Scale numbers come from `ceiling_bench.py` (medians of three, one synthetic
+Scale numbers come from `ceiling_bench.py` (3 repeats for open/save/SPARQL; 1 warm sample for HTML/search, one synthetic
 pipeline-shaped graph, Apple silicon); backend numbers from `backend_bench.py`;
 the retrieval comparison from `retrieval_bench.py`, which `webqsp_bench.py`
 imports rather than reimplementing.

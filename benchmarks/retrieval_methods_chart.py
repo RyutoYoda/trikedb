@@ -6,7 +6,7 @@
 
 No model is involved in this figure, which is why it is the one to read
 first: it is whether the gold answer ended up in the context, at a fixed
-budget, and nothing downstream can beat it. The x axis is how much project
+budget, not a bound on downstream accuracy. The x axis is how much project
 knowledge exists, because that is what separates the methods — at 500 facts
 several of them look fine, and the spread only opens up as the corpus grows.
 
@@ -43,7 +43,7 @@ MUTED = "#b9b7b0"
 TEXT = {
     "en": {
         "title": "How you ask the graph decides what you get",
-        "sub": ("WebQSP · 100 questions · 15 triples of budget · no model "
+        "sub": ("WebQSP · 100 questions · 15 triples of budget · no answer-generating model "
                 "involved — whether a gold answer reached the context"),
         "x": "facts in the project's knowledge",
         "y": "answer reached the context",
@@ -53,7 +53,7 @@ TEXT = {
     },
     "jp": {
         "title": "グラフの引き方で結果が変わる",
-        "sub": ("WebQSP · 100問 · 予算15トリプル · モデル不使用 — "
+        "sub": ("WebQSP · 100問 · 予算15トリプル · 回答生成モデル不使用 — "
                 "正解が文脈に入ったかどうか"),
         "x": "プロジェクトの知識に入っている事実の数",
         "y": "正解が文脈に入った割合",
@@ -63,7 +63,7 @@ TEXT = {
     },
     "zh": {
         "title": "怎么查图谱，决定了你能拿到什么",
-        "sub": ("WebQSP · 100 题 · 预算 15 条三元组 · 不涉及模型 — "
+        "sub": ("WebQSP · 100 题 · 预算 15 条三元组 · 不调用回答生成模型 — "
                 "标准答案是否进入了上下文"),
         "x": "项目知识中的事实条数",
         "y": "答案进入上下文的比例",
@@ -120,15 +120,16 @@ def main(lang: str = "en") -> None:
             font=dict(size=21, color=INK), x=0.01, xanchor="left", y=0.93),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=14),
-        showlegend=False,
+        showlegend=True,
+        legend=dict(orientation="h", y=-0.3, entrywidth=0.5, entrywidthmode="fraction", font_size=11),
         xaxis=dict(type="log", tickvals=sizes,
                    ticktext=[f"{s:,}" for s in sizes], showgrid=False,
                    zeroline=False, linecolor=GRID,
                    title=dict(text=words["x"], font=dict(size=14))),
-        yaxis=dict(range=[40, 100], ticksuffix="%", gridcolor=GRID,
+        yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=GRID,
                    zeroline=False,
                    title=dict(text=words["y"], font=dict(size=14))),
-        margin=dict(l=76, r=210, t=100, b=64), width=1000, height=460,
+        margin=dict(l=76, r=210, t=100, b=180), width=1100, height=620,
     )
     out = HERE / ("retrieval_methods.png" if lang == "en"
                   else f"retrieval_methods_{lang}.png")

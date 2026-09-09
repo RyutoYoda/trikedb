@@ -22,6 +22,7 @@ reference). Rows are written under `bench/` and deleted at the end.
 from __future__ import annotations
 
 import os
+import uuid
 import statistics
 import tempfile
 import time
@@ -72,58 +73,66 @@ def median_ms(fn, reps: int = 3) -> float:
 
 
 def main() -> None:
-    tmp = Path(tempfile.mkdtemp())
+    with tempfile.TemporaryDirectory(prefix="trikedb-bench-") as directory:
+        _measure(Path(directory))
+
+
+def _measure(tmp: Path) -> None:
+    run_id = uuid.uuid4().hex
+    owned_names = []
     header = (f"{'triples':>8} {'backend':<20} {'open':>9} {'1-hop':>8} "
               f"{'2-hop':>9} {'count':>8} {'+1 fact':>9}")
     print(header)
     print("-" * len(header))
 
-    for n in SIZES:
-        source = build(n)
-        total = len(source)
-        targets = [("local .yaml", tmp / f"g{n}.yaml"),
-                   ("local .json", tmp / f"g{n}.json")]
-        if TABLE:
-            targets.append(("snowflake:// row", f"snowflake://{TABLE}/bench/g{n}"))
+    try:
+        for n in SIZES:
+            source = build(n)
+            total = len(source)
+            targets = [("local .yaml", tmp / f"g{n}.yaml"),
+                       ("local .json", tmp / f"g{n}.json")]
+            if TABLE:
+                targets.append(("snowflake:// row", f"snowflake://{TABLE}/bench/{run_id}/g{n}"))
 
-        for label, target in targets:
-            source.save(target)
-            TrikeDB(target)          # pay for any connection handshake first
+            for label, target in targets:
+                if str(target).startswith("snowflake://"):
+                    owned_names.append(f"bench/{run_id}/g{n}")
+                source.save(target)
+                TrikeDB(target)          # pay for any connection handshake first
 
-            open_ms = median_ms(lambda: TrikeDB(target))
-            db = TrikeDB(target)
-            db.sparql(ONE_HOP)       # build the query graph once, as a server would
-            one = median_ms(lambda: db.sparql(ONE_HOP), 5)
-            two = median_ms(lambda: db.sparql(TWO_HOP))
-            agg = median_ms(lambda: db.sparql(AGGREGATE))
+                open_ms = median_ms(lambda: TrikeDB(target))
+                db = TrikeDB(target)
+                db.sparql(ONE_HOP)       # build the query graph once, as a server would
+                one = median_ms(lambda: db.sparql(ONE_HOP), 5)
+                two = median_ms(lambda: db.sparql(TWO_HOP))
+                agg = median_ms(lambda: db.sparql(AGGREGATE))
 
-            def one_write():
-                writer = TrikeDB(target, autosave=False)
-                writer.add("bench-writer", "WROTE", "value")
-                writer.save()
+                def one_write():
+                    writer = TrikeDB(target, autosave=False)
+                    writer.add("bench-writer", "WROTE", uuid.uuid4().hex)
+                    writer.save()
 
-            write_ms = median_ms(one_write)
-            print(f"{total:>8,} {label:<20} {open_ms:8.1f}ms {one:7.2f}ms "
-                  f"{two:8.1f}ms {agg:7.1f}ms {write_ms:8.1f}ms")
-        print()
+                write_ms = median_ms(one_write)
+                print(f"{total:>8,} {label:<20} {open_ms:8.1f}ms {one:7.2f}ms "
+                      f"{two:8.1f}ms {agg:7.1f}ms {write_ms:8.1f}ms")
+            print()
 
-    print("SPARQL engine, warm (the graph is already built):")
-    big = build(SIZES[-1])
-    for engine in ("rdflib", "oxigraph"):
-        db = TrikeDB(autosave=False, sparql_engine=engine)
-        db._triples = list(big._triples)
-        db.nodes_meta = dict(big.nodes_meta)
-        db.sparql(ONE_HOP)
-        print(f"  {engine:9} 1-hop {median_ms(lambda: db.sparql(ONE_HOP), 5):7.2f}ms"
-              f"   2-hop {median_ms(lambda: db.sparql(TWO_HOP)):8.1f}ms"
-              f"   count {median_ms(lambda: db.sparql(AGGREGATE)):7.1f}ms")
-
-    if TABLE:
-        from trikedb import storage_sql
-
-        storage_sql.open_url(f"snowflake://{TABLE}/cleanup")._run(
-            "DELETE FROM {table} WHERE name LIKE 'bench/%'", (), want_rows=False)
-        print("\nremoved the bench/ rows")
+        print("SPARQL engine, warm (the graph is already built):")
+        big = build(SIZES[-1])
+        for engine in ("rdflib", "oxigraph"):
+            db = TrikeDB(autosave=False, sparql_engine=engine)
+            db._triples = list(big._triples)
+            db.nodes_meta = dict(big.nodes_meta)
+            db.sparql(ONE_HOP)
+            print(f"  {engine:9} 1-hop {median_ms(lambda: db.sparql(ONE_HOP), 5):7.2f}ms"
+                  f"   2-hop {median_ms(lambda: db.sparql(TWO_HOP)):8.1f}ms"
+                  f"   count {median_ms(lambda: db.sparql(AGGREGATE)):7.1f}ms")
+    finally:
+        if TABLE and owned_names:
+            from trikedb import storage_sql
+            store = storage_sql.open_url(f"snowflake://{TABLE}/cleanup")
+            for name in owned_names:
+                store._run("DELETE FROM {table} WHERE name = %s", (name,), want_rows=False)
 
 
 if __name__ == "__main__":

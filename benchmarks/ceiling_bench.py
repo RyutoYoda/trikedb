@@ -1,15 +1,8 @@
-"""Where does each operation stop being pleasant?
+"""Historical synthetic scale experiment.
 
-The size a graph *fits* in is not the interesting number — a document-shaped
-graph runs into GitHub's file limits somewhere around 870k triples, which no
-curated graph reaches. What you actually hit is one feature at a time getting
-slow, and they do not degrade together: semantic search is unusable while
-SPARQL is still instant.
-
-Emits JSON on stdout so the chart in this directory can be regenerated:
-
-    python benchmarks/ceiling_bench.py > benchmarks/ceiling_data.json
-    python benchmarks/ceiling_chart.py
+Open/save/SPARQL: three repeats. HTML/search: one warm sample.
+Outputs milliseconds; initial model/index construction is excluded.
+Run: python benchmarks/ceiling_bench.py > benchmarks/ceiling_data.json
 """
 
 from __future__ import annotations
@@ -53,7 +46,11 @@ def median_ms(fn, reps: int = 3) -> float:
 
 
 def main() -> None:
-    tmp = Path(tempfile.mkdtemp())
+    with tempfile.TemporaryDirectory(prefix="trikedb-bench-") as directory:
+        _measure(Path(directory))
+
+
+def _measure(tmp: Path) -> None:
     rows = []
     for n in SIZES:
         db = build(n)

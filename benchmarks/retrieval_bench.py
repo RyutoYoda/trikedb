@@ -8,7 +8,7 @@ context, and what did it cost to get there** — with every method held to the
 same context budget, so the comparison is about *selection* and not about who
 was allowed to send more.
 
-Reachability is a ceiling, not an accuracy: the KGQA experiment in README.md
+Answer-string presence is a retrieval proxy, not an accuracy ceiling: the KGQA experiment in README.md
 found that making every answer reachable did *not* improve answers, because
 the bottleneck moved to attention. So read this as "which method can put the
 answer in the window", and read the accuracy numbers next to it.
@@ -61,12 +61,13 @@ def load_test_split():
 
 
 def _is_cvt(name: str) -> bool:
-    """Freebase mediator nodes carry no readable name of their own, so a hop
-    that lands on one has learned nothing until it is expanded."""
+    """ID-prefix heuristic, not a reliable Freebase mediator type check."""
     return name.startswith(("m.", "g."))
 
 
 def _dedupe(triples, budget):
+    if budget <= 0:
+        return []
     seen, out = set(), []
     for t in triples:
         if t.spo() not in seen:
@@ -102,7 +103,7 @@ def one_hop_cvt(db, question, entities, budget):
 
 
 def two_hop(db, question, entities, budget):
-    """1-hop, then everything attached to whatever that reached."""
+    """Undirected first hop, then outgoing edges from its neighboring nodes."""
     out = []
     for e in entities:
         hop1 = list(db.triples(s=e)) + list(db.triples(o=e))
@@ -161,6 +162,8 @@ def main() -> None:
                         default=Path("benchmarks/retrieval_progress.jsonl"),
                         help="per-question results, appended as they finish")
     args = parser.parse_args()
+    if args.budget <= 0 or args.n < 0:
+        parser.error("budget must be positive and n nonnegative")
 
     df = load_test_split()
     rows = (df if args.n <= 0 or args.n >= df.height
@@ -170,11 +173,18 @@ def main() -> None:
     # memory until the end — so a closed laptop, a killed session or one bad
     # question threw the lot away. Each question is appended as it finishes
     # and a rerun skips what is already there.
+    from run_manifest import check_resume
+    import hashlib
+    check_resume(args.checkpoint, dict(budget=args.budget, seed=args.seed, n=args.n,
+        dataset_sha256=hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()),
+        [Path(__file__)])
     done = {}
     if args.checkpoint.exists():
         for line in args.checkpoint.read_text().splitlines():
             if line.strip():
                 rec = json.loads(line)
+                if rec["id"] in done:
+                    raise ValueError("Duplicate question ID in checkpoint")
                 done[rec["id"]] = rec
         print(f"  resuming: {len(done)} questions already done", file=sys.stderr)
     args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
@@ -224,7 +234,7 @@ def main() -> None:
         if not per:
             continue
         methods.append({
-            "method": name,
+            "method": name, "n": len(per), "missing": len(answered)-len(per),
             "reachable": sum(p["reached"] for p in per),
             "reachable_pct": round(100 * sum(p["reached"] for p in per) / len(per), 1),
             "median_context_triples": int(statistics.median(p["context"] for p in per)),

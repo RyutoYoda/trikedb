@@ -181,9 +181,7 @@ def _workspace(bench_dir: Path, condition: str, root: Path,
     for the same facts.
     """
     workspace = root / condition
-    if workspace.exists():
-        shutil.rmtree(workspace)
-    workspace.mkdir(parents=True)
+    workspace.mkdir(parents=True, exist_ok=False)
     memo = workspace / ("AGENTS.md" if harness == "codex" else "CLAUDE.md")
     if condition == "md":
         # The corpus file's own "# Project knowledge" heading is dropped: the
@@ -212,8 +210,8 @@ def _codex_mcp_args(corpus: Path) -> list:
 
     Codex takes MCP servers from `~/.codex/config.toml`, so they go in as
     dotted overrides rather than a JSON blob. Passing them per invocation
-    keeps the user's own configured servers out of the measurement, which is
-    the same reason the Claude arm passes `--strict-mcp-config`.
+    adds this server but does not disable other configured servers. Codex
+    runs require a dedicated profile with unrelated MCPs and hooks disabled.
     """
     return [
         "-c", f'mcp_servers.trikedb.command="{REPO / ".venv" / "bin" / "trikedb"}"',
@@ -270,7 +268,7 @@ def _ask_codex(workspace: Path, question: str, model: str, condition: str,
                 messages.append(item.get("text", ""))
             elif item.get("type") in ("mcp_tool_call", "command_execution"):
                 tool_calls += 1
-    if not usage and not messages:
+    if proc.returncode or failure or not usage or not messages:
         return {"error": failure or (proc.stderr or proc.stdout)[-400:],
                 "secs": round(elapsed, 2)}
     total = usage.get("input_tokens", 0)
@@ -286,8 +284,9 @@ def _ask_codex(workspace: Path, question: str, model: str, condition: str,
         "fresh_input_tokens": max(total - read - write, 0),
         "cache_write_tokens": write,
         "cache_read_tokens": read,
-        "output_tokens": (usage.get("output_tokens", 0)
-                          + usage.get("reasoning_output_tokens", 0)),
+        "output_tokens": usage.get("output_tokens", 0),
+        "tool_calls": tool_calls,
+        "turns_source": "estimated as 1 + tool calls; not model-request count",
         "total_input_tokens": total,
     }
 
@@ -351,12 +350,14 @@ def _ask(workspace: Path, question: str, model: str, condition: str,
     proc = subprocess.run(command, cwd=workspace, env=environment,
                           capture_output=True, text=True, timeout=timeout)
     elapsed = time.perf_counter() - started
-    text = proc.stdout[proc.stdout.find("["):] if "[" in proc.stdout else ""
     try:
-        messages = json.loads(text)
-        result = [m for m in messages if m.get("type") == "result"][-1]
-    except Exception:                                       # noqa: BLE001
-        return {"error": (proc.stderr or proc.stdout)[-400:], "secs": elapsed}
+        payload = json.loads(proc.stdout)
+        result = payload if isinstance(payload, dict) else [
+            m for m in payload if m.get("type") == "result"][-1]
+    except (ValueError, TypeError, IndexError):
+        return {"error": "Invalid Claude JSON result", "secs": elapsed}
+    if proc.returncode:
+        return {"error": "Claude process failed", "secs": elapsed}
     usage = result.get("usage", {})
     fresh = usage.get("input_tokens", 0)
     write = usage.get("cache_creation_input_tokens", 0)
@@ -395,8 +396,14 @@ def run(bench_dir: Path, condition: str, model: str, out: Path, n: int,
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
+    if not model or n <= 0 or workers <= 0 or cap <= 0:
+        raise ValueError("Specify a model and positive n/workers/cap")
     eval_set = json.load(open(bench_dir / "eval_set.json"))[:n]
-    root = workspace_root or (out.parent / f"_ws_{bench_dir.name}")
+    if not eval_set:
+        raise ValueError("Empty evaluation set")
+    import tempfile
+    workspace_owner = tempfile.TemporaryDirectory(prefix="trikedb-bench-", dir=workspace_root)
+    root = Path(workspace_owner.name)
     db = None
     if condition == "graph_oneshot":
         import memory_bench as mb
@@ -405,6 +412,15 @@ def run(bench_dir: Path, condition: str, model: str, out: Path, n: int,
         retrieval = retrieval or mb.DEFAULT_RETRIEVAL
         db = TrikeDB(bench_dir / "corpus.yaml", autosave=False)
         db.search("warm up the index", k=1)   # pay it before anything is timed
+    if harness == "codex" and session != "fresh":
+        raise ValueError("Codex continuation is not implemented; use session=fresh")
+    if session == "continue" and out.exists() and out.stat().st_size:
+        raise ValueError("Continuation cannot resume after recreating its workspace; use a new output")
+    from run_manifest import check_resume
+    check_resume(out, dict(model=model, condition=condition, cap=cap, n=n,
+                           session=session, retrieval=retrieval, harness=harness, workers=workers),
+                 [bench_dir / "eval_set.json", bench_dir / "AGENTS.md",
+                  bench_dir / "corpus.yaml", Path(__file__)])
     done = set()
     if out.exists():
         done = {json.loads(l)["id"] for l in out.read_text().splitlines() if l.strip()}
@@ -450,13 +466,13 @@ def run(bench_dir: Path, condition: str, model: str, out: Path, n: int,
             with lock:
                 free.append(workspace)
         with lock:
-            if record.get("error") and not record.get("answer"):
+            if record.get("error"):
                 state["failed"] += 1
                 print(f"  {item['id']}: {record['error'][:120]}",
                       file=sys.stderr, flush=True)
                 return                      # never recorded — a rerun retries it
             log.write(json.dumps(dict(record, id=item["id"], condition=condition,
-                                      model=model,
+                                      model=model, cap=cap,
                                       retrieval_secs=round(retrieval_secs, 4),
                                       retrieval=retrieval or "",
                                       session=session, seq=seq,
@@ -517,7 +533,7 @@ def score(bench_dir: Path, out_json: Path = None) -> None:
     rows = []
     for path in sorted(bench_dir.glob("agent_*.jsonl")):
         recs = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-        recs = [r for r in recs if r["id"] in gold]
+        recs = wq.validate_records(recs, gold)
         if not recs:
             continue
         n = len(recs)

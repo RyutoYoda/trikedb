@@ -381,6 +381,8 @@ db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
 
 在 40,800 条三元组上用 `benchmarks/backend_bench.py` 测量，三次取中位数，Apple silicon：
 
+历史后端“+1条”测试重复添加同一事实，只有首次新增，应理解为载入/保存延迟。参见[基准审计](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/VALIDATION.md)。
+
 | 后端 | 打开 | 1 跳 | 2 跳连接 | 写入 1 条 |
 |---|---|---|---|---|
 | 本地 `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |

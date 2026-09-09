@@ -153,28 +153,11 @@ def _paths_to_answers(db, entities, answers, hops=2):
 
 
 def curate(db, question, entities, answers, k):
-    """The slice of a subgraph a person would have written down.
+    """Gold-informed corpus construction: select complete shortest answer paths.
 
-    Built as **paths**, not as a set of interesting facts, and that is the
-    whole design. An earlier version took the answer-bearing triples first
-    and spent whatever budget was left on the question entity's
-    neighbourhood. It looked right and it was not: for a question with three
-    gold answers, five facts of budget went entirely on answer-bearing
-    triples and none on the hop that ties them to the thing being asked
-    about. The answer string was in the corpus and nothing led to it.
-
-    That failure is invisible in the obvious check. Measured on the corpora
-    that version produced, the answer string was present for 100 of 100
-    questions while only **36** had it reachable within two hops of anything
-    the question names — so both arms were capped at 36% by the corpus, and
-    every score above that was the reader answering from what it already
-    knew. A benchmark of two delivery mechanisms cannot afford a corpus that
-    neither mechanism can deliver from.
-
-    So each gold answer contributes the chain of facts that reaches it, whole
-    or not at all, and chains are added shortest-first until the budget runs
-    out. Questions with no chain at all are dropped by returning ``[]``:
-    unreachable in the subgraph means unanswerable in every arm.
+    Questions without a fitting path are excluded, creating selection bias.
+    This is a synthetic delivery experiment, not an untouched test split.
+    Reachability does not bound a model using prior knowledge or inference.
     """
     import retrieval_bench as rb
 
@@ -187,7 +170,7 @@ def curate(db, question, entities, answers, k):
             break                    # a partial chain leads nowhere; skip it
         picked += chain
     if not picked:
-        picked = chains[0][:k]       # budget below one hop: keep what fits
+        return []                    # never publish an incomplete answer path
     # Whatever budget is left goes to the question entity's own facts, which
     # is what gives the retrieval arms something to match the question
     # against instead of only the answer's own corner of the graph.
@@ -219,29 +202,16 @@ def alias_for(name: str) -> str:
 
 
 def obfuscate(eval_set: list, corpus) -> int:
-    """Rename every gold answer, in the questions' answers and in the corpus.
+    """Rename gold answers in the corpus and answer key.
 
-    Without this the benchmark cannot answer the question it was built for.
-    WebQSP is public trivia, and a current model has read it: measured here,
-    claude-haiku-4.5 answers 60% of these questions correctly **with no
-    context at all**, against 35% for a local 8B. At that floor neither arm
-    can show a gain, because the model is not using the corpus — it already
-    knows.
-
-    Project knowledge is the opposite of that by definition: it is what no
-    pretraining run has seen. Renaming the answers reproduces that property
-    while leaving everything else — the questions, the graph structure, the
-    retrieval problem, the metric — exactly as it was. The model's own
-    knowledge stops being an answer and starts being a distractor, which is
-    the situation a real `CLAUDE.md` is written for.
-
-    Only the answers are renamed, never the entity the question asks about.
-    Rewriting "who is the president of costa rica" into a pseudonym would
-    make the question unanswerable rather than private, and would do it
-    unevenly — the entity is named in the question text sometimes as a full
-    name and sometimes not.
+    This synthetic transformation is not equivalent to private project data.
+    An answer can also be a question entity elsewhere: questions are unchanged,
+    so lexical anchoring may change. Treat obfuscated runs as a distinct task.
     """
     aliases = {a: alias_for(a) for e in eval_set for a in e["answers"]}
+    original_nodes = {v for t in corpus.triples() for v in (t.s, t.o)}
+    if len(set(aliases.values())) != len(aliases) or set(aliases.values()) & original_nodes:
+        raise ValueError("Alias collision; choose a different alias scheme")
     for entry in eval_set:
         entry["answers"] = [aliases[a] for a in entry["answers"]]
     renamed = 0
@@ -277,21 +247,10 @@ def render_markdown(triples, title: str = "Project knowledge") -> str:
 
 
 def reachability(corpus, eval_set, hops: int = 2) -> int:
-    """How many questions the corpus can actually answer.
+    """Heuristic diagnostic: lexical question anchors reaching a gold node.
 
-    The number that bounds every condition, and the one worth printing
-    instead of "the answer string appears somewhere in the file". Presence is
-    not reachability: a corpus can name every gold answer and connect none of
-    them to the question, and it then reports as perfect while capping the
-    whole benchmark. Measured that way, one build of these corpora looked
-    like 100/100 and was 36/100.
-
-    A question counts when some corpus node whose name occurs in the question
-    text reaches a gold answer within ``hops``. Matching the question by node
-    name is an approximation — the eval set keeps questions and answers, not
-    the dataset's entity annotations — and it is the conservative direction:
-    an entity the question refers to obliquely is missed, so this
-    under-reports rather than flatters.
+    Substring anchors can produce false matches and miss implicit entities;
+    this is neither a proof of answerability nor an accuracy ceiling.
     """
     adjacent: dict = {}
     for triple in corpus.triples():
@@ -362,9 +321,11 @@ def prepare(n: int, distractors: list, seed: int, out: Path,
     """
     from trikedb import TrikeDB
 
+    if n <= 0 or facts_per_q <= 0 or not distractors or min(distractors) < 0:
+        raise ValueError("n/facts_per_q must be positive; distractors nonnegative")
     tiers = sorted(set(distractors))
     df = wq.load_test_split()
-    take = min(n + max(tiers), df.height)
+    take = df.height
     rows = df.sample(take, seed=seed, shuffle=True).to_dicts()
 
     corpus = TrikeDB(autosave=False)
@@ -400,7 +361,9 @@ def prepare(n: int, distractors: list, seed: int, out: Path,
         if used % 50 == 0:
             print(f"  curated {used}, corpus {len(corpus)} triples",
                   file=sys.stderr, flush=True)
-    for tier in pending:                      # the split ran out before the tier did
+    for tier in pending:
+        if len(eval_set) < n or used - n < tier:
+            raise ValueError(f"Insufficient eligible questions for d{tier}; no mislabeled tier written")
         _write_tier(out / f"d{tier}", corpus, eval_set,
                     {"n": len(eval_set), "distractors": used - n, "seed": seed,
                      "facts_per_q": facts_per_q, "obfuscated": obfuscated,
@@ -616,7 +579,7 @@ def _fit_ctx(needed_tokens: int, floor: int = 4096, ceiling: int = 40960) -> int
 def run(bench_dir: Path, condition: str, model: str, out: Path,
         host: str = "http://localhost:11434", cap: int = DEFAULT_CAP,
         limit: int = 0, workers: int = 1, num_ctx: int = 0,
-        cache: str = "warm") -> None:
+        cache: str = "warm", retrieval: str = DEFAULT_RETRIEVAL) -> None:
     """Answer every question under one condition, appending as they land.
 
     Serial by default, unlike ``webqsp_bench.run``: this benchmark reports
@@ -630,6 +593,8 @@ def run(bench_dir: Path, condition: str, model: str, out: Path,
     from trikedb import TrikeDB
 
     eval_set = json.load(open(bench_dir / "eval_set.json"))
+    if not eval_set or cap <= 0 or workers <= 0 or limit < 0:
+        raise ValueError("Nonempty evaluation set and positive cap/workers required")
     if limit:
         eval_set = eval_set[:limit]
     document = (bench_dir / "AGENTS.md").read_text()
@@ -647,14 +612,14 @@ def run(bench_dir: Path, condition: str, model: str, out: Path,
             text = "\n".join(grep_lines(document, item["question"], cap))
         else:
             text = "\n".join(f"({t.s}, {t.p}, {t.o})"
-                             for t in graph_context(db, item["question"], [], cap))
+                             for t in graph_context(db, item["question"], [], cap, retrieval))
         return text, time.perf_counter() - started
 
     # One dry pass to size the window, before anything is sent. The biggest
     # prompt of the run decides it, so no answer in the run is silently
     # truncated by a window fitted to the median.
     biggest = max(len(build_prompt(e["question"], context_for(e)[0]))
-                  for e in eval_set[: min(len(eval_set), 20)])
+                  for e in eval_set)
     # 3 chars per token is pessimistic on purpose: over-estimating costs a
     # larger KV cache, under-estimating silently truncates the prompt.
     ctx = num_ctx or _fit_ctx(biggest // 3,
@@ -662,6 +627,11 @@ def run(bench_dir: Path, condition: str, model: str, out: Path,
     client = _client(host, ctx)
     print(f"condition={condition} cache={cache} num_ctx={ctx}", file=sys.stderr)
 
+    from run_manifest import check_resume
+    check_resume(out, dict(model=model, condition=condition, cap=cap, limit=limit,
+                           cache=cache, retrieval=retrieval, num_ctx=ctx, workers=workers),
+                 [bench_dir / "eval_set.json", bench_dir / "AGENTS.md",
+                  bench_dir / "corpus.yaml", Path(__file__)])
     done = set()
     if out.exists():
         done = {json.loads(l)["id"] for l in out.read_text().splitlines() if l.strip()}
@@ -699,6 +669,7 @@ def run(bench_dir: Path, condition: str, model: str, out: Path,
                 "prompt_tokens": result["prompt_tokens"],
                 "completion_tokens": result["completion_tokens"],
                 "condition": condition, "num_ctx": ctx, "cache": cache,
+                "model": model, "retrieval": retrieval,
                 # How many facts the retrieval was allowed to return. It is
                 # the knob the token ratio is a function of, so a record
                 # without it cannot be compared to another one.
@@ -796,7 +767,7 @@ def score(bench_dir: Path, answers: list = None, out_json: Path = None) -> None:
     rows = []
     for path in paths:
         recs = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-        recs = [r for r in recs if r["id"] in gold]
+        recs = wq.validate_records(recs, gold)
         if not recs:
             continue
         row = _metrics(recs, gold)
@@ -806,8 +777,8 @@ def score(bench_dir: Path, answers: list = None, out_json: Path = None) -> None:
               f"{row['median_secs']:>8.1f}{row['median_retrieval_ms']:>9.0f}ms"
               f"   [{lo:.1f}, {hi:.1f}]")
         if row["truncated"]:
-            print(f"{'':<12}   ! {row['truncated']}/{row['n']} prompts filled the "
-                  f"{row['num_ctx']:,}-token window — context was dropped to fit")
+            print(f"{'':<12}   ! {row['truncated']}/{row['n']} prompts flagged for the "
+                  f"{row['num_ctx']:,}-token window — possible truncation (character/token heuristic)")
         rows.append(row)
     if out_json:
         out_json.write_text(json.dumps(
@@ -835,7 +806,7 @@ def sweep(root: Path, out_json: Path = None) -> None:
                 for e in json.load(open(tier / "eval_set.json"))}
         for path in sorted(tier.glob("ans_*.jsonl")):
             recs = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-            recs = [r for r in recs if r["id"] in gold]
+            recs = wq.validate_records(recs, gold)
             if not recs:
                 continue
             row = _metrics(recs, gold)
@@ -895,8 +866,8 @@ def methods(root: Path, cap: int = DEFAULT_CAP, out_json: Path = None) -> None:
                 try:
                     context = method(db, entry["question"],
                                      entities[entry["id"]], cap)
-                except Exception:                           # noqa: BLE001
-                    context = []
+                except Exception as exc:
+                    raise RuntimeError(f"Retrieval failed: {name}, {entry['id']}") from exc
                 elapsed.append(1000 * (time.perf_counter() - started))
                 blob = " ".join(f"{t.s} {t.p} {t.o}" for t in context).lower()
                 reached += any(a.lower() in blob for a in entry["answers"])
@@ -924,9 +895,9 @@ def methods(root: Path, cap: int = DEFAULT_CAP, out_json: Path = None) -> None:
             "method": "AGENTS.md, matching lines", "n": len(eval_set),
             "reached": grep_reached,
             "reached_pct": round(100 * grep_reached / len(eval_set), 1),
-            "median_triples": cap,
+            "median_triples": None,
             "median_chars": int(statistics.median(grep_chars)),
-            "median_ms": 0.0,
+            "median_ms": None,
         })
         print(f"  {'AGENTS.md, matching lines':<28}{grep_reached:>8}"
               f"/{len(eval_set):<9}{'':>9}{rows[-1]['median_chars']:>8}\n")
@@ -975,7 +946,7 @@ def main() -> None:
                    help="0 = size it to the largest prompt of the run")
     r.add_argument("--cache", choices=("warm", "cold"), default="warm",
                    help="cold salts every prompt so the server's prefix cache "
-                        "never hits — the first turn of a session")
+                        "is disrupted (cache misses are not verified)")
 
     s = sub.add_parser("score", help="accuracy, latency and tokens in one table")
     s.add_argument("bench_dir", type=Path)
@@ -1003,7 +974,7 @@ def main() -> None:
                 args.seed, args.out, args.facts_per_q, args.obfuscate)
     elif args.cmd == "run":
         run(args.bench_dir, args.condition, args.model, args.out, args.host,
-            args.cap, args.limit, args.workers, args.num_ctx, args.cache)
+            args.cap, args.limit, args.workers, args.num_ctx, args.cache, args.retrieval)
     elif args.cmd == "methods":
         methods(args.root, args.cap, args.out_json)
     elif args.cmd == "sweep":

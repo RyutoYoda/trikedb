@@ -51,43 +51,9 @@ MD = "#2a78d6"
 GRAPH = "#eb6834"
 
 TEXT = {
-    "en": {
-        "title": "The file's tokens grow with the project. The graph's do not.",
-        "sub": ("WebQSP · 100 questions · qwen3:8b · one corpus, written out "
-                "both ways · prompt tokens the server actually counted<br>"
-                "<b>Hits@1</b> · whole file 82%→71% · 15 facts 77%→72% — the "
-                "file leads at the smallest corpus and falls below the graph "
-                "as the project grows"),
-        "x": "facts in the project's knowledge",
-        "y": "prompt tokens per question",
-        "md": "the whole CLAUDE.md / AGENTS.md",
-        "graph": "trikedb, 15 facts returned",
-        "stop": "past here the file no longer<br>fits the model's context window",
-    },
-    "jp": {
-        "title": "ファイルのトークンは知識量に比例する。グラフはしない。",
-        "sub": ("WebQSP · 100問 · qwen3:8b · 同一コーパスを両方の形で書き出した · "
-                "サーバが実際に数えたプロンプトトークン<br>"
-                "<b>Hits@1</b> · 全文 82%→71% · 15件 77%→72% — "
-                "最小コーパスでは全文が上、知識が育つと全文が下回る"),
-        "x": "プロジェクトの知識に入っている事実の数",
-        "y": "1問あたりのプロンプトトークン",
-        "md": "CLAUDE.md / AGENTS.md 全文",
-        "graph": "trikedb、15件返す",
-        "stop": "これ以上はファイルが<br>モデルの文脈窓に入らない",
-    },
-    "zh": {
-        "title": "文件的 token 随项目增长，图谱的不会。",
-        "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料写成两种形态 · "
-                "服务端实际统计的提示词 token<br>"
-                "<b>Hits@1</b> · 全文 82%→71% · 返回 15 条 77%→72% —— "
-                "语料最小时全文更高，语料变大后全文反而更低"),
-        "x": "项目知识中的事实条数",
-        "y": "每题的提示词 token 数",
-        "md": "整份 CLAUDE.md / AGENTS.md",
-        "graph": "trikedb，返回 15 条",
-        "stop": "再大文件就装不进<br>模型的上下文窗口",
-    },
+ "en": {"title":"Prompt tokens: full file versus up to 15 retrieved facts", "sub":"Historical qwen3:8b · 100 gold-curated questions · medians · both axes logarithmic", "x":"facts in corpus", "y":"prompt tokens per question", "md":"whole file (unflagged samples)", "graph":"trikedb, up to 15 facts", "stop":"Larger file runs flagged for<br>possible truncation; excluded"},
+ "jp": {"title":"全文と最大15件の検索結果：入力トークンの比較", "sub":"過去のqwen3:8b · 正解を使って構成した100問 · 中央値 · 両軸は対数", "x":"コーパスの事実数", "y":"1問の入力トークン", "md":"全文（切詰め疑いなし）", "graph":"trikedb、最大15件", "stop":"これより大きい全文は<br>切詰めの疑いがあるため除外"},
+ "zh": {"title":"全文与最多15条检索事实的输入token比较", "sub":"历史qwen3:8b · 使用答案构建的100题 · 中位数 · 双对数轴", "x":"语料事实数", "y":"每题输入token", "md":"全文（未标记疑似截断）", "graph":"trikedb，最多15条", "stop":"更大的全文疑似截断<br>已从图中排除"},
 }
 
 
@@ -97,7 +63,7 @@ def main(lang: str = "en") -> None:
     warm = [r for r in rows if "/cold" not in r["condition"]]
 
     def series(name):
-        return sorted((r for r in warm if r["condition"] == name),
+        return sorted((r for r in warm if r["condition"] == name and not r.get("truncated")),
                       key=lambda r: r["corpus_triples"])
 
     figure = go.Figure()
