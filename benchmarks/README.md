@@ -14,7 +14,7 @@ Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 | **Speed** | **0.59 s** of the 22.5 s an answer takes — no server, no index, one file |
 | **Scale** | fast to **100,000 triples**; semantic search gives out first, at 30,000 |
 | **End to end** | a laptop-sized 8B reader then answers **77.7%** correctly, against **42.7%** with no graph |
-| **Against a file** | the same facts as `CLAUDE.md` / `AGENTS.md` cost **78x** the tokens per question, for the same answers |
+| **Against a file** | reaching a `CLAUDE.md`'s accuracy takes **8.7x** fewer tokens at 492 facts, **78x** at 1,625 |
 
 ## Accuracy
 
@@ -61,16 +61,37 @@ arbitrary.
 
 ![Tokens and accuracy against corpus size](memory.png)
 
-| facts in the project | as a knowledge file | with trikedb | tokens |
-|---|---|---|---|
-| 492 | 9,668 tok · 82.0% | 409 tok · 77.0% | 24x |
-| 1,181 | 22,153 tok · 72.0% | 397 tok · **73.0%** | 56x |
-| 1,625 | 30,354 tok · 71.0% | 389 tok · **72.0%** | **78x** |
-| 2,246 | does not fit | 390 tok · 71.0% | — |
-| 3,998 | does not fit | 375 tok · 68.0% | — |
+| facts in the project | as a knowledge file | trikedb, 15 facts returned |
+|---|---|---|
+| 492 | 9,668 tok · 82.0% | 409 tok · 77.0% |
+| 1,181 | 22,153 tok · 72.0% | 397 tok · **73.0%** |
+| 1,625 | 30,354 tok · 71.0% | 389 tok · **72.0%** |
+| 2,246 | does not fit | 390 tok · 71.0% |
+| 3,998 | does not fit | 375 tok · 68.0% |
 
 100 questions, `qwen3:8b`, temperature 0, one request per question so the arms
 are turn-matched. No context at all scores 35.0%.
+
+Read the columns separately, because at 492 facts they are not equivalent: the
+graph is 5 points behind there, so its 409 tokens buys a worse answer and the
+ratio is not a like-for-like saving. How many facts trikedb returns is a knob
+(`--cap`), and the honest comparison sets it to where the answers match:
+
+| 492 facts, the file scores 82.0% on 9,668 tokens | Hits@1 | tokens | |
+|---|---|---|---|
+| trikedb, 15 facts | 77.0% | 409 | 5 points behind |
+| **trikedb, 50 facts** | **86.0%** | **1,117** | **8.7x cheaper, 4 points ahead** |
+| trikedb, 150 facts | 88.0% | 3,125 | 3.1x cheaper, 6 points ahead |
+
+So the like-for-like number at 492 facts is **8.7x**, not the 24x the first
+table's raw tokens suggest. At 1,625 facts 15 facts already matches the file
+(72.0% against 71.0%), and there the ratio is 78x — it grows because a growing
+file costs more *and* answers worse, which lowers the bar the graph has to
+clear.
+
+The file has no such knob. It is already sending everything, so 82.0% is its
+ceiling at 492 facts and no budget buys more. The graph reaches 88.0% and is
+still 3.1x cheaper.
 
 The reason the gap grows is that markdown has no index. The file has to be
 sent whole, because there is no way to hand over only the Solomon section

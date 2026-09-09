@@ -23,6 +23,52 @@
   "distractors": 0
  },
  {
+  "condition": "graph@150",
+  "n": 100,
+  "hits_at_1": 88.0,
+  "f1": 74.6,
+  "hits_ci95": [
+   80.2,
+   93.0
+  ],
+  "median_prompt_tokens": 3125,
+  "median_completion_tokens": 5,
+  "median_secs": 12.11,
+  "first_secs": 11.43,
+  "median_retrieval_ms": 5.9,
+  "total_prompt_tokens": 310407,
+  "num_ctx": 8192,
+  "truncated": 0,
+  "median_prompt_chars": 11284,
+  "tier": "d0",
+  "corpus_triples": 492,
+  "file_tokens": 8063,
+  "distractors": 0
+ },
+ {
+  "condition": "graph@50",
+  "n": 100,
+  "hits_at_1": 86.0,
+  "f1": 72.9,
+  "hits_ci95": [
+   77.9,
+   91.5
+  ],
+  "median_prompt_tokens": 1117,
+  "median_completion_tokens": 5,
+  "median_secs": 4.01,
+  "first_secs": 7.47,
+  "median_retrieval_ms": 3.6,
+  "total_prompt_tokens": 110687,
+  "num_ctx": 4096,
+  "truncated": 0,
+  "median_prompt_chars": 4088,
+  "tier": "d0",
+  "corpus_triples": 492,
+  "file_tokens": 8063,
+  "distractors": 0
+ },
+ {
   "condition": "md",
   "n": 100,
   "hits_at_1": 82.0,

@@ -699,6 +699,10 @@ def run(bench_dir: Path, condition: str, model: str, out: Path,
                 "prompt_tokens": result["prompt_tokens"],
                 "completion_tokens": result["completion_tokens"],
                 "condition": condition, "num_ctx": ctx, "cache": cache,
+                # How many facts the retrieval was allowed to return. It is
+                # the knob the token ratio is a function of, so a record
+                # without it cannot be compared to another one.
+                "cap": cap,
             }, ensure_ascii=False) + "\n")
             log.flush()
             state["n"] += 1
@@ -731,6 +735,9 @@ def _metrics(recs: list, gold: dict) -> dict:
     hit = sum(wq.hits_at_1(r["answer"], gold[r["id"]]) for r in recs)
     lo, hi = wq._wilson(hit, n)
     name = recs[0].get("condition", "?")
+    cap = recs[0].get("cap")
+    if cap and cap != DEFAULT_CAP and name in ("graph", "md_grep"):
+        name += f"@{cap}"
     if recs[0].get("cache", "warm") != "warm":
         name += "/cold"
     # An over-long prompt is not refused, it is cut down — Ollama keeps about

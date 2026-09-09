@@ -47,7 +47,7 @@ SERIES = [("md", MD), ("md_grep", MD_GREP), ("graph", GRAPH)]
 #: number and every colour is the same file of data.
 TEXT = {
     "en": {
-        "title": "Same facts, same answers, {ratio:.0f}x the tokens",
+        "title": "The file's cost grows with the project. The graph's does not.",
         "sub": ("WebQSP · 100 questions · qwen3:8b · the identical corpus "
                 "delivered as AGENTS.md and as a trikedb graph"),
         "x": "facts in the project's knowledge",
@@ -56,11 +56,11 @@ TEXT = {
         "md_grep": "matching lines of AGENTS.md",
         "graph": "trikedb retrieval",
         "none": "no context at all",
-        "gap": "<b>{ratio:.0f}x</b>",
+        "gap": "<b>{ratio:.0f}x</b> the tokens",
         "window": "↑ past here the file no longer fits the window",
     },
     "jp": {
-        "title": "同じ事実、同じ精度、トークンは {ratio:.0f} 倍",
+        "title": "ファイルのコストはプロジェクトと共に増える。グラフは増えない。",
         "sub": ("WebQSP · 100問 · qwen3:8b · 同一のコーパスを "
                 "AGENTS.md と trikedb グラフの両方で渡した"),
         "x": "プロジェクトの知識に入っている事実の数",
@@ -69,11 +69,11 @@ TEXT = {
         "md_grep": "AGENTS.md の該当行だけ",
         "graph": "trikedb で検索",
         "none": "文脈なし",
-        "gap": "<b>{ratio:.0f}倍</b>",
+        "gap": "トークン <b>{ratio:.0f}倍</b>",
         "window": "↑ これ以上はファイルが窓に入らない",
     },
     "zh": {
-        "title": "同样的事实，同样的准确率，token 多 {ratio:.0f} 倍",
+        "title": "文件的成本随项目增长，图谱的不会。",
         "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料分别以 "
                 "AGENTS.md 和 trikedb 图谱交付"),
         "x": "项目知识中的事实条数",
@@ -82,7 +82,7 @@ TEXT = {
         "md_grep": "只放 AGENTS.md 中匹配的行",
         "graph": "trikedb 检索",
         "none": "没有任何上下文",
-        "gap": "<b>{ratio:.0f} 倍</b>",
+        "gap": "token <b>{ratio:.0f} 倍</b>",
         "window": "↑ 再大文件就装不进上下文窗口",
     },
 }
@@ -96,10 +96,12 @@ def main(lang: str = "en") -> None:
                        key=lambda r: r["corpus_triples"])
           for name, _ in SERIES}
 
-    # The headline ratio is taken at the largest corpus where the file still
-    # fits the window. Past that the file arm is being truncated, and a ratio
-    # computed there would flatter the graph with tokens the file was never
-    # allowed to send.
+    # The bracket's ratio is raw tokens at a fixed retrieval size, taken at
+    # the largest corpus where the file still fits the window. It is not a
+    # like-for-like saving and the title no longer claims it is: at the
+    # smallest corpus this retrieval size scores five points below the file,
+    # so the same ratio there would be comparing a cheap wrong answer against
+    # an expensive right one. README.md carries the accuracy-matched table.
     fitting = [r for r in by["md"] if not r["truncated"]] or by["md"]
     biggest = fitting[-1]
     paired = next(r for r in by["graph"]
