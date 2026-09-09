@@ -14,7 +14,7 @@ Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 | **Speed** | **0.59 s** of the 22.5 s an answer takes — no server, no index, one file |
 | **Scale** | fast to **100,000 triples**; semantic search gives out first, at 30,000 |
 | **End to end** | a laptop-sized 8B reader then answers **77.7%** correctly, against **42.7%** with no graph |
-| **Against a file** | the same facts as `AGENTS.md` cost **78x** the tokens per question, for the same answers |
+| **Against a file** | the same facts as `CLAUDE.md` / `AGENTS.md` cost **78x** the tokens per question, for the same answers |
 
 ## Accuracy
 
@@ -53,9 +53,15 @@ alternative is a graph the model retrieves from. `memory_bench.py` builds one
 corpus and renders it both ways: same facts, same questions, same reader, one
 request each, and the corpus grows.
 
+The two filenames are the same mechanism under different harnesses, and both
+were measured in the one that reads them — `CLAUDE.md` in Claude Code,
+`AGENTS.md` in Codex, in the agent section below. The table here is a raw
+model behind one HTTP call, where the file is a payload and its name is
+arbitrary.
+
 ![Tokens and accuracy against corpus size](memory.png)
 
-| facts in the project | as `AGENTS.md` | with trikedb | tokens |
+| facts in the project | as a knowledge file | with trikedb | tokens |
 |---|---|---|---|
 | 492 | 9,668 tok · 82.0% | 409 tok · 77.0% | 24x |
 | 1,181 | 22,153 tok · 72.0% | 397 tok · **73.0%** | 56x |
