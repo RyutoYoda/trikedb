@@ -41,7 +41,12 @@ MD = "#2a78d6"
 GRAPH = "#eb6834"
 MD_GREP = "#1baf7a"
 
-SERIES = [("md", MD), ("md_grep", MD_GREP), ("graph", GRAPH)]
+#: Two lines, not three. `md_grep` is a control and its numbers matter, but on
+#: this figure it sits within a few hundred tokens of the graph's line, so the
+#: top panel showed two curves where the legend promised three and the reader
+#: had to work out which was missing. It lives in the table in README.md.
+SERIES = [("md", MD, "top center"), ("graph", GRAPH, "bottom center")]
+PLOTTED = ("md", "graph", "md_grep")
 
 #: A translated doc deserves a translated figure. Only the words move; every
 #: number and every colour is the same file of data.
@@ -49,40 +54,40 @@ TEXT = {
     "en": {
         "title": "The file's cost grows with the project. The graph's does not.",
         "sub": ("WebQSP · 100 questions · qwen3:8b · the identical corpus "
-                "delivered as AGENTS.md and as a trikedb graph"),
+                "delivered as a CLAUDE.md / AGENTS.md and as a trikedb graph"),
         "x": "facts in the project's knowledge",
         "y1": "prompt tokens per question", "y2": "Hits@1",
-        "md": "the whole AGENTS.md in the prompt",
+        "md": "the whole CLAUDE.md / AGENTS.md in the prompt",
         "md_grep": "matching lines of AGENTS.md",
-        "graph": "trikedb retrieval",
+        "graph": "trikedb retrieval, 15 facts",
         "none": "no context at all",
-        "gap": "<b>{ratio:.0f}x</b> the tokens",
+        "gap": "<b>{cut:.1f}% fewer</b> tokens<br>at 15 facts returned",
         "window": "↑ past here the file no longer fits the window",
     },
     "jp": {
         "title": "ファイルのコストはプロジェクトと共に増える。グラフは増えない。",
         "sub": ("WebQSP · 100問 · qwen3:8b · 同一のコーパスを "
-                "AGENTS.md と trikedb グラフの両方で渡した"),
+                "CLAUDE.md / AGENTS.md と trikedb グラフの両方で渡した"),
         "x": "プロジェクトの知識に入っている事実の数",
         "y1": "1問あたりのプロンプトトークン", "y2": "Hits@1",
-        "md": "AGENTS.md 全文をプロンプトに",
+        "md": "CLAUDE.md / AGENTS.md 全文をプロンプトに",
         "md_grep": "AGENTS.md の該当行だけ",
-        "graph": "trikedb で検索",
+        "graph": "trikedb で検索、15件",
         "none": "文脈なし",
-        "gap": "トークン <b>{ratio:.0f}倍</b>",
+        "gap": "トークン <b>{cut:.1f}% 削減</b><br>（15件返した場合）",
         "window": "↑ これ以上はファイルが窓に入らない",
     },
     "zh": {
         "title": "文件的成本随项目增长，图谱的不会。",
         "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料分别以 "
-                "AGENTS.md 和 trikedb 图谱交付"),
+                "CLAUDE.md / AGENTS.md 和 trikedb 图谱交付"),
         "x": "项目知识中的事实条数",
         "y1": "每题的提示词 token 数", "y2": "Hits@1",
-        "md": "把整个 AGENTS.md 放进提示",
+        "md": "把整个 CLAUDE.md / AGENTS.md 放进提示",
         "md_grep": "只放 AGENTS.md 中匹配的行",
-        "graph": "trikedb 检索",
+        "graph": "trikedb 检索，15 条",
         "none": "没有任何上下文",
-        "gap": "token <b>{ratio:.0f} 倍</b>",
+        "gap": "token <b>减少 {cut:.1f}%</b><br>（返回 15 条时）",
         "window": "↑ 再大文件就装不进上下文窗口",
     },
 }
@@ -94,7 +99,7 @@ def main(lang: str = "en") -> None:
     floor = next((r["hits_at_1"] for r in warm if r["condition"] == "none"), None)
     by = {name: sorted((r for r in warm if r["condition"] == name),
                        key=lambda r: r["corpus_triples"])
-          for name, _ in SERIES}
+          for name in PLOTTED}
 
     # The bracket's ratio is raw tokens at a fixed retrieval size, taken at
     # the largest corpus where the file still fits the window. It is not a
@@ -107,7 +112,11 @@ def main(lang: str = "en") -> None:
     paired = next(r for r in by["graph"]
                   if r["corpus_triples"] == biggest["corpus_triples"])
     ratio = biggest["median_prompt_tokens"] / paired["median_prompt_tokens"]
-    words = {k: v.format(ratio=ratio) if "{ratio" in v else v
+    # A percentage, because "78x" makes the reader work out which direction is
+    # cheaper. "98.7% fewer" does not.
+    cut = 100 * (1 - paired["median_prompt_tokens"]
+                 / biggest["median_prompt_tokens"])
+    words = {k: v.format(ratio=ratio, cut=cut) if "{" in v else v
              for k, v in TEXT[lang].items()}
 
     # Every size any condition reached, not just the file arm's. The file
@@ -118,14 +127,28 @@ def main(lang: str = "en") -> None:
     figure = make_subplots(rows=2, cols=1, shared_xaxes=True,
                            vertical_spacing=0.08, row_heights=[0.52, 0.48])
 
-    for name, color in SERIES:
+    for name, color, side in SERIES:
         points = by[name]
         if not points:
             continue
         x = [r["corpus_triples"] for r in points]
+
+        def ends(values, fmt):
+            """The value written on the first and last point, nothing between.
+
+            Labelling every point stacks five numbers along a line that is
+            almost flat; labelling none makes the reader decode a log axis to
+            learn that 409 and 375 are the same number twice.
+            """
+            return [fmt(v) if i in (0, len(values) - 1) else ""
+                    for i, v in enumerate(values)]
+
+        tokens = [r["median_prompt_tokens"] for r in points]
         figure.add_trace(go.Scatter(
-            x=x, y=[r["median_prompt_tokens"] for r in points],
-            mode="lines+markers", name=words[name], legendgroup=name,
+            x=x, y=tokens, mode="lines+markers+text", name=words[name],
+            legendgroup=name, text=ends(tokens, lambda v: f"{v:,}"),
+            textposition=side, textfont=dict(size=13, color=color),
+            cliponaxis=False,
             line=dict(color=color, width=3), marker=dict(size=9, color=color),
             hovertemplate="%{x:,} facts<br>%{y:,} prompt tokens<extra></extra>",
         ), row=1, col=1)
@@ -133,9 +156,13 @@ def main(lang: str = "en") -> None:
         # real configuration — a file that outgrew the window — but it is a
         # different failure from getting lost in a file that fit, and one
         # marker for both would merge them.
+        hits = [r["hits_at_1"] for r in points]
         figure.add_trace(go.Scatter(
-            x=x, y=[r["hits_at_1"] for r in points], mode="lines+markers",
+            x=x, y=hits, mode="lines+markers+text",
             name=words[name], legendgroup=name, showlegend=False,
+            text=ends(hits, lambda v: f"{v:.0f}%"),
+            textposition=side, textfont=dict(size=13, color=color),
+            cliponaxis=False,
             line=dict(color=color, width=3),
             marker=dict(size=11, color=[SURFACE if r["truncated"] else color
                                         for r in points],
@@ -173,8 +200,8 @@ def main(lang: str = "en") -> None:
     # cannot be run at all rather than merely running worse.
     if biggest["corpus_triples"] < max(sizes):
         figure.add_annotation(
-            x=math.log10(biggest["corpus_triples"]), xshift=10,
-            y=math.log10(biggest["median_prompt_tokens"]), yshift=16,
+            x=math.log10(biggest["corpus_triples"]), xshift=14,
+            y=math.log10(biggest["median_prompt_tokens"]), yshift=-2,
             text=words["window"], showarrow=False, xanchor="left",
             font=dict(size=12, color=MD), row=1, col=1)
 
@@ -207,11 +234,16 @@ def main(lang: str = "en") -> None:
     # Clamped to the data. Left to itself the axis runs down to 5 tokens to
     # reach a round decade, and three quarters of the panel is then empty
     # space under the flat line.
-    figure.update_yaxes(title=dict(text=words["y1"], font=dict(size=14)),
+    # Explicit ticks. Left alone across two and a half decades plotly labels
+    # the minor ticks too, so the axis reads "5 2 5 2 5 2" between the
+    # decades and every number on it has to be decoded.
+    figure.update_yaxes(title=dict(text=words["y1"], font=dict(size=13)),
                         type="log", gridcolor=GRID, zeroline=False,
-                        range=[math.log10(200), math.log10(120_000)],
+                        range=[math.log10(230), math.log10(90_000)],
+                        tickvals=[300, 1_000, 3_000, 10_000, 30_000],
+                        ticktext=["300", "1k", "3k", "10k", "30k"],
                         row=1, col=1)
-    figure.update_yaxes(title=dict(text=words["y2"], font=dict(size=14)),
+    figure.update_yaxes(title=dict(text=words["y2"], font=dict(size=13)),
                         range=[0, 100], ticksuffix="%", gridcolor=GRID,
                         zeroline=False, row=2, col=1)
     out = HERE / ("memory.png" if lang == "en" else f"memory_{lang}.png")

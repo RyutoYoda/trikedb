@@ -14,7 +14,7 @@ Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 | **Speed** | **0.59 s** of the 22.5 s an answer takes — no server, no index, one file |
 | **Scale** | fast to **100,000 triples**; semantic search gives out first, at 30,000 |
 | **End to end** | a laptop-sized 8B reader then answers **77.7%** correctly, against **42.7%** with no graph |
-| **Against a file** | reaching a `CLAUDE.md`'s accuracy takes **8.7x** fewer tokens at 492 facts, **78x** at 1,625 |
+| **Against a file** | beating a `CLAUDE.md` / `AGENTS.md` on accuracy costs **88.4% fewer tokens** — and the gap widens as the file grows |
 
 ## Accuracy
 
@@ -77,17 +77,20 @@ graph is 5 points behind there, so its 409 tokens buys a worse answer and the
 ratio is not a like-for-like saving. How many facts trikedb returns is a knob
 (`--cap`), and the honest comparison sets it to where the answers match:
 
-| 492 facts, the file scores 82.0% on 9,668 tokens | Hits@1 | tokens | |
+| 492 facts, the file scores 82.0% on 9,668 tokens | Hits@1 | tokens | tokens saved |
 |---|---|---|---|
-| trikedb, 15 facts | 77.0% | 409 | 5 points behind |
-| **trikedb, 50 facts** | **86.0%** | **1,117** | **8.7x cheaper, 4 points ahead** |
-| trikedb, 150 facts | 88.0% | 3,125 | 3.1x cheaper, 6 points ahead |
+| trikedb, 15 facts | 77.0% | 409 | 95.8%, but 5 points behind |
+| **trikedb, 50 facts** | **86.0%** | **1,117** | **88.4%, and 4 points ahead** |
+| trikedb, 150 facts | 88.0% | 3,125 | 67.7%, and 6 points ahead |
 
-So the like-for-like number at 492 facts is **8.7x**, not the 24x the first
-table's raw tokens suggest. At 1,625 facts 15 facts already matches the file
-(72.0% against 71.0%), and there the ratio is 78x — it grows because a growing
-file costs more *and* answers worse, which lowers the bar the graph has to
-clear.
+So the like-for-like figure at 492 facts is **88.4% fewer tokens at higher
+accuracy**, not the 95.8% the first table's raw tokens suggest.
+
+At 1,625 facts 15 facts already matches the file (72.0% against 71.0%) and the
+saving is 98.7% — but that is the flattering end of the range and worth
+reading with its condition attached. The file scored 82.0% at 492 facts and
+71.0% at 1,625: it got worse as it grew, which lowered the bar. 88.4% is the
+number measured where the file is at its best, so it is the one to quote.
 
 The file has no such knob. It is already sending everything, so 82.0% is its
 ceiling at 492 facts and no budget buys more. The graph reaches 88.0% and is
@@ -142,8 +145,10 @@ lands in and on session lifetime, and this benchmark controls neither.
 |---|---|---|---|
 | Claude Code, `CLAUDE.md` | 41,318 · 70.0% | 63,172 · 63.3% | 110,839 · 70.0% |
 | Claude Code, trikedb | 31,377 · 66.7% | 29,769 · 60.0% | **29,758 · 66.7%** |
+| → tokens saved | 24.1% | 52.9% | **73.2%** |
 | Codex, `AGENTS.md` | 29,173 · 73.3% | 58,308 · 60.0% | 87,153 · 56.7% |
 | Codex, trikedb | 20,523 · 66.7% | 20,503 · 66.7% | **20,510 · 66.7%** |
+| → tokens saved | 29.7% | 64.8% | **76.5%** |
 
 30 questions, `claude-haiku-4.5` and Codex's default. Every row is one turn
 except Codex's file arm, which took a second turn at 1,625 facts and a third
@@ -152,7 +157,9 @@ part of why its cost climbs. Most of each number is the harness's own system
 prompt — 31,014 tokens for Claude Code with no project knowledge at all —
 which neither arm avoids.
 Subtract it and the knowledge itself costs **+10,304 tokens as a file against
-+363 as a graph**, a factor of 28.
++363 as a graph — 96.5% less**. The whole-request saving is smaller than that
+only because two thirds of the request is harness overhead neither arm can
+avoid.
 
 Codex is the cleaner result: as the corpus grows its file arm gets both more
 expensive and *less* accurate (73.3% → 56.7%) while the graph arm holds
