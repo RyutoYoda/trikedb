@@ -14,6 +14,7 @@ Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 | **Speed** | **0.59 s** of the 22.5 s an answer takes — no server, no index, one file |
 | **Scale** | fast to **100,000 triples**; semantic search gives out first, at 30,000 |
 | **End to end** | a laptop-sized 8B reader then answers **77.7%** correctly, against **42.7%** with no graph |
+| **Against a file** | the same facts as `AGENTS.md` cost **78x** the tokens per question, for the same answers |
 
 ## Accuracy
 
@@ -43,6 +44,99 @@ correct answer. The 11.6-point gap is 38 questions whose answer was in front of
 the model and did not come out of it — so a perfect reader on this same
 retrieval would score 89.3%, and the ceiling here belongs to the reader, not
 the graph.
+
+## Against a knowledge file
+
+Project knowledge reaches a model somehow. The usual way is `CLAUDE.md` /
+`AGENTS.md` — the whole file, in the context, on every question. The
+alternative is a graph the model retrieves from. `memory_bench.py` builds one
+corpus and renders it both ways: same facts, same questions, same reader, one
+request each, and the corpus grows.
+
+![Tokens and accuracy against corpus size](memory.png)
+
+| facts in the project | as `AGENTS.md` | with trikedb | tokens |
+|---|---|---|---|
+| 492 | 9,668 tok · 82.0% | 409 tok · 77.0% | 24x |
+| 1,181 | 22,153 tok · 72.0% | 397 tok · **73.0%** | 56x |
+| 1,625 | 30,354 tok · 71.0% | 389 tok · **72.0%** | **78x** |
+| 2,246 | does not fit | 390 tok · 71.0% | — |
+| 3,998 | does not fit | 375 tok · 68.0% | — |
+
+100 questions, `qwen3:8b`, temperature 0, one request per question so the arms
+are turn-matched. No context at all scores 35.0%.
+
+The reason the gap grows is that markdown has no index. The file has to be
+sent whole, because there is no way to hand over only the Solomon section
+without reading the file first — so its cost is the size of the *project*.
+The graph is addressable, so its cost is the size of the *answer*: ~15 triples
+whether the corpus holds 492 facts or 3,998. The ratio is roughly total facts
+over facts the question needs, and only the numerator grows.
+
+"Does not fit" is measured, not skipped: at 2,246 facts the rendered file is
+143,157 characters and the reader read 20,482 tokens of it — 7.0 characters
+per token against 3.4 for a prompt that fits. Ollama does not refuse an
+over-long prompt, it cuts it in half and answers from the remainder.
+
+**Retrieval, not just retrieval.** Grepping the same file at the graph's
+budget is the control, and it costs the same ~380 tokens: 68.0% at 492 facts
+falling to 61.0% at 3,998, against the graph's 77.0% → 68.0%. So 7-14 points
+of the graph's result is the graph and not the act of retrieving.
+
+**Which retrieval matters more than whether.** trikedb can be asked six ways
+and they are not interchangeable, so all of them are priced before any model
+runs — no LLM, just whether a gold answer reached a 15-triple context:
+
+![Answer-in-context by retrieval method](retrieval_methods.png)
+
+| method | 492 facts | 3,998 facts |
+|---|---|---|
+| `hybrid` (entity + semantic) | **94%** | **86%** |
+| `find` (node payloads) | 92% | 72% |
+| `search` (semantic only) | 84% | 72% |
+| `1-hop + CVT` | 73% | 73% |
+| `2-hop` | 73% | 71% |
+| `1-hop` | 51% | 52% |
+| `AGENTS.md`, matching lines | 74% | 60% |
+
+Picking `search` and calling it "the graph" costs 10-14 points against
+`hybrid` at the same budget. The numbers above use `hybrid`.
+
+### Inside a real agent
+
+The same corpora through Claude Code and Codex, with the file loaded from disk
+into the system prompt the way each harness actually does it. Tokens as the
+harness reports them, not dollars: cost depends on which cache band a token
+lands in and on session lifetime, and this benchmark controls neither.
+
+![Tokens and accuracy in two agent CLIs](agent.png)
+
+| | 492 facts | 1,625 facts | 3,998 facts |
+|---|---|---|---|
+| Claude Code, `CLAUDE.md` | 41,318 · 70.0% | 63,172 · 63.3% | 110,839 · 70.0% |
+| Claude Code, trikedb | 31,377 · 66.7% | 29,769 · 60.0% | **29,758 · 66.7%** |
+| Codex, `AGENTS.md` | 29,173 · 73.3% | 58,308 · 60.0% | 87,153 · 56.7% |
+| Codex, trikedb | 20,523 · 66.7% | 20,503 · 66.7% | **20,510 · 66.7%** |
+
+30 questions, `claude-haiku-4.5` and Codex's default. Every row is one turn
+except Codex's file arm, which took a second turn at 1,625 facts and a third
+at 3,998 — it starts working to find things in a file that large, and that is
+part of why its cost climbs. Most of each number is the harness's own system
+prompt — 31,014 tokens for Claude Code with no project knowledge at all —
+which neither arm avoids.
+Subtract it and the knowledge itself costs **+10,304 tokens as a file against
++363 as a graph**, a factor of 28.
+
+Codex is the cleaner result: as the corpus grows its file arm gets both more
+expensive and *less* accurate (73.3% → 56.7%) while the graph arm holds
+66.7% on a flat 20,510 tokens.
+
+**Letting the agent query the graph itself was worse.** Given the MCP server
+and told to use it, both harnesses spent three or four turns, and every turn
+re-sends the prefix: 85,098 tokens at 26.7% for Claude Code, 84,730 at 70.0%
+for Codex. Retrieving once *before* the agent runs and putting the result in
+the prompt beat it on tokens in both harnesses and on accuracy in one. That is
+the configuration the rows above use, and it is what a context hook does.
 
 ## Speed
 
@@ -122,6 +216,35 @@ pipeline-shaped graph, Apple silicon); backend numbers from `backend_bench.py`;
 the retrieval comparison from `retrieval_bench.py`, which `webqsp_bench.py`
 imports rather than reimplementing.
 
+The knowledge-file comparison is `memory_bench.py`. One `prepare` builds every
+corpus size as a nested tier, so the questions are identical at every size:
+
+```bash
+uv run --extra all --with polars --with model2vec \
+    python benchmarks/memory_bench.py prepare --n 100 --seed 42 \
+    --distractors 0,150,250,400,900 --facts-per-q 5 --out bench_out/memory
+
+for tier in d0 d150 d250 d400 d900; do
+  for cond in none md md_grep graph; do
+    uv run --extra all --with polars --with model2vec \
+        python benchmarks/memory_bench.py run bench_out/memory/$tier \
+        --condition $cond --model qwen3:8b \
+        --out bench_out/memory/$tier/ans_$cond.jsonl
+  done
+done
+
+uv run --extra all --with model2vec \
+    python benchmarks/memory_bench.py methods bench_out/memory --cap 15
+uv run --extra all python benchmarks/memory_bench.py sweep bench_out/memory
+```
+
+`methods` needs no model and finishes in seconds; `sweep` is the growth curve.
+The agent rows are `agent_bench.py`, which drives the `claude` and `codex`
+CLIs (`--harness`) and reads the token counts each one reports. Put its
+workspaces outside a git repository with `--workspace-root`: both CLIs walk up
+from the working directory looking for a knowledge file, and an unrelated
+`CLAUDE.md` two levels up gets measured as part of the condition.
+
 ## What this does not show
 
 - **Not a comparison against other tools.** No vector store, no other triple
@@ -141,3 +264,19 @@ imports rather than reimplementing.
   your own is worse than no table.
 - **Gold labels are noisy.** Roughly 10% of sampled questions have
   questionable answers, which caps honest absolute scores on raw WebQSP labels.
+- **Not dollars.** The agent rows are token counts. Cost depends on which
+  cache band each token lands in — a cache read is a tenth of normal input, a
+  cache write more than one — and on whether the session was still alive.
+  Every `claude -p` and `codex exec` here is a fresh session, which is what a
+  scripted or CI task is and is *not* what a long interactive session is. In a
+  session that stays warm the file is written to cache once and read cheaply
+  after, and the dollar gap narrows while the token gap does not.
+- **Not the agent's own retrieval.** The knowledge-file rows retrieve once
+  before the agent runs. Letting the agent drive the MCP server itself is
+  measured and reported, and it was worse; making *that* path good is not
+  something this benchmark shows how to do.
+- **The corpus bounds it.** The answer is reachable within two hops of
+  something the question names for 76 of 100 questions, so no arm can score
+  much above that. Fixing an earlier curation bug moved this from 36 to 76 —
+  the check that missed it asked whether the answer *string* was in the file,
+  which a disconnected corpus passes.
