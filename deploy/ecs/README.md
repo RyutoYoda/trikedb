@@ -28,7 +28,7 @@ normal users do not need a `dist/` directory.
 For a reproducible deployment, use the [Terraform module](terraform/README.md).
 It creates dedicated ECS/S3/ECR/IAM resources in your selected account, with an
 optional HTTPS ALB, and defaults to a dedicated VPC. The steps below describe
-the equivalent manual setup.
+the equivalent manual setup. 構成を先に把握したい場合は、[サンプルアーキテクチャ](ARCHITECTURE.md)を参照してください。
 
 1. Choose your own AWS account and region. Create a private S3 bucket with Block
    Public Access enabled. Use a unique object key such as `graphs/team.yaml`.
