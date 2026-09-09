@@ -49,7 +49,10 @@ TEXT = {
     "en": {
         "title": "The file's cost grows with the project. The graph's does not.",
         "sub": ("WebQSP · 100 questions · qwen3:8b · one corpus, written out "
-                "both ways · prompt tokens the server actually counted"),
+                "both ways · prompt tokens the server actually counted<br>"
+                "<b>Hits@1</b> · whole file 82%→71% · 15 facts 77%→72% — the "
+                "file leads at the smallest corpus and falls below the graph "
+                "as the project grows"),
         "x": "facts in the project's knowledge",
         "y": "prompt tokens per question",
         "md": "the whole CLAUDE.md / AGENTS.md",
@@ -59,7 +62,9 @@ TEXT = {
     "jp": {
         "title": "ファイルのコストは知識量に比例する。グラフはしない。",
         "sub": ("WebQSP · 100問 · qwen3:8b · 同一コーパスを両方の形で書き出した · "
-                "サーバが実際に数えたプロンプトトークン"),
+                "サーバが実際に数えたプロンプトトークン<br>"
+                "<b>Hits@1</b> · 全文 82%→71% · 15件 77%→72% — "
+                "最小コーパスでは全文が上、知識が育つと全文が下回る"),
         "x": "プロジェクトの知識に入っている事実の数",
         "y": "1問あたりのプロンプトトークン",
         "md": "CLAUDE.md / AGENTS.md 全文",
@@ -69,7 +74,9 @@ TEXT = {
     "zh": {
         "title": "文件的成本随项目增长，图谱的不会。",
         "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料写成两种形态 · "
-                "服务端实际统计的提示词 token"),
+                "服务端实际统计的提示词 token<br>"
+                "<b>Hits@1</b> · 全文 82%→71% · 返回 15 条 77%→72% —— "
+                "语料最小时全文更高，语料变大后全文反而更低"),
         "x": "项目知识中的事实条数",
         "y": "每题的提示词 token 数",
         "md": "整份 CLAUDE.md / AGENTS.md",
@@ -129,7 +136,7 @@ def main(lang: str = "en") -> None:
             text=(f"{words['title']}<br>"
                   f"<span style='font-size:13px;color:{INK_MUTED}'>"
                   f"{words['sub']}</span>"),
-            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.93),
+            font=dict(size=22, color=INK), x=0.01, xanchor="left", y=0.95),
         paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
         font=dict(family="Helvetica, Arial, sans-serif", color=INK, size=14),
         legend=dict(orientation="h", y=-0.18, x=0, font=dict(size=14)),
@@ -143,7 +150,7 @@ def main(lang: str = "en") -> None:
                    tickvals=[300, 1_000, 3_000, 10_000, 30_000],
                    ticktext=["300", "1k", "3k", "10k", "30k"],
                    range=[math.log10(250), math.log10(60_000)]),
-        margin=dict(l=84, r=44, t=104, b=96), width=1000, height=560,
+        margin=dict(l=84, r=44, t=132, b=96), width=1000, height=580,
     )
     out = HERE / ("memory.png" if lang == "en" else f"memory_{lang}.png")
     figure.write_image(out, scale=2)
