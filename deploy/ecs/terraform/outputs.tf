@@ -1,0 +1,9 @@
+output "repository_url" { value = aws_ecr_repository.image.repository_url }
+output "graph_url" { value = "s3://${aws_s3_bucket.graph.id}/${local.graph}" }
+output "cluster_arn" { value = aws_ecs_cluster.server.arn }
+output "task_definition_arn" { value = aws_ecs_task_definition.server.arn }
+output "task_security_group_id" { value = aws_security_group.task.id }
+output "log_group" { value = aws_cloudwatch_log_group.server.name }
+output "alb_dns_name" { value = try(aws_lb.server[0].dns_name, null) }
+output "vpc_id" { value = local.vpc_id }
+output "task_subnet_ids" { value = local.task_subnet_ids }

@@ -29,7 +29,17 @@
 
 # trikedb
 
-**面向 AI 智能体的单文件知识图谱。** 一个图谱就是你仓库里的一个 YAML 文件 — 完整的 SPARQL 1.1，读*和*写都支持，智能体的写入要经过本体护栏，而每一次改动都以 diff 的形式抵达。
+**面向 AI 智能体的单文件知识图谱。** 一个图谱就是你仓库里的一个 YAML 文件 — SPARQL 1.1 查询与default graph更新，读*和*写都支持，智能体的写入要经过本体护栏，而每一次改动都以 diff 的形式抵达。
+
+
+**兼容性与保证范围。** 支持单一default graph的SPARQL读取、INSERT/DELETE和CLEAR/DROP，拒绝named graph/dataset更新。旧格式中含空白的object是literal；`New York`之类实体应指定 `rdf_terms={"o": {"kind": "iri"}}`。SPARQL插入的RDF类型、语言标签和blank node可在保存后保留。RDF/JSON-LD保留含元数据的RDF投影；pattern/NetworkX/SQL使用词法名称。
+
+返回的Triple和属性是副本，请通过API修改。batch在主体或最终save失败时回滚内存，但不能撤销其中显式save或外部副作用。reload使用存储中的ontology。已配置的谓词白名单在API插入时检查，HTTP(S)谓词除外；手工文件在load时不检查ontology一致性。
+
+本地保存atomic replace完整文件，但不同进程仍为last-write-wins。同一HTTP服务器的REST/MCP共享状态并串行执行，外部编辑需要reload。S3/SQL条件保存保留自身commit token，其他fsspec后端没有同样保证。HTML需要连接vis-network/Oxigraph CDN。[API详情](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)。
+
+
+通过ECS＋S3共享远程MCP，请参见[Dockerfile与部署指南](https://github.com/RyutoYoda/trikedb/tree/main/deploy/ecs)。这些可选文件仅在GitHub分发，不包含在PyPI包内。
 
 ```yaml
 triples:
@@ -38,7 +48,7 @@ triples:
   - {s: LEGACY_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
 ```
 
-这个文件**就是**数据库。没有服务器，没有守护进程，不需要云端部署。它在 git 里能干净地 diff，能和代码放在同一个仓库里长期存活 — 而且这正是 trikedb 真正围绕设计的一点 — **LLM 智能体可以直接 `Read` 它，在你的领域上做推理而不会凭空编造实体名。**
+这个文件**就是**数据库。没有服务器，没有守护进程，不需要云端部署。它在 git 里能干净地 diff，能和代码放在同一个仓库里长期存活 — 而且这正是 trikedb 真正围绕设计的一点 — **LLM 智能体可以直接 `Read` 它，参照明确的实体名进行领域推理。**
 
 它还能渲染成一个可交互的工作台（[在线演示](https://ryutoyoda.github.io/trikedb/) — 600 条真实的 Freebase 事实）：
 
@@ -47,6 +57,8 @@ triples:
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb 的 HTML 工作台 — 600 条 Freebase 事实以力导向聚类展示，右侧打开了节点详情面板">
   </a>
 </p>
+
+**以下性能数据来自当时记录的版本与硬件，并非本次修正版的性能保证。**
 
 ## 为什么做这个
 
@@ -88,7 +100,7 @@ pip install 'trikedb[all]'      # 下面全部，一次装好
 pip install 'trikedb[mcp]'      # + 面向 AI 智能体的 MCP 服务器（stdio）
 pip install 'trikedb[serve]'    # + UI / REST / 基于 HTTP 的远程 MCP
 pip install 'trikedb[oauth]'    # + 面向 claude.ai / ChatGPT 界面的 OAuth 2.1
-pip install 'trikedb[remote]'   # + s3:// gs:// 图谱
+pip install 'trikedb[remote]' gcsfs   # + s3:// gs:// 图谱
 pip install 'trikedb[snowflake]' # + snowflake:// 图谱（数仓即存储）
 pip install 'trikedb[bigquery]' # + bigquery:// 图谱（同上，在 BigQuery 上）
 pip install 'trikedb[shacl]'    # + SHACL 校验
@@ -129,7 +141,7 @@ db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
 
-# …… 或者完整的 SPARQL 1.1（FILTER、OPTIONAL、聚合 — 由 Oxigraph 执行，t: 已预先绑定）
+# …… 或者SPARQL 1.1 查询与default graph更新（FILTER、OPTIONAL、聚合 — 由 Oxigraph 执行，t: 已预先绑定）
 db.sparql('SELECT ?t WHERE { ?t t:type "table" ; t:pii true }')   # 所有含 PII 的表
 db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')  # 边属性也一样
 
@@ -161,7 +173,7 @@ with db.batch():
     for s, p, o in rows:          # 数万条：不这样要几分钟，这样只要几秒
         db.add(s, p, o)
 
-# 交付一个自包含的 HTML 文件，团队真的可以点进去看
+# 交付一个依赖CDN的单文件的 HTML 文件，团队真的可以点进去看
 db.to_html("pipeline.html")     # 可搜索的图 + 节点详情 + 浏览器内的 SPARQL 控制台
 db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL 视图 — 或者升级到任何 RDF 工具
 db.to_networkx()                # 属性图视图：在同一个文件上跑 networkx 算法
@@ -262,7 +274,7 @@ db.infer()   # → 经 subClassOf 得到 (felix, rdf:type, Animal)；domain/rang
 
 文件不必在本地，甚至不必是文件。存储层之上的一切只会索取「一整份文档」，所以目的地可以随意更换而其他什么都不用改 — SPARQL、MCP 工具、SHACL 和 `to_networkx` 在字节位于何处时的行为完全一致。
 
-**对象存储**（`pip install 'trikedb[remote]'`）：
+**对象存储**（`pip install 'trikedb[remote]' gcsfs`）：
 
 ```python
 db = TrikeDB("s3://team-bucket/kg/pipeline.yaml")   # 读写皆可
@@ -429,7 +441,7 @@ trikedb audit workspace.yaml            # 有错误时退出码 1；--strict 连
 
 护栏对它们一律生效，所以「智能体写的」和「人写的」不可能在词汇上分叉。
 
-HTML 工作台是一次*渲染*，而图谱住在哪里从不决定页面去哪里：本地图谱渲染在它自己旁边，远端的渲染到工作目录，`-o` 既接受路径也接受对象 URL（`-o s3://site/kg.html` 就发布了）。它是一个自包含的文件 — 没有构建步骤，没有服务器 — 所以发布就是把它放到某个地方。
+HTML 工作台是一次*渲染*，而图谱住在哪里从不决定页面去哪里：本地图谱渲染在它自己旁边，远端的渲染到工作目录，`-o` 既接受路径也接受对象 URL（`-o s3://site/kg.html` 就发布了）。它是一个依赖CDN的单文件的文件 — 没有构建步骤，没有服务器 — 所以发布就是把它放到某个地方。
 
 ## 把图谱服务出去（UI + REST + 远程 MCP）
 
@@ -557,7 +569,7 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 
 ## trikedb 不是什么
 
-- **不是自己写的一套 SPARQL 实现。** SPARQL 这一层是刻意*不*手写的 — 你的 YAML 会被投影到真正的引擎里：读取跑在 [Oxigraph](https://github.com/oxigraph/oxigraph) 上，更新和 OWL/SHACL 跑在 [rdflib](https://github.com/RDFLib/rdflib) 上。映射规则：主语/谓词成为 `urn:trikedb:` 下的 URI；含空白的宾语（变更事件、备注）成为字面量。通过 SPARQL 插入的三元组一开始没有边属性；存活下来的三元组保留它们自己的。另外还有更轻的 `query()`/`triples()` API 用于快速模式匹配。
+- **不是自己写的一套 SPARQL 实现。** SPARQL 这一层是刻意*不*手写的 — 你的 YAML 会被投影到真正的引擎里：读取跑在 [Oxigraph](https://github.com/oxigraph/oxigraph) 上，更新和 OWL/SHACL 跑在 [rdflib](https://github.com/RDFLib/rdflib) 上。旧格式映射规则（可用rdf_terms覆盖）：主语/谓词成为 `urn:trikedb:` 下的 URI；含空白的宾语（变更事件、备注）成为字面量。通过 SPARQL 插入的三元组一开始没有边属性；存活下来的三元组保留它们自己的。另外还有更轻的 `query()`/`triples()` API 用于快速模式匹配。
 - **不是一条抽取流水线。** 它不会把你的 PDF 变成图谱。想要那个就配一个抽取器 — 然后整理它产出的东西。
 - **不适合数百万条三元组。** 一切都在内存里，扫描是线性的。最佳区间是数百到数千 — 在这个规模上，一个经过整理的图谱才是可能的。
 
@@ -576,6 +588,8 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 ## 基准测试
 
 在 [WebQSP](https://aclanthology.org/P16-2033/)（知识图谱问答）上，同一个本地模型**单独作答 42.7%，而以 trikedb 图谱作为上下文时是 77.7%** — 测试集 300 个问题上的 Hits@1，相差 35 个百分点，配对 McNemar 检验 p = 9e-20。检索在其中 89.3% 的问题上把答案摆到了模型面前，每题耗时 0.59 秒。脚本、精度与延迟的取舍，以及一份诚实的评分敏感性分析都在 [`benchmarks/`](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_zh.md)。
+
+这些是历史8B观测。图谱条件也包含grounding指令，因此差值不单独代表图结构的作用。89.3%表示上下文中存在答案字符串，不是准确率的严格上限。27B比较使用150题，评分采用本地子串指标。
 
 ## 文档
 

@@ -3,6 +3,24 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.36.0
+
+- Share and serialize REST/MCP graph state; keep the committed S3/SQL version token to prevent lost updates. Use atomic local replacement and roll back failed batches/imports.
+- Escape every generated HTML boundary, preserve special node names, and test normal and adversarial pages in Chromium.
+- Persist explicit RDF term types, languages and blank nodes through SPARQL updates and inference. Export equivalent RDF/JSON-LD, avoid statement-name collisions, expose metadata to UPDATE WHERE and reject unsupported dataset updates.
+- Return detached mutation snapshots, reload stored ontology, accept NetworkX label/key attributes, include implicit SQL nodes, and parse CLI booleans consistently.
+- Add optional GitHub-only ECS Docker/Terraform deployment with private S3 YAML and bearer/OAuth configuration.
+- Raise MCP/S3 dependency floors to verified APIs; include source-distribution fixtures and verify built packages locally.
+- Bound benchmark F1, rescore saved answers, record new run prompts and correct denominators, reach arithmetic and causal claims in three languages.
+
+**Verification:** 240 tests passed, with real ECS/S3 persistence and external HTTPS MCP checks. A disposable Keycloak authorization-code/PKCE login and authenticated MCP SDK call passed. ChatGPT/Claude UI connector registration remains unverified due to client-side registration/access limitations. No new CI workflow is included.
+
+**Compatibility:** rdf_terms is now reserved. Legacy whitespace objects remain literals. Metadata deletion through SPARQL is rejected; use property APIs. Public return values are snapshots. Local multi-process writes still require external coordination. Existing generated HTML should be regenerated with this release.
+
+## 0.35.1
+
+- Packaging follow-up to 0.35.0; the September audit verified that its PyPI runtime modules matched repository commit 77bb2dc. That audit's findings are addressed in the entry above.
+
 ## 0.35.0
 
 - **`ASK` was not answered by the engine it reported.** pyoxigraph returns
@@ -19,8 +37,7 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   had no CLI subcommand, so the project's own parity rule was documented
   and broken at the same time.
 - Docs: the layer diagram paired each projection with one interface, which
-  read as "oxigraph is only for MCP". Oxigraph answers every read query,
-  whichever interface asked.
+  read as "oxigraph is only for MCP". Oxigraph normally answers SELECT/ASK across interfaces; other read forms and fallback use rdflib.
 - Docs: the `6–40x` speed claim had no source. Replaced with a measurement
   (7–47x on 8,000 triples, by query shape).
 

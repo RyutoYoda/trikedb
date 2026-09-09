@@ -29,6 +29,13 @@ def db(tmp_path):
     return db
 
 
+def _html_value(html, name):
+    import json, re
+    line = next(line for line in html.splitlines() if line.startswith(f"const {name} = "))
+    encoded = re.search(r'JSON\.parse\(("(?:[^"\\]|\\.)*")\)', line).group(1)
+    return json.loads(json.loads(encoded))
+
+
 def test_pattern_match_wildcards(db):
     assert len(list(db.triples())) == 5
     assert len(list(db.triples(p="PROVIDES"))) == 2
@@ -116,8 +123,11 @@ def test_helpers(db):
 def test_jsonld_export(db):
     doc = db.to_jsonld()
     ids = {n["@id"] for n in doc["@graph"]}
-    assert "salesflow-crm" in ids
-    assert doc["@context"]["PROVIDES"]["@type"] == "@id"
+    assert "urn:trikedb:salesflow-crm" in ids
+    from rdflib import Graph
+    from rdflib.compare import isomorphic
+    import json
+    assert isomorphic(Graph().parse(data=json.dumps(doc), format="json-ld"), db.to_rdflib())
 
 
 def test_networkx_projection(db):
@@ -145,7 +155,7 @@ def test_html_export(db, tmp_path):
     assert out.exists()
     assert "vis-network" in html
     assert "RAW_CRM_CONTACTS" in html
-    assert '"deprecated": true' in html  # drives dashed edges in the JS
+    assert any(t.get("deprecated") is True for t in _html_value(html, "TRIPLES"))  # drives dashed edges in the JS
     assert "oxigraph" in html  # in-browser SPARQL console
     assert "trikedb knowledge graph" in html  # default title
     assert "urn:trikedb:LEGACY_DUMP" in html  # embedded N-Triples for the engine
@@ -160,7 +170,7 @@ def test_html_event_predicates_detected(tmp_path):
     db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
     db.add("a", "DEPENDS_ON", "b")
     html = db.to_html()
-    assert '"AFFECTED_BY"' in html.split("EVENT_PREDICATES = ")[1].split(";")[0]
+    assert "AFFECTED_BY" in _html_value(html, "EVENT_PREDICATES")
 
 
 def test_examples_load_and_query():
@@ -424,7 +434,7 @@ def test_html_includes_node_meta_and_flow():
     db.add("v", "PROVIDES", "j")
     db.set_node("v", type="saas", url="https://v.example")
     html = db.to_html()
-    assert '"type": "saas"' in html
+    assert any(p.get("type") == "saas" for p in _html_value(html, "NODES_META").values())
     assert "hierarchical" in html  # flow layout
     assert "NODE_TYPES" in html
 
@@ -454,7 +464,7 @@ def test_flow_columns_survive_a_rework_loop():
     assert max(levels.values()) <= len(steps) + 1          # was 53
 
     html = db.to_html(layout="flow")
-    shipped = _json.loads(_re.search(r"const LEVELS = (\{.*?\});", html).group(1))
+    shipped = _html_value(html, "LEVELS")
     assert set(shipped) == set(db.nodes())     # vis needs a level on every node
 
 
@@ -507,7 +517,7 @@ def test_an_object_valued_attribute_never_renders_as_object_object():
     db.add("a", "P", "b", attrs={}, note="fine")
     html = db.to_html()
     assert "JSON.stringify" in html          # the guard is in the page
-    assert '"attrs": {}' in html or '"attrs":{}' in html   # the value survives
+    assert any(t.get("attrs") == {} for t in _html_value(html, "TRIPLES"))   # the value survives
 
 
 def test_nodes_carry_no_scaling_option():
@@ -532,7 +542,7 @@ def test_flow_columns_yield_to_an_explicit_level():
     db.add("a", "P", "b")
     db.set_node("b", level=9)
     html = db.to_html(layout="flow")
-    assert '"level": 9' in html
+    assert any(p.get("level") == 9 for p in _html_value(html, "NODES_META").values())
     assert "levelOf" in html      # explicit wins over the computed column
 
 
@@ -594,10 +604,10 @@ def test_html_explicit_event_predicates():
     db.add("T", "AFFECTED_BY", "2025-04 API change happened")
     db.add("mdb", "LOADS_FROM", "mysql (asteria 17)")  # free text but NOT an event
     auto = db.to_html()
-    assert '"LOADS_FROM"' in auto.split("EVENT_PREDICATES = ")[1].split(";")[0]  # heuristic picks it up
+    assert "LOADS_FROM" in _html_value(auto, "EVENT_PREDICATES")  # heuristic picks it up
     explicit = db.to_html(event_predicates=["AFFECTED_BY"])
-    block = explicit.split("EVENT_PREDICATES = ")[1].split(";")[0]
-    assert '"AFFECTED_BY"' in block and '"LOADS_FROM"' not in block
+    block = _html_value(explicit, "EVENT_PREDICATES")
+    assert "AFFECTED_BY" in block and "LOADS_FROM" not in block
 
 
 def test_cli_node_set_and_show(tmp_path, capsys):
@@ -1077,8 +1087,8 @@ def test_workspace_is_read_only(tmp_path):
 def test_workspace_html_has_graph_filter_and_theme(tmp_path):
     db = TrikeDB(_make_workspace(tmp_path))
     html = db.to_html()
-    block = html.split("GRAPHS = ")[1].split(";")[0]
-    assert '"finance"' in block and '"platform"' in block
+    block = _html_value(html, "GRAPHS")
+    assert "finance" in block and "platform" in block
     assert "btn-theme" in html and "body.light" in html  # light mode present
 
 
@@ -1363,7 +1373,7 @@ def test_conditional_write_refuses_to_clobber(tmp_path, monkeypatch):
                 raise FileNotFoundError(key)
             return {"ETag": f'"{stored["etag"]}"'}
 
-        def pipe_file(self, key, data, mode=None, IfMatch=None):
+        def pipe_file(self, key, data, mode=None, IfMatch=None, **kwargs):
             if mode == "create" and stored.get("etag") is not None:
                 raise FileExistsError(key)
             if IfMatch is not None and IfMatch != stored["etag"]:
@@ -3333,15 +3343,8 @@ def test_named_parameters_are_read_off_the_statement():
         storage_sql._named(bq, bq.update, ("only-one",))
 
 
-def test_webqsp_metrics_follow_the_reference_implementation():
-    """Hits@1 and F1 are the two metrics WebQSP results are published in.
-
-    They have to be computed the way the reference does or a score here
-    cannot go next to the literature — and a number that *looks* comparable
-    and is not is worse than no number. The reference normalises (lowercase,
-    strip punctuation, drop articles) and matches by substring, which is
-    looser than exact match.
-    """
+def test_benchmark_substring_metrics():
+    """Local substring scoring, including bounded precision and recall."""
     import sys
     from pathlib import Path
 
@@ -3370,7 +3373,7 @@ def test_webqsp_metrics_follow_the_reference_implementation():
     assert f1(shotgun, gold) == pytest.approx(2 * 0.2 * 0.5 / 0.7, rel=1e-3)
 
     # a gold answer credited once, so repeating it cannot inflate recall
-    assert f1("Jamaican English\nJamaican English", gold) == pytest.approx(0.5)
+    assert f1("Jamaican English\nJamaican English", gold) == pytest.approx(2 / 3)
 
     assert f1("", gold) == 0.0 and f1("anything", []) == 0.0
 

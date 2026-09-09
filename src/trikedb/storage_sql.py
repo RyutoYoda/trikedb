@@ -173,14 +173,17 @@ def _snowflake_connect(config: dict):
 #: what the graph means.
 _SNOWFLAKE_VIEWS = {
     "KG_NODE": (
-        "SELECT g.name AS GRAPH,\n"
-        "       n.key AS NODE_ID,\n"
-        "       n.value:type::string  AS NODE_TYPE,\n"
-        "       n.value:label::string AS NAME,\n"
-        "       OBJECT_DELETE(n.value, 'type', 'label') AS PROPS,\n"
-        "       g.updated_at AS TS_UPDATED\n"
-        "FROM {table} g,\n"
-        "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):nodes) n"
+        "WITH documents AS (SELECT name AS GRAPH, TRY_PARSE_JSON(doc) AS d, updated_at FROM {table}),\n"
+        "ids AS (\n"
+        "  SELECT GRAPH, n.key::string AS NODE_ID FROM documents, LATERAL FLATTEN(input => d:nodes) n\n"
+        "  UNION SELECT GRAPH, t.value:s::string FROM documents, LATERAL FLATTEN(input => d:triples) t\n"
+        "  UNION SELECT GRAPH, t.value:o::string FROM documents, LATERAL FLATTEN(input => d:triples) t\n"
+        ")\n"
+        "SELECT i.GRAPH, i.NODE_ID, GET(d.d:nodes, i.NODE_ID):type::string AS NODE_TYPE,\n"
+        "       GET(d.d:nodes, i.NODE_ID):label::string AS NAME,\n"
+        "       OBJECT_DELETE(COALESCE(GET(d.d:nodes, i.NODE_ID), OBJECT_CONSTRUCT()), 'type', 'label') AS PROPS,\n"
+        "       d.updated_at AS TS_UPDATED\n"
+        "FROM ids i JOIN documents d ON i.GRAPH = d.GRAPH"
     ),
     "KG_EDGE": (
         # A triple is unique on (s, p, o), so hashing those three gives a
@@ -308,18 +311,17 @@ def _bigquery_connect(config: dict):
 #:   the other dialect produces.
 _BIGQUERY_VIEWS = {
     "KG_NODE": (
-        "SELECT g.name AS GRAPH,\n"
-        "       n.name AS NODE_ID,\n"
-        "       JSON_VALUE(n.props, '$.type')  AS NODE_TYPE,\n"
-        "       JSON_VALUE(n.props, '$.label') AS NAME,\n"
-        "       TO_JSON_STRING(n.props) AS PROPS,\n"
-        "       g.updated_at AS TS_UPDATED\n"
-        "FROM {table} g,\n"
-        "     UNNEST([STRUCT(SAFE.PARSE_JSON(g.doc) AS parsed)]) d,\n"
-        "     UNNEST(\n"
-        "       ARRAY(SELECT AS STRUCT k AS name, d.parsed.nodes[k] AS props\n"
-        "             FROM UNNEST(JSON_KEYS(d.parsed.nodes, 1)) AS k)\n"
-        "     ) n"
+        "WITH documents AS (SELECT name AS GRAPH, SAFE.PARSE_JSON(doc) AS d, updated_at FROM {table}),\n"
+        "ids AS (\n"
+        " SELECT GRAPH, k AS NODE_ID FROM documents, UNNEST(JSON_KEYS(d.nodes, 1)) k\n"
+        " UNION DISTINCT SELECT GRAPH, JSON_VALUE(t, '$.s') FROM documents, UNNEST(JSON_QUERY_ARRAY(d, '$.triples')) t\n"
+        " UNION DISTINCT SELECT GRAPH, JSON_VALUE(t, '$.o') FROM documents, UNNEST(JSON_QUERY_ARRAY(d, '$.triples')) t\n"
+        ")\n"
+        "SELECT i.GRAPH, i.NODE_ID, JSON_VALUE(d.d.nodes[i.NODE_ID], '$.type') AS NODE_TYPE,\n"
+        "       JSON_VALUE(d.d.nodes[i.NODE_ID], '$.label') AS NAME,\n"
+        "       COALESCE(TO_JSON_STRING(d.d.nodes[i.NODE_ID]), '{{}}') AS PROPS,\n"
+        "       d.updated_at AS TS_UPDATED\n"
+        "FROM ids i JOIN documents d ON i.GRAPH = d.GRAPH"
     ),
     "KG_EDGE": (
         "SELECT g.name AS GRAPH,\n"
@@ -666,10 +668,10 @@ class SqlGraphStore:
             raise FileNotFoundError(self._url)
         return row[0]
 
-    def write_text(self, text: str, expect, unchecked) -> bool:
+    def write_text(self, text: str, expect, unchecked):
         """Write the row, conditionally unless ``expect`` is ``unchecked``.
 
-        True when the write landed, False when the condition did not hold and
+        The committed version when the write landed, False when the condition did not hold and
         nothing was written. The caller turns False into its own
         ConcurrentWriteError, so the error type stays owned by storage.py and
         this module needs no import from it.
@@ -679,7 +681,7 @@ class SqlGraphStore:
             self._run(
                 self._dialect.upsert, (self._name, text, token), want_rows=False
             )
-            return True
+            return token
         if expect is None:
             affected = self._run(
                 self._dialect.insert_if_absent,
@@ -692,7 +694,7 @@ class SqlGraphStore:
                 (text, token, self._name, expect),
                 want_rows=False,
             )
-        return bool(affected)
+        return token if affected == 1 else False
 
     def create_table(self, views: bool = True) -> list:
         """Create the table, and the projection views beside it.

@@ -1,0 +1,9 @@
+include README*.md CHANGELOG.md LICENSE
+recursive-include src *.py
+recursive-include tests *.py
+recursive-include examples *.yaml *.csv *.md *.ipynb
+recursive-include benchmarks *.py *.json *.md
+recursive-include docs *.md
+global-exclude __pycache__ *.pyc
+
+prune deploy

@@ -6,6 +6,16 @@ Every feature, and how to use it. For the design rationale see
 [ARCHITECTURE.md](ARCHITECTURE.md); for benchmark methodology see
 [benchmarks/](../benchmarks/).
 
+
+**Compatibility and safety contract.** This is one default graph: SPARQL reads plus default-graph INSERT/DELETE and CLEAR/DROP, with named-graph/dataset updates rejected. Legacy objects containing whitespace are literals; use `rdf_terms={"o": {"kind": "iri"}}` for an entity such as `New York`. SPARQL-inserted RDF types, language tags and blank nodes now survive save/reload. RDF/JSON-LD exports preserve the RDF projection, including metadata; pattern/NetworkX/SQL views use lexical names.
+
+API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions; manually edited files are not schema-checked on load.
+
+Local writes replace complete files atomically but independent local processes are last-write-wins. One HTTP server shares and serializes REST/MCP state; external edits still require reload. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. Exported HTML requires network access to vis-network/Oxigraph CDNs. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
+
+
+**Performance numbers below are historical measurements on their recorded hardware and version, not freshly measured guarantees for this release.**
+
 ## The big picture
 
 ```mermaid
@@ -91,8 +101,7 @@ SELECT ?s ?p ?o WHERE {
 
 This works in `db.sparql()`, `trikedb sparql`, the MCP `sparql` tool and
 the HTML console alike (`rdf:` is pre-bound everywhere). Reification is
-export-only — the YAML stays flat, and SPARQL updates never write
-statement resources back.
+generated from edge attributes. UPDATE WHERE can read this projection; deleting generated metadata raises ValueError. Explicitly inserted RDF statements remain ordinary facts.
 
 **Workspace files** union many graphs read-only:
 
@@ -198,7 +207,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
-| `sparql(q)` | Full SPARQL 1.1. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound. Node names become IRIs as written — `t:調査工程` names the node `調査工程`. Only what an IRI cannot carry is escaped, so a name with a space needs `<urn:trikedb:Baltic%20states>`. A term with a dot (`location.location.events`) also needs the full IRI — SPARQL reads the dot in a prefixed name as a number |
+| `sparql(q)` | SPARQL 1.1 reads and supported default-graph updates. Reads run on Oxigraph, writes on rdflib (see [Speed](#speed)). SELECT→rows, ASK→bool, INSERT/DELETE→net triple delta. `t:` and `rdf:` are pre-bound. Node names become IRIs as written — `t:調査工程` names the node `調査工程`. Only what an IRI cannot carry is escaped, so a name with a space needs `<urn:trikedb:Baltic%20states>`. A term with a dot (`location.location.events`) also needs the full IRI — SPARQL reads the dot in a prefixed name as a number |
 | `search(q, k=10)` | Semantic search (`[semantic]` extra): rank facts by meaning, not spelling. `score`/`kind`/`node`/`chunk`/`chunk_text` are the payload's own keys; an attribute with one of those names is preserved as `attr_<name>` — "認証まわりの注意点" finds keypair/MFA facts with zero shared keywords. Vectors are cached per sentence, so a graph that gained one fact re-encodes one sentence (see [Embedding cache](#embedding-cache)) |
 | `find(question, where=None, k=10)` | Hybrid retrieval (`[semantic]` extra): semantic recall then a hard structured filter (`where`: dict of required node props, or a `(name, props) -> bool` callable). Returns `{node, props, facts}` payloads |
 | `update(q)` | SPARQL Update explicitly (what `sparql` routes write forms to) |
@@ -215,7 +224,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
-| `TrikeDB(path, sparql_engine="rdflib")` | Pin the SPARQL engine; the default is oxigraph when `[oxigraph]` is installed |
+| `TrikeDB(path, sparql_engine="rdflib")` | Pin the SPARQL engine; the default is the core dependency oxigraph, with rdflib fallback |
 | `TrikeDB(url, connection=conn)` | Run through an already-open warehouse connection or Snowpark session instead of building one |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
@@ -476,7 +485,7 @@ in [SCALING.md](SCALING.md).)
 
 ## The HTML workbench
 
-`to_html()` / `trike ui generate` produce a self-contained page:
+`to_html()` / `trike ui generate` produce a single-file, CDN-dependent page:
 
 - force-directed clusters or left-to-right flow (`--layout auto` picks
   by graph shape); workspaces tile each member graph into its own cell
@@ -830,7 +839,7 @@ accepts a local path or an object URL. It does not accept a warehouse
 URL — a row there holds a graph, and writing a page into it would replace
 the graph with markup the loader cannot read.
 
-The page is self-contained (one file, no build step, no server), so
+The page is single-file, CDN-dependent (one file, no build step, no server), so
 "publishing" it is just putting it somewhere: commit it for GitHub Pages,
 push it to a bucket, or attach it to a ticket. `trikedb check --html
 PATH_OR_URL` compares the content hash embedded in the page against the
@@ -878,10 +887,10 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | Extra | Adds | Dependencies |
 |---|---|---|
 | *(core)* | everything above except ↓ | PyYAML, rdflib, pyoxigraph |
-| `[mcp]` | `trikedb mcp` (stdio) | mcp (1.x) |
+| `[mcp]` | `trikedb mcp` (stdio) | mcp >=1.30,<2 |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
-| `[remote]` | `s3://` etc. | fsspec, s3fs |
+| `[remote]` | `s3://` etc. | fsspec, s3fs; add gcsfs for gs:// |
 | `[snowflake]` | `snowflake://` graphs | snowflake-connector-python |
 | `[bigquery]` | `bigquery://` graphs | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
@@ -889,3 +898,15 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |
 | `[networkx]` | `to_networkx` (property-graph projection) | networkx |
 | `[oxigraph]` | nothing — pyoxigraph is a core dependency | pyoxigraph |
+
+## RDF term representation
+
+`rdf_terms` is a reserved triple field (and `add` keyword), not an edge attribute. It maps `s`/`p`/`o` to a spec with `kind`: `iri`, `bnode`, or `literal`. Only objects can be literals; predicates must be IRIs. Optional `value` supplies the full lexical RDF value, otherwise the s/p/o text is used. Literal specs may set `language` or absolute `datatype`, never both. A literal may be empty. An explicit IRI with no value uses the normal base/name escaping. Type metadata distinguishes otherwise identical lexical triples.
+
+```python
+db.add("a", "P", "New York", rdf_terms={"o": {"kind": "iri"}})
+db.add("a", "P", "hello", rdf_terms={"o": {"kind": "literal", "language": "en"}})
+db.update('INSERT DATA {t:a t:P "42"^^<http://www.w3.org/2001/XMLSchema#integer>}')
+```
+
+NetworkX edge keys normally use the predicate; otherwise-colliding RDF terms receive a distinct tuple key. User `label` overrides the display label and user `key` remains an attribute. NetworkX and pattern queries identify endpoints by lexical text, so an IRI and a literal with identical text are not separate property-graph nodes. RDF exports retain that distinction.

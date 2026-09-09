@@ -100,7 +100,8 @@ def build_app(
         if (refusal := await refuse(request)) is not None:
             return refusal
         try:
-            return HTMLResponse(graph.to_html(title=f"trikedb — {path}"))
+            with graph._lock:
+                return HTMLResponse(graph.to_html(title=f"trikedb — {path}"))
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -113,7 +114,8 @@ def build_app(
         except Exception:
             return JSONResponse({"error": 'expected {"query": "..."}'}, status_code=400)
         try:
-            result = graph.sparql(query)
+            with graph._lock:
+                result = graph.sparql(query)
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if isinstance(result, bool):
@@ -134,7 +136,7 @@ def build_app(
         from .mcp_server import build_server
 
         server = build_server(
-            path, auth=auth, public_url=public_url, stateless=stateless
+            path, auth=auth, public_url=public_url, stateless=stateless, graph=graph
         )
         routes.append(Mount("/", app=server.streamable_http_app()))
 

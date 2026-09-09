@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and replace every placeholder. Never commit that file.
+aws_account_id    = "123456789012"
+region            = "us-east-1"
+# Leave network inputs empty to create and later remove a dedicated VPC.
+vpc_id           = ""
+task_subnet_ids  = []
+alb_subnet_ids   = []
+assign_public_ip = false
+create_service    = false
+public_url        = "https://kg.example.com"
+certificate_arn   = "arn:aws:acm:us-east-1:123456789012:certificate/REPLACE"
+oauth_issuer      = "https://idp.example.com/realms/team"
+# Keep false for real graphs. A nonempty bucket then blocks destructive teardown.
+allow_destroy_graph = false

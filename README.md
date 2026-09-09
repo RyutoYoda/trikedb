@@ -29,7 +29,17 @@
 
 # trikedb
 
-**The single-file knowledge graph for AI agents.** One graph is one YAML file in your repo — full SPARQL 1.1, reads *and* writes, agents write through an ontology guard, and every change arrives as a diff.
+**The single-file knowledge graph for AI agents.** One graph is one YAML file in your repo — SPARQL 1.1 queries and default-graph updates, reads *and* writes, agents write through an ontology guard, and every change arrives as a diff.
+
+
+**Compatibility and safety contract.** This is one default graph: SPARQL reads plus default-graph INSERT/DELETE and CLEAR/DROP, with named-graph/dataset updates rejected. Legacy objects containing whitespace are literals; use `rdf_terms={"o": {"kind": "iri"}}` for an entity such as `New York`. SPARQL-inserted RDF types, language tags and blank nodes now survive save/reload. RDF/JSON-LD exports preserve the RDF projection, including metadata; pattern/NetworkX/SQL views use lexical names.
+
+API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions; manually edited files are not schema-checked on load.
+
+Local writes replace complete files atomically but independent local processes are last-write-wins. One HTTP server shares and serializes REST/MCP state; external edits still require reload. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. Exported HTML requires network access to vis-network/Oxigraph CDNs. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
+
+
+Shared remote MCP on ECS + S3: [Dockerfile and deployment guide](https://github.com/RyutoYoda/trikedb/tree/main/deploy/ecs). These optional files are GitHub-only; they are not included in PyPI packages.
 
 ```yaml
 triples:
@@ -38,7 +48,7 @@ triples:
   - {s: LEGACY_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
 ```
 
-That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and reason over your domain without hallucinating entity names.**
+That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and ground its domain reasoning in explicit entity names.**
 
 And it renders as an interactive workbench ([live demo](https://ryutoyoda.github.io/trikedb/) — 600 real Freebase facts):
 
@@ -47,6 +57,8 @@ And it renders as an interactive workbench ([live demo](https://ryutoyoda.github
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
   </a>
 </p>
+
+**Performance numbers below are historical measurements on their recorded hardware and version, not freshly measured guarantees for this release.**
 
 ## Why
 
@@ -88,7 +100,7 @@ pip install 'trikedb[all]'      # everything below in one shot
 pip install 'trikedb[mcp]'      # + MCP server for AI agents (stdio)
 pip install 'trikedb[serve]'    # + UI / REST / remote MCP over HTTP
 pip install 'trikedb[oauth]'    # + OAuth 2.1 for the claude.ai / ChatGPT UIs
-pip install 'trikedb[remote]'   # + s3:// gs:// graphs
+pip install 'trikedb[remote]' gcsfs   # + s3:// gs:// graphs
 pip install 'trikedb[snowflake]' # + snowflake:// graphs (the warehouse is the store)
 pip install 'trikedb[bigquery]' # + bigquery:// graphs (same, on BigQuery)
 pip install 'trikedb[shacl]'    # + SHACL validation
@@ -129,7 +141,7 @@ db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
 
-# … or full SPARQL 1.1 (FILTER, OPTIONAL, aggregates — run by Oxigraph, t: pre-bound)
+# … or SPARQL 1.1 queries and default-graph updates (FILTER, OPTIONAL, aggregates — run by Oxigraph, t: pre-bound)
 db.sparql('SELECT ?t WHERE { ?t t:type "table" ; t:pii true }')   # every PII table
 db.sparql('SELECT ?s ?o WHERE { ?st rdf:subject ?s ; rdf:object ?o ; t:schedule "hourly" }')  # edge attrs, too
 
@@ -161,7 +173,7 @@ with db.batch():
     for s, p, o in rows:          # tens of thousands: minutes without this, seconds with
         db.add(s, p, o)
 
-# Ship one self-contained HTML file your team can actually click through
+# Ship one single-file (CDN-dependent) HTML file your team can actually click through
 db.to_html("pipeline.html")     # searchable graph + node details + in-browser SPARQL console
 db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL view — or graduate to any RDF tool
 db.to_networkx()                # property-graph view: run networkx algorithms on the
@@ -275,7 +287,7 @@ Everything above storage only ever asks for one whole document, so the
 destination swaps out and nothing else changes — SPARQL, the MCP tools,
 SHACL and `to_networkx` behave identically wherever the bytes are.
 
-**Object storage** (`pip install 'trikedb[remote]'`):
+**Object storage** (`pip install 'trikedb[remote]' gcsfs`):
 
 ```python
 db = TrikeDB("s3://team-bucket/kg/pipeline.yaml")   # read and write
@@ -476,7 +488,7 @@ it is reviewed — name the file `graph.json`, or keep it in a warehouse row,
 which is JSON already. Same API, same SPARQL, ~30x faster to open. The cost
 is the thing YAML was picked for: nobody enjoys reading a diff of JSON.
 
-**The fast SPARQL engine is already there.** Read queries run on
+**Historical speed measurements.** Read queries run on
 [Oxigraph](https://github.com/oxigraph/oxigraph), a Rust engine with real
 indexes; `pyoxigraph` is a core dependency because it was faster at every
 graph size measured, down to a few hundred triples. Both are SPARQL 1.1 and
@@ -547,7 +559,7 @@ human wrote it" can't diverge in vocabulary.
 The HTML workbench is a *rendering*, and where the graph lives never
 decides where the page goes: a local graph renders next to itself, a
 remote one into the working directory, and `-o` takes a path or an object
-URL (`-o s3://site/kg.html` publishes it). It's one self-contained file —
+URL (`-o s3://site/kg.html` publishes it). It's one single-file (CDN-dependent) file —
 no build step, no server — so publishing is just putting it somewhere.
 
 ## Serving a graph (UI + REST + remote MCP)
@@ -694,7 +706,7 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## What trikedb is not
 
-- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is projected into a real engine: reads run on [Oxigraph](https://github.com/oxigraph/oxigraph), updates and OWL/SHACL on [rdflib](https://github.com/RDFLib/rdflib). Mapping rule: subjects/predicates become URIs under `urn:trikedb:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
+- **Not a SPARQL implementation of its own.** The SPARQL surface is deliberately *not* hand-rolled — your YAML is projected into a real engine: reads run on [Oxigraph](https://github.com/oxigraph/oxigraph), updates and OWL/SHACL on [rdflib](https://github.com/RDFLib/rdflib). Legacy mapping (explicit rdf_terms override it): subjects/predicates become URIs under `urn:trikedb:`; objects with whitespace (change events, notes) become literals. Triples inserted via SPARQL start without edge attributes; surviving triples keep theirs. The lighter `query()`/`triples()` API also exists for quick pattern matching.
 - **Not an extraction pipeline.** It won't turn your PDFs into a graph. Pair it with an extractor if you want that — then curate what comes out.
 - **Not for millions of triples.** Everything is in memory and scans are linear. The sweet spot is the hundreds-to-thousands range, where a curated graph is even possible.
 
@@ -719,6 +731,8 @@ p = 9e-20. Retrieval put the answer in front of the model for 89.3% of them,
 in 0.59 s per question. Scripts, the accuracy-versus-latency trade, and an
 honest scoring-sensitivity analysis live in
 [`benchmarks/`](https://github.com/RyutoYoda/trikedb/tree/main/benchmarks).
+
+These are historical 8B observations. The graph arm also used grounding instructions, so the delta does not isolate graph structure. The 89.3% statistic means a gold answer string appeared in context; it is not a strict accuracy ceiling. The 27B comparison has 150 questions, and scores use a local substring metric.
 
 ## Documentation
 

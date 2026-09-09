@@ -48,8 +48,7 @@ SERIES = [
 TEXT = {
     "en": {
         "title": "In a real agent, the file grows and the graph does not",
-        "sub": ("WebQSP · 30 questions · claude-haiku-4.5 and Codex · both "
-                "arms answer in one turn · tokens as each harness reports them"),
+        "sub": ("WebQSP · 30 questions · claude-haiku-4.5 and Codex · file/graph turns vary · tokens as each harness reports them"),
         "x": "facts in the project's knowledge",
         "y1": "tokens processed per question", "y2": "Hits@1",
         "claude md": "Claude Code · CLAUDE.md",
@@ -59,7 +58,7 @@ TEXT = {
     },
     "jp": {
         "title": "実エージェントでも、ファイルは増えグラフは増えない",
-        "sub": ("WebQSP · 30問 · claude-haiku-4.5 と Codex · どちらも1ターンで回答 · "
+        "sub": ("WebQSP · 30問 · claude-haiku-4.5 と Codex · 全文条件は1〜3ターン · "
                 "各ハーネスが報告したトークン数"),
         "x": "プロジェクトの知識に入っている事実の数",
         "y1": "1問あたりの処理トークン", "y2": "Hits@1",
@@ -70,7 +69,7 @@ TEXT = {
     },
     "zh": {
         "title": "在真实智能体里，文件会变大，图谱不会",
-        "sub": ("WebQSP · 30 题 · claude-haiku-4.5 与 Codex · 两者都在一轮内作答 · "
+        "sub": ("WebQSP · 30 题 · claude-haiku-4.5 与 Codex · 全文条件为1至3轮 · "
                 "各 harness 自己报告的 token 数"),
         "x": "项目知识中的事实条数",
         "y1": "每题处理的 token 数", "y2": "Hits@1",

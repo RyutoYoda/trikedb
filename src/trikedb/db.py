@@ -5,6 +5,8 @@ from __future__ import annotations
 import fnmatch
 import json
 import shlex
+from copy import deepcopy
+from threading import RLock
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,12 +51,61 @@ class Triple:
     p: str
     o: str
     attrs: dict = field(default_factory=dict)
+    rdf_terms: dict = field(default_factory=dict)
 
     def spo(self) -> tuple:
         return (self.s, self.p, self.o)
 
     def to_dict(self) -> dict:
-        return {"s": self.s, "p": self.p, "o": self.o, **self.attrs}
+        result = {"s": self.s, "p": self.p, "o": self.o, **deepcopy(self.attrs)}
+        if self.rdf_terms:
+            result["rdf_terms"] = deepcopy(self.rdf_terms)
+        return result
+
+    def identity(self):
+        return self.spo() + (json.dumps(self.rdf_terms, sort_keys=True),)
+
+    def as_rdf(self, base="urn:trikedb:"):
+        from rdflib import BNode, Literal, URIRef
+        result = []
+        for key, text in zip(("s", "p", "o"), self.spo()):
+            spec = self.rdf_terms.get(key)
+            if spec:
+                value = spec.get("value", text)
+                kind = spec["kind"]
+                if kind == "literal":
+                    term = Literal(value, lang=spec.get("language"),
+                                   datatype=spec.get("datatype"), normalize=False)
+                elif kind == "bnode":
+                    term = BNode(value)
+                else:
+                    term = URIRef(value if "value" in spec else _iri_node(text, base))
+            elif key == "o" and any(c.isspace() for c in text):
+                term = Literal(text)
+            else:
+                term = URIRef(_iri_node(text, base))
+            result.append(term)
+        return tuple(result)
+
+    @classmethod
+    def from_rdf(cls, s, p, o, base="urn:trikedb:"):
+        from rdflib import BNode, Literal, URIRef
+        values = tuple(_shorten(t, base) if isinstance(t, URIRef) else str(t)
+                       for t in (s, p, o))
+        row = cls(*values)
+        defaults = row.as_rdf(base)
+        for key, term, default in zip(("s", "p", "o"), (s, p, o), defaults):
+            if term == default:
+                continue
+            spec = {"kind": "literal" if isinstance(term, Literal) else
+                    "bnode" if isinstance(term, BNode) else "iri", "value": str(term)}
+            if isinstance(term, Literal):
+                if term.datatype:
+                    spec["datatype"] = str(term.datatype)
+                if term.language:
+                    spec["language"] = term.language
+            row.rdf_terms[key] = spec
+        return row
 
     @classmethod
     def from_dict(cls, data: dict) -> "Triple":
@@ -63,8 +114,11 @@ class Triple:
             s, p, o = d.pop("s"), d.pop("p"), d.pop("o")
         except KeyError as exc:
             raise ValueError(f"triple is missing required key {exc}: {data!r}") from None
-        s, p, o = _term(s, "s", data), _term(p, "p", data), _term(o, "o", data)
-        return cls(s, p, o, d)
+        terms = d.pop("rdf_terms", {})
+        _validate_rdf_terms(terms)
+        s, p = _term(s, "s", data), _term(p, "p", data)
+        o = str(o) if terms.get("o", {}).get("kind") == "literal" and o is not None else _term(o, "o", data)
+        return cls(s, p, o, d, deepcopy(terms))
 
 
 #: libyaml if PyYAML was built with it, which is the usual case. Four to five
@@ -150,6 +204,7 @@ class TrikeDB:
         sparql_engine: Optional[str] = None,
     ):
         _check_scheme(path)
+        self._lock = RLock()  # shared by server adapters, never serialized
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = (
             path if _is_remote(path) else (Path(path) if path else None)
@@ -220,6 +275,7 @@ class TrikeDB:
         on top of it.
         """
         self.nodes_meta = {}
+        self.ontology = {}
         self._triples = []
         self.workspace = None
         self.read_only = self._read_only_requested   # a reload must not grant writes
@@ -334,7 +390,7 @@ class TrikeDB:
                 for k, v in props.items():
                     merged.setdefault(k, v)
             for t in sub:
-                self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}))
+                self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}, t.rdf_terms))
         self._index = None
 
     def _guard_writable(self) -> None:
@@ -400,23 +456,23 @@ class TrikeDB:
             )
         if target == self.path:
             # Same file we read: refuse to overwrite someone else's save.
-            _write_text(target, text, expect=self._version, connection=self._connection)
-            self._version = _version_of(target, self._connection)
+            self._version = _write_text(target, text, expect=self._version, connection=self._connection)
         else:  # save-as: nothing to compare against
-            _write_text(target, text, connection=self._connection)
-            self._version = _version_of(target, self._connection)
+            self._version = _write_text(target, text, connection=self._connection)
         self.path = target
         return target
 
     # -------------------------------------------------------------- writing
 
-    def add(self, s: str, p: str, o: str, **attrs: Any) -> Triple:
+    def add(self, s: str, p: str, o: str, *, rdf_terms=None, **attrs: Any) -> Triple:
         """Add (or upsert) a triple. Same (s, p, o) merges attributes.
 
         Absolute-URI predicates (http://...) are exempt from the ontology
         check — they are meta-level statements (OWL declarations, interop).
         """
         self._guard_writable()
+        s, p = _term(s, "s"), _term(p, "p")
+        _validate_rdf_terms(rdf_terms or {})
         if (
             self.ontology
             and p not in self.ontology
@@ -426,19 +482,24 @@ class TrikeDB:
                 f"predicate {p!r} is not in the ontology "
                 f"(allowed: {sorted(self.ontology)})"
             )
-        key = (_term(s, "s"), _term(p, "p"), _term(o, "o"))
+        triple = Triple.from_dict({"s": s, "p": p, "o": o, **attrs,
+                                   "rdf_terms": rdf_terms or {}})
+        if triple.rdf_terms:
+            actual_p = _shorten(triple.as_rdf()[1], "urn:trikedb:")
+            if self.ontology and actual_p not in self.ontology and not actual_p.startswith(("http://", "https://")):
+                raise OntologyError(f"predicate {actual_p!r} is not in the ontology")
+        key = triple.identity()
         index = self._spo_index()
         existing = index.get(key)
         if existing is not None:
-            existing.attrs.update(attrs)
+            existing.attrs.update(deepcopy(attrs))
             self._autosave()
-            return existing
-        triple = Triple(*key, dict(attrs))
+            return deepcopy(existing)
         self._triples.append(triple)
         index.setdefault(key, triple)
         self._index_len = len(self._triples)
         self._autosave()
-        return triple
+        return deepcopy(triple)
 
     def remove(
         self,
@@ -474,7 +535,7 @@ class TrikeDB:
         if self._index is None or self._index_len != len(self._triples):
             index: dict = {}
             for triple in self._triples:
-                index.setdefault(triple.spo(), triple)
+                index.setdefault(triple.identity(), triple)
             self._index = index
             self._index_len = len(self._triples)
         return self._index
@@ -493,15 +554,19 @@ class TrikeDB:
         here is seconds. Nothing is written if the block raises: a half-
         finished import stays out of the file it would have to be undone from.
         """
-        self._batch_depth += 1
-        succeeded = False
-        try:
-            yield self
-            succeeded = True
-        finally:
-            self._batch_depth -= 1
-            if succeeded and not self._batch_depth and self.autosave and self.path:
-                self.save()
+        with self._lock:
+            snapshot = deepcopy((self._triples, self.nodes_meta, self.ontology))
+            self._batch_depth += 1
+            try:
+                yield self
+                if self._batch_depth == 1 and self.autosave and self.path:
+                    self.save()
+            except BaseException:
+                self._triples, self.nodes_meta, self.ontology = snapshot
+                self._index = self._rdf_cache = None
+                raise
+            finally:
+                self._batch_depth -= 1
 
     def set_node(self, name: str, *, replace: bool = False, **props: Any) -> dict:
         """Attach (or merge) free-form properties onto a node.
@@ -525,13 +590,13 @@ class TrikeDB:
                 f"it with {props['type']!r} — pass replace (--replace on the "
                 f"CLI) to change it deliberately"
             )
-        merged.update(props)
+        merged.update(deepcopy(props))
         self._autosave()
-        return merged
+        return deepcopy(merged)
 
     def node(self, name: str) -> dict:
         """The properties attached to a node (empty dict if none)."""
-        return dict(self.nodes_meta.get(str(name), {}))
+        return deepcopy(self.nodes_meta.get(str(name), {}))
 
     # -------------------------------------------------------------- reading
 
@@ -554,7 +619,7 @@ class TrikeDB:
         """Pattern-match triples. None = wildcard, '*' globs, attrs filter exactly."""
         for t in self._triples:
             if self._matches(t, s, p, o, attrs):
-                yield t
+                yield deepcopy(t)
 
     def subjects(self, p: Optional[str] = None, o: Optional[str] = None) -> list:
         return _unique(t.s for t in self.triples(p=p, o=o))
@@ -670,9 +735,10 @@ class TrikeDB:
                 f"unsupported import format {path.suffix!r} (use .yaml/.csv/.tsv/.md)"
             )
         before = len(self._triples)
-        for d in dicts:
-            d = dict(d)
-            self.add(d.pop("s"), d.pop("p"), d.pop("o"), **d)
+        with self.batch():
+            for d in dicts:
+                d = dict(d)
+                self.add(d.pop("s"), d.pop("p"), d.pop("o"), **d)
         return len(self._triples) - before
 
     # -------------------------------------------------------------- sparql
@@ -695,95 +761,46 @@ class TrikeDB:
               ?st rdf:subject ?s ; rdf:predicate t:AFFECTED_BY ;
                   rdf:object ?o ; t:note ?note }
         """
-        from rdflib import RDF, Graph, Literal, URIRef
-
-        def node(name: str):
-            # absolute URIs (OWL/RDF vocabulary, external resources) pass through
-            if name.startswith(("http://", "https://", "urn:")):
-                return URIRef(name)
-            return URIRef(_iri(name, base))
-
+        from rdflib import Graph
         g = Graph()
         g.bind("t", base)
-        for s, p, o, is_literal in self._statements(base, node_props, edge_attrs):
-            g.add((node(s), node(p), Literal(o) if is_literal else node(o)))
+        for triple in self._statements(base, node_props, edge_attrs):
+            g.add(triple)
         return g
 
     def _statements(self, base: str, node_props: bool = True,
                     edge_attrs: bool = True):
-        """Yield (subject, predicate, object, object_is_literal) — the RDF view.
-
-        The single source of truth for what this graph *means* in RDF: which
-        objects are URIs and which are literals, how edge attributes reify,
-        which node properties surface. Every query engine builds from this,
-        so two of them cannot drift into disagreeing about the same graph —
-        which is the failure that would be hardest to notice, because both
-        answers would look plausible.
-
-        Subjects and predicates are names to be resolved against `base`;
-        anything already absolute passes through untouched.
-        """
-        RDF_ = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        """One typed RDF projection shared by every exporter and engine."""
+        from rdflib import BNode, Literal, RDF, URIRef
+        # User blank nodes and synthetic statement nodes must not collide.
+        used = {str(term) for t in self._triples for term in t.as_rdf(base)
+                if isinstance(term, BNode)}
         for i, t in enumerate(self._triples):
-            o_is_literal = any(c.isspace() for c in t.o)
-            yield t.s, t.p, t.o, o_is_literal
+            s, p, o = t.as_rdf(base)
+            yield s, p, o
             if edge_attrs and t.attrs:
-                st = f"{base}stmt{i}"
-                yield st, RDF_ + "type", RDF_ + "Statement", False
-                yield st, RDF_ + "subject", t.s, False
-                yield st, RDF_ + "predicate", t.p, False
-                yield st, RDF_ + "object", t.o, o_is_literal
+                name = f"trikedb-statement-{i}"
+                while name in used:
+                    name += "-"
+                used.add(name)
+                st = BNode(name)
+                yield st, RDF.type, RDF.Statement
+                yield st, RDF.subject, s
+                yield st, RDF.predicate, p
+                yield st, RDF.object, o
                 for key, value in t.attrs.items():
-                    yield st, str(key), value, True
+                    yield st, URIRef(_iri_node(str(key), base)), Literal(value)
         if node_props:
             for name, props in self.nodes_meta.items():
                 for key, value in props.items():
-                    yield name, str(key), value, True
-
-    _UPDATE_KEYWORDS = frozenset(
-        {"INSERT", "DELETE", "CLEAR", "DROP", "CREATE", "LOAD", "MOVE", "COPY", "ADD", "WITH"}
-    )
+                    yield URIRef(_iri_node(name, base)), URIRef(_iri_node(str(key), base)), Literal(value)
 
     def _oxigraph_store(self, base: str):
-        """The same statements, in an oxigraph store.
-
-        Oxigraph executes SPARQL roughly twenty times faster than rdflib on
-        the same graph — 21ms against 427ms on 50k triples — because it is a
-        Rust engine with real indexes rather than a Python dict of sets. The
-        statements come from ``_statements``, so the two engines answer
-        questions about the same graph and not about two similar ones.
-
-        Literal typing has to match rdflib's, because a query like
-        ``?x t:pii true`` matches a typed boolean and would silently return
-        nothing against a plain string.
-        """
-        from pyoxigraph import DefaultGraph, Literal, NamedNode, Quad, Store
-
-        xsd = "http://www.w3.org/2001/XMLSchema#"
-
-        def node(name: str):
-            if name.startswith(("http://", "https://", "urn:")):
-                return NamedNode(name)
-            return NamedNode(_iri(name, base))
-
-        def literal(value):
-            # bool before int: in Python bool *is* an int, and a boolean
-            # typed as xsd:integer stops matching `true`.
-            if isinstance(value, bool):
-                return Literal("true" if value else "false",
-                               datatype=NamedNode(xsd + "boolean"))
-            if isinstance(value, int):
-                return Literal(str(value), datatype=NamedNode(xsd + "integer"))
-            if isinstance(value, float):
-                return Literal(repr(value), datatype=NamedNode(xsd + "double"))
-            return Literal(str(value))
-
+        """Load the shared, typed RDF projection into Oxigraph."""
+        from pyoxigraph import Store, RdfFormat
         store = Store()
-        default = DefaultGraph()
-        store.extend([
-            Quad(node(s), node(p), literal(o) if lit else node(o), default)
-            for s, p, o, lit in self._statements(base)
-        ])
+        data = self.to_rdflib(base).serialize(format="nt")
+        store.load(input=data, format=RdfFormat.N_TRIPLES)
         return store
 
     def _query_graph(self, base: str, engine: str = "rdflib"):
@@ -819,9 +836,21 @@ class TrikeDB:
         >>> db.sparql("SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }")
         >>> db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
         """
-        first = next((w.upper() for w in query.split() if not w.startswith("#")), "")
-        if first in self._UPDATE_KEYWORDS:
-            return self.update(query, base=base)
+        if not isinstance(query, str):
+            raise TypeError("SPARQL query must be a string")
+        # Parse only ambiguous forms. Common read queries keep their fast path.
+        import re
+        leading = re.sub(r"(?m)^\s*#[^\n]*(?:\n|$)", "", query).lstrip()
+        word = re.match(r"[A-Za-z]+", leading)
+        first = word.group().upper() if word else ""
+        if first not in {"SELECT", "ASK", "CONSTRUCT", "DESCRIBE"}:
+            from rdflib.plugins.sparql.parser import parseQuery, parseUpdate
+            try:
+                parseUpdate(query)
+            except Exception:
+                parseQuery(query)  # report the read parser's actual syntax error
+            else:
+                return self.update(query, base=base)
 
         prefixed = (
             f"PREFIX t: <{base}>\n"
@@ -894,26 +923,45 @@ class TrikeDB:
         on inserted predicates. Returns the net change in triple count.
         """
         self._guard_writable()
-        # no node_props / edge_attrs: the sync-back below must see pure facts
-        g = self.to_rdflib(base, node_props=False, edge_attrs=False)
-        g.update(f"PREFIX t: <{base}>\n" + query)
-
-        new_spos = {tuple(_shorten(x, base) for x in triple) for triple in g}
+        from rdflib.plugins.sparql.parser import parseUpdate
+        from rdflib.plugins.sparql.algebra import translateUpdate
+        prefixed = (f"PREFIX t: <{base}>\n"
+                    "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query)
+        parsed = translateUpdate(parseUpdate(prefixed))
+        # This is a single default graph, not an RDF dataset. Reject dataset
+        # operations explicitly instead of accepting and silently losing them.
+        for operation in parsed.algebra:
+            if operation.name not in {"InsertData", "DeleteData", "DeleteWhere", "Modify", "Clear", "Drop"}:
+                raise ValueError("only default-graph INSERT/DELETE/CLEAR/DROP updates are supported")
+            if operation.get("withClause") is not None and "withClause" in operation:
+                raise ValueError("named graphs and WITH are not supported")
+            if "using" in operation:
+                raise ValueError("USING datasets are not supported")
+            if operation.name in {"Clear", "Drop"} and operation.get("graphiri") != "DEFAULT":
+                raise ValueError("only the DEFAULT graph can be cleared")
+            for clause in (operation, operation.get("insert"), operation.get("delete")):
+                if isinstance(clause, dict) and clause.get("quads") and "quads" in clause:
+                    raise ValueError("named graphs are not supported")
+        g = self.to_rdflib(base)
+        before_full = set(g)
+        facts = {t.as_rdf(base) for t in self._triples}
+        g.update(parsed)
+        after_full = set(g)
+        # Synthetic metadata is readable in WHERE but not writable through RDF.
+        if (before_full - after_full) - facts:
+            raise ValueError("update deletes projected metadata; use set_node or edge attributes")
+        wanted = (facts - (before_full - after_full)) | (after_full - before_full)
+        kept = [t for t in self._triples if t.as_rdf(base) in wanted]
+        existing = {t.as_rdf(base) for t in kept}
+        for triple in sorted(wanted - existing, key=lambda row: tuple(t.n3() for t in row)):
+            row = Triple.from_rdf(*triple, base=base)
+            if self.ontology and row.p not in self.ontology and not row.p.startswith(("http://", "https://")):
+                raise OntologyError(f"update inserts predicate {row.p!r} not in the ontology")
+            kept.append(row)
         before = len(self._triples)
-        old_by_spo = {t.spo(): t for t in self._triples}
-        kept = [t for t in self._triples if t.spo() in new_spos]
-        existing = {t.spo() for t in kept}
-        for s, p, o in sorted(new_spos - existing):
-            if self.ontology and p not in self.ontology:
-                raise OntologyError(
-                    f"update inserts predicate {p!r} not in the ontology "
-                    f"(allowed: {sorted(self.ontology)})"
-                )
-            old = old_by_spo.get((s, p, o))
-            kept.append(Triple(s, p, o, old.attrs if old else {}))
-        self._triples = kept
-        self._index = None
-        if len(self._triples) != before or new_spos - existing:
+        if wanted != facts:
+            self._triples = kept
+            self._index = None
             self._autosave()
         return len(self._triples) - before
 
@@ -1038,12 +1086,7 @@ class TrikeDB:
 
     def to_jsonld(self, base: str = "urn:trikedb:") -> dict:
         """Best-effort JSON-LD export for interop with real RDF tooling."""
-        context = {p: {"@id": base + p, "@type": "@id"} for p in self.predicates()}
-        nodes: dict = {}
-        for t in self._triples:
-            node = nodes.setdefault(t.s, {"@id": t.s})
-            node.setdefault(t.p, []).append(t.o)
-        return {"@context": context, "@graph": list(nodes.values())}
+        return {"@graph": json.loads(self.to_rdflib(base).serialize(format="json-ld"))}
 
     def to_networkx(self, multigraph: bool = True):
         """Project to a networkx graph — the property-graph view (requires
@@ -1071,9 +1114,16 @@ class TrikeDB:
             g.add_node(name, **self.node(name))
         for t in self._triples:
             if multigraph:
-                g.add_edge(t.s, t.o, key=t.p, label=t.p, **t.attrs)
+                key = t.p
+                if g.has_edge(t.s, t.o, key):
+                    key = (t.p, len(g[t.s][t.o]))
+                g.add_edge(t.s, t.o, key=key)
+                g[t.s][t.o][key].update({"label": t.p, **deepcopy(t.attrs)})
+                if t.rdf_terms:
+                    g[t.s][t.o][key]["rdf_terms"] = deepcopy(t.rdf_terms)
             else:
-                g.add_edge(t.s, t.o, label=t.p, **t.attrs)
+                g.add_edge(t.s, t.o)
+                g[t.s][t.o].update({"label": t.p, **deepcopy(t.attrs)})
         return g
 
     def to_html(
@@ -1094,7 +1144,7 @@ class TrikeDB:
         return len(self._triples)
 
     def __iter__(self) -> Iterator[Triple]:
-        return iter(self._triples)
+        return (deepcopy(t) for t in self._triples)
 
     def __contains__(self, spo) -> bool:
         return any(t.spo() == tuple(spo) for t in self._triples)
@@ -1157,3 +1207,26 @@ def _unique(items) -> list:
             seen.add(x)
             out.append(x)
     return out
+
+
+def _iri_node(name, base):
+    return name if name.startswith(("http://", "https://", "urn:")) else _iri(name, base)
+
+
+def _validate_rdf_terms(terms):
+    if not isinstance(terms, dict):
+        raise ValueError("rdf_terms must be a mapping")
+    for key, spec in terms.items():
+        if key not in {"s", "p", "o"} or not isinstance(spec, dict):
+            raise ValueError("rdf_terms keys must be s/p/o mappings")
+        if set(spec) - {"kind", "value", "datatype", "language"}:
+            raise ValueError("unknown RDF term metadata")
+        kind = spec.get("kind")
+        if kind not in {"iri", "literal", "bnode"} or (key == "p" and kind != "iri") or (key == "s" and kind == "literal"):
+            raise ValueError("invalid RDF term kind for " + key)
+        if any(not isinstance(v, str) for v in spec.values()):
+            raise ValueError("RDF term metadata values must be strings")
+        if ("datatype" in spec or "language" in spec) and kind != "literal":
+            raise ValueError("only literals can have datatype/language")
+        if "datatype" in spec and "language" in spec:
+            raise ValueError("a literal cannot have both datatype and language")

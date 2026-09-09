@@ -41,16 +41,7 @@ WITH_GRAPH = "#eb6834"
 #: model's before/after sits adjacent — interleaving the conditions put the two
 #: halves of the comparison four rows apart, and a jump you have to hunt for is
 #: a jump nobody sees.
-#: Stages, not competitors. 89.3% and 77.7% are the same 300 questions at two
-#: points in one pipeline — what trikedb put in front of the model, and what
-#: the model then said. Drawing them as rival bars is what made an earlier
-#: version of this figure unreadable; drawing them as stages is what makes the
-#: loss legible, because the gap between the top two bars is the reader
-#: dropping answers it was handed.
-#:
-#: The bottom bar is the same reader with no graph. Every bar is over all 300
-#: questions with nothing excluded, which is the only reason they can share an
-#: axis at all.
+# Gold answer-string presence is a separate retrieval statistic.
 REACH = 89.3
 ROWS = [
     ("ans_nograph_27b.jsonl", "alone_27b", "without"),
@@ -65,30 +56,30 @@ ROWS = [
 #: number and every colour is the same file of data.
 TEXT = {
     "en": {
-        "title": "trikedb finds the answer for 89.3% of questions",
-        "sub": "WebQSP · every bar is the same 300 questions",
-        "reach": "<b>trikedb found it</b>",
+        "title": "Gold strings appear in 89.3% of retrieved contexts",
+        "sub": "WebQSP · n shown per bar · graph + grounding instructions",
+        "reach": "<b>Answer-string presence</b>",
         "graph_8b": "qwen3:8b + graph", "alone_8b": "qwen3:8b alone",
         "graph_27b": "qwen3.8:27b + graph", "alone_27b": "qwen3.8:27b alone",
-        "delta": "{d:+.0f} points from the graph",
+        "delta": "{d:+.0f} points: graph + grounding",
         "loss": "−{d:.1f}: the reader dropped what it was handed",
     },
     "jp": {
-        "title": "trikedb は89.3%の質問で正解を見つける",
-        "sub": "WebQSP · どの棒も同じ300問",
-        "reach": "<b>trikedb が見つけた</b>",
+        "title": "89.3%の検索文脈に正解文字列がある",
+        "sub": "WebQSP · 棒ごとにnを表示 · グラフ＋grounding指示",
+        "reach": "<b>文脈中の正解文字列</b>",
         "graph_8b": "qwen3:8b + グラフ", "alone_8b": "qwen3:8b 単体",
         "graph_27b": "qwen3.8:27b + グラフ", "alone_27b": "qwen3.8:27b 単体",
-        "delta": "グラフで {d:+.0f} ポイント",
+        "delta": "グラフ＋指示で {d:+.0f} pt",
         "loss": "−{d:.1f}：渡したのにリーダーが落とした",
     },
     "zh": {
-        "title": "trikedb 在 89.3% 的题目上找到了答案",
-        "sub": "WebQSP · 每根柱子都是同一批 300 题",
-        "reach": "<b>trikedb 找到了它</b>",
+        "title": "89.3%的检索上下文包含答案字符串",
+        "sub": "WebQSP · 每柱标明n · 图谱＋grounding指令",
+        "reach": "<b>上下文包含答案字符串</b>",
         "graph_8b": "qwen3:8b + 图谱", "alone_8b": "qwen3:8b 单独",
         "graph_27b": "qwen3.8:27b + 图谱", "alone_27b": "qwen3.8:27b 单独",
-        "delta": "图谱带来 {d:+.0f} 个百分点",
+        "delta": "图谱＋指令 {d:+.0f} pp",
         "loss": "−{d:.1f}：递到手上却被阅读模型丢掉",
     },
 }
@@ -106,7 +97,7 @@ def main(lang: str = "en") -> None:
     scored = {r["answers"]: r for r in json.loads((HERE / "accuracy_data.json").read_text())}
 
     COLOR = {"trikedb": TRIKEDB_BAR, "with": WITH_GRAPH, "without": WITHOUT_GRAPH}
-    values = [(words[key], REACH if name is None else scored[name]["hits_at_1"], kind)
+    values = [(words[key] + f" · n={300 if name is None else scored[name]['n']}", REACH if name is None else scored[name]["hits_at_1"], kind)
               for name, key, kind in ROWS]
 
     figure = go.Figure(go.Bar(
@@ -118,7 +109,7 @@ def main(lang: str = "en") -> None:
         text=[f"{value:.1f}%" for _, value, _ in values],
         textposition="outside", cliponaxis=False,
         textfont=dict(size=16, color=INK),
-        hovertemplate="%{y}<br>%{x:.1f}% of 300 questions<extra></extra>",
+        hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>",
     ))
 
     # Row indices, bottom-up as plotly draws them.
@@ -133,11 +124,6 @@ def main(lang: str = "en") -> None:
             text=f"<b>{template.format(d=gain)}</b>", showarrow=False,
             font=dict(size=size, color=color),
         )
-    figure.add_annotation(
-        x=REACH, y=(at["graph_8b"] + at["reach"]) / 2, xshift=150,
-        text=words["loss"].format(d=REACH - values[at["graph_8b"]][1]),
-        showarrow=False, font=dict(size=14, color=INK_MUTED),
-    )
 
     figure.update_layout(
         title=dict(
@@ -153,7 +139,7 @@ def main(lang: str = "en") -> None:
                    showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, linecolor=SURFACE),
         showlegend=False,
-        margin=dict(l=10, r=330, t=100, b=16), width=1100, height=420,
+        margin=dict(l=10, r=330, t=100, b=16), width=1250, height=450,
     )
     out = HERE / ("accuracy.png" if lang == "en" else f"accuracy_{lang}.png")
     figure.write_image(out, scale=2)

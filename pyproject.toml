@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.35.1"
-description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with full SPARQL 1.1. Built for LLM agents."
+version = "0.36.0"
+description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,8 +25,8 @@ classifiers = [
 Homepage = "https://github.com/RyutoYoda/trikedb"
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.2,<2"]
-remote = ["fsspec>=2024.2", "s3fs>=2024.2"]
+mcp = ["mcp>=1.30,<2"]
+remote = ["fsspec>=2024.2", "s3fs>=2025.3", "botocore>=1.41.5"]
 snowflake = ["snowflake-connector-python>=3.0"]
 bigquery = ["google-cloud-bigquery>=3.0"]
 shacl = ["pyshacl>=0.25"]
@@ -36,11 +36,11 @@ networkx = ["networkx>=3"]
 # Kept as an extra name for anyone pinning it explicitly; pyoxigraph is a
 # core dependency, so this installs nothing new.
 oxigraph = ["pyoxigraph>=0.4"]
-serve = ["mcp>=1.2,<2", "uvicorn>=0.27", "starlette>=0.37"]
-oauth = ["mcp>=1.2,<2", "pyjwt[crypto]>=2.8"]
+serve = ["mcp>=1.30,<2", "uvicorn>=0.27", "starlette>=0.37"]
+oauth = ["mcp>=1.30,<2", "pyjwt[crypto]>=2.8"]
 all = [
-    "mcp>=1.2,<2", "uvicorn>=0.27", "starlette>=0.37",
-    "fsspec>=2024.2", "s3fs>=2024.2",
+    "mcp>=1.30,<2", "uvicorn>=0.27", "starlette>=0.37",
+    "fsspec>=2024.2", "s3fs>=2025.3", "botocore>=1.41.5",
     "pyshacl>=0.25", "owlrl>=6.0.2",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3",
     "pyjwt[crypto]>=2.8", "snowflake-connector-python>=3.0",
@@ -58,7 +58,7 @@ all = [
 # SQL layer through a fake DB-API connection, so nothing here needs a
 # warehouse to be installed. Real-warehouse checks are run by hand.
 dev = [
-    "pytest>=7", "mcp>=1.2,<2", "fsspec>=2024.2", "pyshacl>=0.25",
+    "pytest>=7", "mcp>=1.30,<2", "fsspec>=2024.2", "pyshacl>=0.25",
     "owlrl>=6.0.2", "uvicorn>=0.27", "starlette>=0.37", "httpx>=0.27",
     "model2vec>=0.3", "numpy>=1.24", "networkx>=3", "pyjwt[crypto]>=2.8",
     "pyoxigraph>=0.4",

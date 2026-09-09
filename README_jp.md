@@ -29,7 +29,17 @@
 
 # trikedb
 
-**AIエージェントのための、1ファイルの知識グラフ。** グラフ1つがリポジトリの YAML ファイル1つ — SPARQL 1.1 のフル対応で読み取り*も*書き込みも、エージェントの書き込みはオントロジーのガードを通り、変更はレビューできる diff で届きます。
+**AIエージェントのための、1ファイルの知識グラフ。** グラフ1つがリポジトリの YAML ファイル1つ — SPARQL 1.1 読取とdefault graph更新で読み取り*も*書き込みも、エージェントの書き込みはオントロジーのガードを通り、変更はレビューできる diff で届きます。
+
+
+**互換性と保証範囲。** 単一default graphのSPARQL読取とINSERT/DELETE・CLEAR/DROPに対応し、named graph/dataset更新は拒否します。従来形式の空白入りobjectはliteralです。`New York`のようなエンティティには `rdf_terms={"o": {"kind": "iri"}}` を指定してください。SPARQLで挿入したRDF型・言語タグ・blank nodeは保存後も保持します。RDF/JSON-LDはメタデータを含むRDF投影を保持し、pattern/NetworkX/SQLは文字列の名前を使います。
+
+返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルのontology適合性はload時に検査しません。
+
+ローカルは完全なファイルへatomic replaceしますが、別プロセス間はlast-write-winsです。同一HTTPサーバーのREST/MCPは状態を共有して直列化し、外部編集にはreloadが必要です。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
+
+
+ECS＋S3でリモートMCPを共有する場合は、[Dockerfile・構築手順](https://github.com/RyutoYoda/trikedb/tree/main/deploy/ecs)を参照してください。GitHubだけで配布し、PyPIには含めません。
 
 ```yaml
 triples:
@@ -38,7 +48,7 @@ triples:
   - {s: LEGACY_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
 ```
 
-このファイル**が**データベースです。サーバもデーモンもクラウドへのデプロイもありません。git で綺麗に diff が取れ、コードの隣のリポジトリで生き続け、そして — trikedb が本当に狙って設計されている点ですが — **LLMエージェントが直接 `Read` して、エンティティ名を捏造せずにあなたのドメインを推論できます。**
+このファイル**が**データベースです。サーバもデーモンもクラウドへのデプロイもありません。git で綺麗に diff が取れ、コードの隣のリポジトリで生き続け、そして — trikedb が本当に狙って設計されている点ですが — **LLMエージェントが直接 `Read` して、明示されたエンティティ名を参照してドメインを推論できます。**
 
 しかもインタラクティブなワークベンチとして描画されます（[ライブデモ](https://ryutoyoda.github.io/trikedb/) — 実際のFreebaseの事実600件）:
 
@@ -47,6 +57,8 @@ triples:
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb の HTML ワークベンチ — Freebaseの事実600件を力学配置のクラスタとして表示、ノード詳細パネルを開いた状態">
   </a>
 </p>
+
+**以下の性能値は記録当時の版・環境での観測で、この修正版の速度保証ではありません。**
 
 ## なぜ作ったか
 
@@ -88,7 +100,7 @@ pip install 'trikedb[all]'      # 以下すべてを一度に
 pip install 'trikedb[mcp]'      # + AIエージェント向け MCP サーバ（stdio）
 pip install 'trikedb[serve]'    # + UI / REST / HTTP 経由のリモート MCP
 pip install 'trikedb[oauth]'    # + claude.ai / ChatGPT の UI 向け OAuth 2.1
-pip install 'trikedb[remote]'   # + s3:// gs:// のグラフ
+pip install 'trikedb[remote]' gcsfs   # + s3:// gs:// のグラフ
 pip install 'trikedb[snowflake]' # + snowflake:// のグラフ（ウェアハウスが保存先）
 pip install 'trikedb[bigquery]' # + bigquery:// のグラフ（同じことを BigQuery で）
 pip install 'trikedb[shacl]'    # + SHACL 検証
@@ -161,7 +173,7 @@ with db.batch():
     for s, p, o in rows:          # 数万件: これ無しだと分、有れば秒
         db.add(s, p, o)
 
-# チームが実際にクリックして回れる、自己完結した HTML を1つ出す
+# チームが実際にクリックして回れる、CDNに依存する HTML を1つ出す
 db.to_html("pipeline.html")     # 検索可能なグラフ + ノード詳細 + ブラウザ内 SPARQL コンソール
 db.to_rdflib(); db.to_jsonld()  # RDF/SPARQL のビュー — あるいは任意の RDF ツールへ卒業
 db.to_networkx()                # プロパティグラフのビュー: 同じファイルに networkx の
@@ -262,7 +274,7 @@ db.infer()   # → subClassOf 経由で (felix, rdf:type, Animal)、domain/range
 
 ファイルはローカルでなくてよく、そもそもファイルでなくてもよいのです。ストレージより上の層は「文書1つ丸ごと」しか要求しないので、行き先を差し替えても他は何も変わりません — SPARQL、MCP ツール、SHACL、`to_networkx` は、バイトがどこにあっても同じように振る舞います。
 
-**オブジェクトストレージ**（`pip install 'trikedb[remote]'`）:
+**オブジェクトストレージ**（`pip install 'trikedb[remote]' gcsfs`）:
 
 ```python
 db = TrikeDB("s3://team-bucket/kg/pipeline.yaml")   # 読み書き両方
@@ -429,7 +441,7 @@ trikedb audit workspace.yaml            # エラーで終了コード 1、--stri
 
 ガードはすべてに等しく適用されるので、「エージェントが書いた」と「人間が書いた」が語彙で乖離することはありません。
 
-HTML のワークベンチは*描画*であり、グラフの住所がページの行き先を決めることはありません: ローカルのグラフは自分の隣に、リモートのものは作業ディレクトリに描画され、`-o` はパスでもオブジェクト URL でも取ります（`-o s3://site/kg.html` で公開されます）。自己完結した1ファイルなので — ビルド工程もサーバも無し — 公開はどこかに置くだけです。
+HTML のワークベンチは*描画*であり、グラフの住所がページの行き先を決めることはありません: ローカルのグラフは自分の隣に、リモートのものは作業ディレクトリに描画され、`-o` はパスでもオブジェクト URL でも取ります（`-o s3://site/kg.html` で公開されます）。CDNに依存する1ファイルなので — ビルド工程もサーバも無し — 公開はどこかに置くだけです。
 
 ## グラフを配る（UI + REST + リモート MCP）
 
@@ -557,7 +569,7 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 
 ## trikedb でないもの
 
-- **独自の SPARQL 実装ではありません。** SPARQL の表面は意図的に自作していません — あなたの YAML は本物のエンジンに投影されます: 読み取りは [Oxigraph](https://github.com/oxigraph/oxigraph)、更新と OWL/SHACL は [rdflib](https://github.com/RDFLib/rdflib)。対応規則: 主語と述語は `urn:trikedb:` 配下の URI になり、空白を含む目的語（変更イベント、メモ）はリテラルになります。SPARQL 経由で挿入されたトリプルはエッジ属性なしで始まり、生き残ったトリプルは自分の属性を保ちます。手軽なパターンマッチ用に軽量な `query()`/`triples()` API もあります。
+- **独自の SPARQL 実装ではありません。** SPARQL の表面は意図的に自作していません — あなたの YAML は本物のエンジンに投影されます: 読み取りは [Oxigraph](https://github.com/oxigraph/oxigraph)、更新と OWL/SHACL は [rdflib](https://github.com/RDFLib/rdflib)。従来形式の対応規則（rdf_termsで上書き可能）: 主語と述語は `urn:trikedb:` 配下の URI になり、空白を含む目的語（変更イベント、メモ）はリテラルになります。SPARQL 経由で挿入されたトリプルはエッジ属性なしで始まり、生き残ったトリプルは自分の属性を保ちます。手軽なパターンマッチ用に軽量な `query()`/`triples()` API もあります。
 - **抽出パイプラインではありません。** PDF をグラフに変えてはくれません。それが欲しければ抽出器と組み合わせて、出てきたものをキュレーションしてください。
 - **数百万トリプル向けではありません。** すべてメモリ上で、走査は線形です。スイートスポットは数百〜数千の範囲 — キュレーションされたグラフが成立しうる規模です。
 
@@ -576,6 +588,8 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 ## ベンチマーク
 
 [WebQSP](https://aclanthology.org/P16-2033/)（知識グラフQA）で、同じローカルモデルが**単体では 42.7%、trikedb のグラフを文脈として与えると 77.7%** 正解します — テスト分割の300問に対する Hits@1、+35ポイントの差、対応のある McNemar 検定で p = 9e-20。検索はそのうち 89.3% でモデルの目の前に正解を置いており、1問あたり 0.59 秒です。スクリプト、精度対レイテンシのトレードオフ、そして誠実な採点感度の分析は [`benchmarks/`](https://github.com/RyutoYoda/trikedb/blob/main/benchmarks/README_jp.md) にあります。
+
+これは過去の8Bの観測です。グラフ条件にはgrounding指示も含むため、差はグラフ構造だけの寄与ではありません。89.3%は文脈に正解文字列がある割合で、精度の厳密な上限ではありません。27Bの比較は150問で、採点は独自の部分文字列指標です。
 
 ## ドキュメント
 

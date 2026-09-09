@@ -145,13 +145,8 @@ def prepare(n: int, seed: int, out: Path, retrieval: str = DEFAULT_RETRIEVAL,
           f"({100 * reachable / len(eval_set):.1f}%)")
 
 
-#: The reference implementation's normalisation, reproduced so the numbers
-#: mean the same thing published WebQSP results do: lowercase, drop
-#: punctuation, drop the articles, collapse whitespace. Matching is then
-#: *substring* — a gold answer counts if it appears inside the prediction —
-#: which is looser than exact match and is what every number in the
-#: literature is computed with. Departing from it would make a score that
-#: looks comparable and is not.
+# Local normalization: lowercase, punctuation/articles removed, whitespace collapsed.
+# Substring matching is deliberately lenient; it is not an official scorer claim.
 _ARTICLES = {"a", "an", "the"}
 
 
@@ -171,40 +166,31 @@ def _matches(prediction: str, gold: str) -> bool:
 
 
 def hits_at_1(prediction, gold) -> int:
-    """1 if the prediction contains any gold answer.
-
-    Note what this is *not*: it does not require the prediction to be only
-    the answer, and with several gold answers one is enough. That leniency is
-    the standard, and it is why Hits@1 sits ~15 points above F1 in every
-    published table.
-    """
+    """1 if the normalized answer text contains at least one gold answer."""
     text = prediction if isinstance(prediction, str) else "\n".join(map(str, prediction))
     return int(any(_matches(text, g) for g in gold))
 
 
 def f1(prediction, gold) -> float:
-    """F1 over the predicted answer *set* against the gold set.
+    """F1 with substring matching: precision over predictions, recall over golds.
 
-    A string prediction is split on newlines, as the reference does. Each gold
-    answer is credited once, so repeating a correct answer cannot inflate the
-    score — but it does cost precision, which is why F1 punishes a model that
-    lists everything it saw.
+    Predictions are split on newlines. Each prediction and each gold can
+    contribute at most one match to its own denominator. This is a local
+    substring metric, not a claim of exact compatibility with WebQSP scorers.
     """
     predicted = ([p for p in prediction.split("\n") if p.strip()]
                  if isinstance(prediction, str) else [str(p) for p in prediction])
     if not predicted or not gold:
         return 0.0
     matched = sum(1 for g in gold if any(_matches(p, g) for p in predicted))
-    precision = matched / len(predicted)
+    precision = sum(any(_matches(p, g) for g in gold) for p in predicted) / len(predicted)
     recall = matched / len(gold)
     if precision + recall == 0:
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
 
-#: One instruction for both conditions. The only difference between them is
-#: whether the retrieved triples are present, because anything else would
-#: confound "does the graph help" with "was the prompt better".
+# Shared base instruction. Grounded style additionally changes the graph arm.
 _PROMPT = """Answer the question with only the answer itself — no explanation.
 If there are several correct answers, put one per line.
 If you do not know, reply exactly: I don't know
@@ -215,23 +201,7 @@ Facts from a knowledge graph, as (subject, predicate, object):
 {triples}
 """
 
-#: Added to the graph condition by ``--style grounded``.
-#:
-#: The failures this exists to fix are not retrieval failures. At n=186 the
-#: retrieved subgraph contained the answer and the model still lost the point
-#: two ways: it paraphrased instead of naming the entity ("Short stories and
-#: novels, particularly satirical works" against a gold of "Novelist"), and it
-#: listed everything it saw ("Brazil Chile Argentina Paraguay Peru Amazon
-#: rainforest Andes ...", where the five countries are exactly right and the
-#: rest destroys precision, so F1 falls even though Hits@1 passes).
-#:
-#: Constraining the answer to labels present in the subgraph is what every
-#: published KGQA method on this dataset does — the answer is an entity of the
-#: graph, not free text. It applies only to the graph condition because there
-#: is nothing to copy from without it, so the nograph baseline is untouched
-#: and the delta between them credits the grounding to the graph. That is the
-#: honest reading: grounding the answer in retrieved facts *is* the technique
-#: being measured, not a prompt trick applied to one arm of an A/B.
+# Grounded runs measure retrieval plus this extra answer-format instruction.
 _GROUNDED = """
 Answer with names copied exactly from those facts. Do not reword them.
 List only what the question asks for and nothing else — a name you saw that
@@ -269,7 +239,7 @@ question is a wrong answer.
 """
 
 
-def _ask(client, model: str, question: str, triples=None, style: str = "plain") -> str:
+def _prompt(question: str, triples=None, style: str = "plain") -> str:
     body = _PROMPT
     if triples:
         body += _WITH_GRAPH.format(triples="\n".join(triples))
@@ -278,7 +248,11 @@ def _ask(client, model: str, question: str, triples=None, style: str = "plain") 
         elif style == "precise":
             body += _PRECISE
     body += f"\nQuestion: {question}\nAnswer:"
-    return client(model, body)
+    return body
+
+
+def _ask(client, model: str, question: str, triples=None, style: str = "plain") -> str:
+    return client(model, _prompt(question, triples, style))
 
 
 def _ollama_client(host: str, timeout: int = 900):
@@ -362,6 +336,8 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
 
     def answer(item):
         triples = item["triples"] if condition == "graph" else None
+        import hashlib
+        prompt = _prompt(item["question"], triples, style)
         started = time.perf_counter()
         try:
             text = _ask(client, model, item["question"], triples, style)
@@ -381,7 +357,9 @@ def run(eval_path: Path, model: str, out: Path, condition: str,
             # a request among N in flight, not of a lone request; `latency`
             # measures a config the way it would actually be run.
             log.write(json.dumps({"id": item["id"], "answer": text,
-                                  "secs": round(time.perf_counter() - started, 2)},
+                                  "secs": round(time.perf_counter() - started, 2),
+                                  "model": model, "condition": condition, "style": style,
+                                  "prompt": prompt, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()},
                                  ensure_ascii=False) + "\n")
             log.flush()
             state["finished"] += 1
@@ -512,13 +490,7 @@ def latency(eval_path: Path, model: str, condition: str, style: str,
 
 
 def score(eval_path: Path, *answer_paths: Path, out_json: Path = None) -> None:
-    """Report Hits@1 and F1 — the two metrics WebQSP results are published in.
-
-    Both are computed exactly as the reference implementation does, so a score
-    here can be put next to the literature. Anything else measured on this
-    dataset (retrieval recall, for one) is a different quantity and does not
-    belong in the same table.
-    """
+    """Report local substring Hits@1/F1 and sample counts; not leaderboard parity."""
     gold = {e["id"]: e["answers"] for e in json.load(open(eval_path))}
     print(f"{'answers':<34}{'Hits@1':>9}{'F1':>9}{'n':>7}   Hits@1 95% CI")
     rows = []

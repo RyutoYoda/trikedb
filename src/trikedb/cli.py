@@ -279,7 +279,6 @@ def _cmd_sparql(args) -> int:
         print(json.dumps(result) if args.json else ("yes" if result else "no"))
         return 0 if result else 1
     if isinstance(result, int):  # update form: store changed, persist it
-        db.save()
         print(f"{result:+d} triple(s) — {len(db)} total")
         return 0
     return _print_rows(result, args.json)
@@ -292,10 +291,9 @@ def _cmd_add(args) -> int:
             print(f"error: --attr expects key=value, got {pair!r}", file=sys.stderr)
             return 2
         k, v = pair.split("=", 1)
-        attrs[k] = v
+        attrs[k] = _parse_attrs([pair])[k]
     db = TrikeDB(args.file)
     db.add(args.s, args.p, args.o, **attrs)
-    db.save()
     print(f"added ({args.s}, {args.p}, {args.o}) — {len(db)} triples total")
     return 0
 
@@ -306,7 +304,6 @@ def _cmd_rm(args) -> int:
         return 2
     db = TrikeDB(args.file)
     removed = db.remove(s=args.s, p=args.p, o=args.o)
-    db.save()
     print(f"removed {removed} triple(s) — {len(db)} remaining")
     return 0
 
@@ -362,7 +359,6 @@ def _cmd_node(args) -> int:
     db = TrikeDB(args.file)
     if args.attr:
         db.set_node(args.name, replace=args.replace, **_parse_attrs(args.attr))
-        db.save()
     record = {
         "name": args.name,
         # An unknown name and a node with nothing on it produce the same empty

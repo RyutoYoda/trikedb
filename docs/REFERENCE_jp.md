@@ -4,11 +4,21 @@
 設計思想は [ARCHITECTURE.md](ARCHITECTURE.md)、ベンチマークは
 [benchmarks/](../benchmarks/) を参照。
 
+
+**互換性と保証範囲。** 単一default graphのSPARQL読取とINSERT/DELETE・CLEAR/DROPに対応し、named graph/dataset更新は拒否します。従来形式の空白入りobjectはliteralです。`New York`のようなエンティティには `rdf_terms={"o": {"kind": "iri"}}` を指定してください。SPARQLで挿入したRDF型・言語タグ・blank nodeは保存後も保持します。RDF/JSON-LDはメタデータを含むRDF投影を保持し、pattern/NetworkX/SQLは文字列の名前を使います。
+
+返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルのontology適合性はload時に検査しません。
+
+ローカルは完全なファイルへatomic replaceしますが、別プロセス間はlast-write-winsです。同一HTTPサーバーのREST/MCPは状態を共有して直列化し、外部編集にはreloadが必要です。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
+
+
+**以下の性能値は記録当時の版・環境での観測で、この修正版の速度保証ではありません。**
+
 ## 全体像
 
 ```mermaid
 flowchart LR
-    subgraph ingest["取り込み — すべての経路がオントロジー検証つき"]
+    subgraph ingest["API取り込み — ontology設定時に述語を検証"]
         direction TB
         I1("CSV / TSV / Markdownの表<br/>trikedb import")
         I2("エージェント経由(MCP)<br/>add_triple · set_node")
@@ -85,9 +95,7 @@ SELECT ?s ?p ?o WHERE {
 ```
 
 `db.sparql()`・`trikedb sparql`・MCPの`sparql`ツール・HTMLコンソールの
-どこでも同じに動く(`rdf:` は全箇所でpre-bound)。reificationはエクスポート
-専用 — YAMLはフラットのままで、SPARQL updateがstatementリソースを
-書き戻すことはない。
+どこでも同じに動く(`rdf:` は全箇所でpre-bound)。合成reificationはedge属性から生成します。UPDATE WHEREで読めますが、その削除は拒否します。明示的にINSERTしたRDF statementは通常の事実として保存します。
 
 **workspaceファイル**は複数グラフを読み取り専用でunionする:
 
@@ -454,7 +462,7 @@ OAUTH_ISSUER=https://idp.example.com/
 
 ## HTMLワークベンチ
 
-`to_html()` / `trike ui generate` が自己完結のページを生成する:
+`to_html()` / `trike ui generate` がCDN依存の単一ファイルのページを生成する:
 
 - 力学クラスタ or 左→右フロー(`--layout auto` がグラフの形で自動選択)。
   workspaceでは各グラフが格子のセルに島として並び、グラフ別フィルタチップ付き
@@ -781,7 +789,7 @@ URLには「隣に置く」相手のファイルが存在しないため。`-o` 
 グラフを保持しているので、ページを書き込むとローダーが読めないマークアップで
 グラフを上書きしてしまう。
 
-ページは自己完結（1ファイル・ビルド不要・サーバ不要）なので、「公開」は
+ページはCDN依存の単一ファイル（1ファイル・ビルド不要・サーバ不要）なので、「公開」は
 どこかに置くだけでよい。GitHub Pages用にコミットする、バケットに置く、
 チケットに添付する。`trikedb check --html PATH_OR_URL` はページに埋め込まれた
 コンテンツハッシュとグラフを照合し、古ければ失敗する。生成物をバージョン管理に
@@ -826,10 +834,10 @@ flowchart LR
 | Extra | 追加されるもの | 依存 |
 |---|---|---|
 | *(コア)* | 上記すべて(↓以外) | PyYAML, rdflib, pyoxigraph |
-| `[mcp]` | `trikedb mcp`(stdio) | mcp (1.x) |
+| `[mcp]` | `trikedb mcp`(stdio) | mcp >=1.30,<2 |
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
-| `[remote]` | `s3://` 等 | fsspec, s3fs |
+| `[remote]` | `s3://` 等 | fsspec, s3fs; add gcsfs for gs:// |
 | `[snowflake]` | `snowflake://` グラフ | snowflake-connector-python |
 | `[bigquery]` | `bigquery://` グラフ | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
@@ -837,3 +845,15 @@ flowchart LR
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |
 | `[networkx]` | `to_networkx`(プロパティグラフ投影) | networkx |
 | `[oxigraph]` | 何も追加しない（pyoxigraphはコア依存） | pyoxigraph |
+
+## RDF termの表現
+
+`rdf_terms`は予約済みのtripleフィールド・add引数です。edge属性には使えません。s/p/oごとにkind（iri/bnode/literal）を指定し、literalはoだけ、pはiriだけです。valueで完全なRDF値を指定し、省略時はs/p/o文字列を使います。literalにはlanguageまたは絶対datatypeの片方を指定でき、空文字も可能です。valueなしの明示iriは通常のbaseと名前エスケープを使います。同じ文字列でもRDF型が違えば別tripleです。
+
+```python
+db.add("a", "P", "New York", rdf_terms={"o": {"kind": "iri"}})
+db.add("a", "P", "hello", rdf_terms={"o": {"kind": "literal", "language": "en"}})
+db.update('INSERT DATA {t:a t:P "42"^^<http://www.w3.org/2001/XMLSchema#integer>}')
+```
+
+NetworkXのedge keyは通常述語で、RDF型が違って衝突する場合は別tuple keyになります。label属性は表示名を上書きし、key属性は通常属性として保持します。NetworkX/patternは端点の文字列を使うため、同名IRI/literalは別nodeになりません。RDF出力はその区別を保ちます。

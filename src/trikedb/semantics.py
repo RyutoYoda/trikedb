@@ -70,13 +70,14 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
         ) from exc
     from rdflib import Literal, URIRef
 
-    from .db import _shorten
+    from .db import Triple, _shorten
 
     g = db.to_rdflib(base, node_props=False, edge_attrs=False)
     before = set(g)
     DeductiveClosure(OWLRL_Semantics).expand(g)
-    existing = {t.spo() for t in db}
+    existing = {t.as_rdf(base) for t in db}
     new = []
+    inferred_rows = []
     for s, p, o in set(g) - before:
         # Keep only facts *about the user's own resources*. The OWL-RL closure
         # also emits mountains of rdf/owl bookkeeping (x rdf:type owl:Thing,
@@ -101,12 +102,14 @@ def infer(db, apply: bool = False, base: str = "urn:trikedb:") -> list:
             continue  # reflexive classification noise (X subClassOf X, X type X)
         p_out = _shorten(p, base) if p_is_base else p_text
         row = (s_out, p_out, o_out)
-        if row not in existing:
+        if (s, p, o) not in existing:
             new.append(row)
+            inferred_rows.append(Triple.from_rdf(s, p, o, base))
     new = sorted(set(new))
     if apply:
-        for s, p, o in new:
-            db.add(s, p, o, inferred=True)
+        with db.batch():
+            for row in sorted(inferred_rows, key=lambda t: t.identity()):
+                db.add(row.s, row.p, row.o, rdf_terms=row.rdf_terms, inferred=True)
     return new
 
 

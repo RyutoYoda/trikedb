@@ -16,7 +16,7 @@ difference is delivery, never content.
 
 The corpus is built from WebQSP (via the RoG repack), the same public
 benchmark `webqsp_bench.py` uses, so the accuracy numbers are computed with
-the published metric implementation and can be read next to the literature.
+the local substring metrics; these are not official leaderboard scores.
 Each question contributes a small curated slice of its Freebase subgraph —
 the answer-bearing facts plus their neighbourhood, which is what a careful
 person writing the file down would have kept. Questions whose subgraph
@@ -32,10 +32,10 @@ Conditions
 ----------
 - ``none``     no context. The floor — what the model already knows.
 - ``md``       the entire markdown file in the prompt, every question.
-               This is literally what CLAUDE.md / AGENTS.md does.
+               This is the whole-file arm chosen by this harness.
 - ``md_grep``  only the lines of that file that match the question, by
                keyword. The control that keeps this honest: it separates
-               "retrieval helps" from "a *graph* helps".
+               hybrid retrieval from keyword retrieval; graph structure is not isolated.
 - ``graph``    trikedb's own retrieval over `corpus.yaml`, capped.
 
 Measured

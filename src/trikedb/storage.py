@@ -15,6 +15,9 @@ as missing data nobody notices.
 from __future__ import annotations
 
 from pathlib import Path
+import os
+import stat
+import tempfile
 
 REMOTE_PREFIXES = (
     "s3://", "gs://", "gcs://", "http://", "https://",
@@ -243,7 +246,7 @@ def read_text(path, attempts: int = 3, connection=None) -> str:
                 raise
 
 
-def write_text(path, text: str, expect=_UNCHECKED, connection=None) -> None:
+def write_text(path, text: str, expect=_UNCHECKED, connection=None):
     """Write the graph out, optionally only if it hasn't moved under us.
 
     ``expect`` is a token from a previous ``version()`` call: pass the one
@@ -260,22 +263,29 @@ def write_text(path, text: str, expect=_UNCHECKED, connection=None) -> None:
     if store is not None:
         # A SQL backend answers with a row count rather than an error, so the
         # conflict is a plain False and needs no message-matching.
-        if not store.write_text(text, expect, _UNCHECKED):
+        token = store.write_text(text, expect, _UNCHECKED)
+        if token is False:
             raise ConcurrentWriteError(
                 f"{path} changed since it was read - "
                 "re-read the graph and re-apply the change"
             )
-        return
+        return token
 
-    target = None if expect is _UNCHECKED else _conditional_fs(path)
+    target = _conditional_fs(path)
     if target is not None:
         fs, key = target
         data = text.encode("utf-8")
+        if len(data) >= 5 * 2**30:
+            raise ValueError("graph exceeds the single-PUT limit; conditional multipart writes are unsupported")
+        # s3fs multipart completion does not forward IfMatch. Force one PUT.
+        put_options = {"chunksize": max(50 * 2**20, len(data))}
         try:
-            if expect is None:
-                fs.pipe_file(key, data, mode="create")
+            if expect is _UNCHECKED:
+                response = fs.pipe_file(key, data, **put_options)
+            elif expect is None:
+                response = fs.pipe_file(key, data, mode="create", **put_options)
             else:
-                fs.pipe_file(key, data, IfMatch=expect)
+                response = fs.pipe_file(key, data, IfMatch=expect, **put_options)
         except Exception as exc:
             if _is_precondition_failure(exc):
                 raise ConcurrentWriteError(
@@ -283,10 +293,39 @@ def write_text(path, text: str, expect=_UNCHECKED, connection=None) -> None:
                     "re-read the graph and re-apply the change"
                 ) from exc
             raise
-        return
+        # Never HEAD after PUT: that token could belong to another writer.
+        # Missing tokens fail closed on the next save (expect=None requires
+        # absence), rather than granting permission to overwrite newer bytes.
+        etag = response.get("ETag") if isinstance(response, dict) else None
+        return str(etag).strip('"') if etag else None
 
     if is_remote(path):
         with _fsspec().open(path, "w", encoding="utf-8") as f:
             f.write(text)
     else:
-        Path(path).write_text(text, encoding="utf-8")
+        _atomic_write(Path(path), text)
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Replace complete bytes on the same filesystem; preserve existing mode.
+
+    Resolve symlinks so a save updates their target as ordinary open() did.
+    A failed write/flush/replace leaves the old file intact. This is not a
+    multi-process compare-and-swap or a cross-filesystem transaction.
+    """
+    path = path.resolve()
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    if mode is not None and not mode & 0o222:
+        raise PermissionError(f"{path} is read-only")
+    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+            if mode is not None:
+                os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)

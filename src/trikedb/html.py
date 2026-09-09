@@ -11,6 +11,8 @@ events, and a SPARQL console powered by Oxigraph compiled to WASM
 from __future__ import annotations
 
 import json
+import re
+from html import escape
 from pathlib import Path
 from typing import Union
 
@@ -224,18 +226,34 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <script>
+const show = (v) => (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
+const esc = (s) => show(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const linkify = (s) => {
+  const text = show(s);
+  const rx = /https?:\\/\\/[^\\s<>"']+/g;
+  let result = "", start = 0;
+  for (const match of text.matchAll(rx)) {
+    result += esc(text.slice(start, match.index));
+    const url = match[0];
+    result += '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + '</a>';
+    start = match.index + url.length;
+  }
+  return result + esc(text.slice(start));
+};
+
 const TRIPLES = __TRIPLES__;
-const PREDICATES = __PREDICATES__;
-const NODES_META = __NODES_META__;
-const NODE_TYPES = __NODE_TYPES__;
+const PREDICATES = Object.assign(Object.create(null), __PREDICATES__);
+const NODES_META = Object.assign(Object.create(null), __NODES_META__);
+const NODE_TYPES = Object.assign(Object.create(null), __NODE_TYPES__);
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
-const GRAPHS = __GRAPHS__;   // workspace: {graph name: color}; {} otherwise
-const LEVELS = __LEVELS__;   // computed column per node; a `level` prop overrides
+const GRAPHS = Object.assign(Object.create(null), __GRAPHS__);   // workspace: {graph name: color}; {} otherwise
+const LEVELS = Object.assign(Object.create(null), __LEVELS__);   // computed column per node; a `level` prop overrides
 const BASE = "urn:trikedb:";
 
 // which member graph(s) each node belongs to (workspace unions only)
-const nodeGraphs = {};
+const nodeGraphs = Object.create(null);
 TRIPLES.forEach(t => {
   if (t.graph) {
     (nodeGraphs[t.s] ??= new Set()).add(t.graph);
@@ -244,7 +262,7 @@ TRIPLES.forEach(t => {
 });
 // grid anchors: each member graph gets a cell so projects tile side by side
 const gnames = Object.keys(GRAPHS);
-const anchors = {};
+const anchors = Object.create(null);
 if (gnames.length > 1) {
   const cols = Math.ceil(Math.sqrt(gnames.length)), CELL = 1900;
   gnames.forEach((g, i) => { anchors[g] = { x: (i % cols) * CELL, y: Math.floor(i / cols) * CELL }; });
@@ -257,7 +275,10 @@ const jitter = (id, salt) => {
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
-const degree = {};
+// Never pass user names into the renderer's object-keyed internal indexes.
+const nodeIds = new Map(ids.map((name, i) => [name, i]));
+const visualIds = names => names.map(name => nodeIds.get(name));
+const degree = Object.create(null);
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
 const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
@@ -274,13 +295,13 @@ const useLevels = nodeLevels.length > 0 && nodeLevels.every(l => typeof l === "n
 const maxLevel = useLevels ? Math.max(...nodeLevels) : 0;
 const nodes = new vis.DataSet(ids.map(id => {
   if (eventNodes.has(id)) {
-    const n = { id, label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
+    const n = { id: nodeIds.get(id), label: id.length > 26 ? id.slice(0, 26) + "\\u2026" : id, shape: "diamond", size: 9,
                 color: { border: "#f74f4f", background: "#3a1f1f" }, font: { color: "#f0a0a0", size: 10 } };
     if (useLevels) n.level = maxLevel + 1;
     return n;
   }
   const meta = NODES_META[id] || {};
-  const n = { id, label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
+  const n = { id: nodeIds.get(id), label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
   const tc = NODE_TYPES[meta.type];
   if (tc) n.color = { border: tc, background: "#1e2129",
                       highlight: { border: "#ffffff", background: "#2c4a6e" } };
@@ -293,14 +314,15 @@ const nodes = new vis.DataSet(ids.map(id => {
   return n;
 }));
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
-  const e = { id: i, from: t.s, to: t.o, label: t.p,
+  const e = { id: i, from: nodeIds.get(t.s), to: nodeIds.get(t.o), label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
   // the predicate leads the tooltip too: on a busy canvas the label a line
   // belongs to is not always the one nearest the cursor
   const lines = [t.p];
   Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k))
         .forEach(([k, v]) => lines.push(k + ": " + v));
-  e.title = lines.join("\\n");
+  e.title = document.createElement("div");
+  e.title.textContent = lines.join("\\n");
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
   return e;
 }));
@@ -368,14 +390,14 @@ function refreshVisibility() {
     const meta = NODES_META[id] || {};
     const byType = meta.type && hiddenTypes.has(meta.type);
     const byGraph = nodeGraphs[id] && [...nodeGraphs[id]].every(g => hiddenGraphs.has(g));
-    return { id, hidden: !!(byType || byGraph) };
+    return { id: nodeIds.get(id), hidden: !!(byType || byGraph) };
   }));
   edges.update(TRIPLES.map((t, i) => ({
     id: i, hidden: !!(hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))),
   })));
 }
 const legend = document.getElementById("legend");
-const typeEls = {};
+const typeEls = Object.create(null);
 function setTypeHidden(ty, off) {   // reused by per-label clicks and the all/none controls
   off ? hiddenTypes.add(ty) : hiddenTypes.delete(ty);
   const el = typeEls[ty];
@@ -386,7 +408,7 @@ for (const [ty, color] of Object.entries(NODE_TYPES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
   el.title = `show/hide ${ty} nodes`;
-  el.innerHTML = `<i style="border-color:${color};color:${color}">&#10003;</i>${ty}`;
+  el.innerHTML = `<i style="border-color:${color};color:${color}">&#10003;</i>${esc(ty)}`;
   el.onclick = () => { setTypeHidden(ty, !hiddenTypes.has(ty)); refreshVisibility(); };
   typeEls[ty] = el;
   legend.appendChild(el);
@@ -395,7 +417,7 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
   el.title = `show/hide ${p} edges`;
-  el.innerHTML = `<b style="background:${color}"></b>${p}`;
+  el.innerHTML = `<b style="background:${color}"></b>${esc(p)}`;
   el.onclick = () => {
     hiddenPreds.has(p) ? hiddenPreds.delete(p) : hiddenPreds.add(p);
     el.classList.toggle("off", hiddenPreds.has(p));
@@ -418,7 +440,7 @@ if (typeNames.length) {
   mk("none", true, "hide all node types");
 }
 // ------------------------------------------------- workspace graph filter
-const graphChips = {};
+const graphChips = Object.create(null);
 function setGraphHidden(g, hidden) {   // reused by per-chip clicks and the all/none controls
   hidden ? hiddenGraphs.add(g) : hiddenGraphs.delete(g);
   graphChips[g].classList.toggle("active", !hidden);
@@ -434,7 +456,7 @@ if (gnames.length > 0) {
     const chip = document.createElement("button");
     chip.className = "btn active";
     chip.title = `show/hide member graph "${g}"`;
-    chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${g}`;
+    chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${esc(g)}`;
     chip.onclick = () => { setGraphHidden(g, !hiddenGraphs.has(g)); refreshVisibility(); };
     graphChips[g] = chip;
     bar.appendChild(chip);
@@ -496,7 +518,7 @@ if (urlTheme === "light" || urlTheme === "dark") {
 document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
 // full-text search: node ids + labels + node properties + edge attributes
 // + free-text objects (attached to their subjects). Enter cycles matches.
-const searchIndex = {};
+const searchIndex = Object.create(null);
 ids.forEach(id => {
   const parts = [id];
   const meta = NODES_META[id];
@@ -541,9 +563,9 @@ searchBox.addEventListener("keydown", (e) => {
   const n = searchState.hits.length;
   searchState.i = (searchState.i + (e.shiftKey ? -1 : 1) + n) % n;
   searchCount.textContent = `${searchState.i + 1}/${n}`;
-  network.selectNodes(searchState.hits);       // 全ヒットをハイライト
+  network.selectNodes(visualIds(searchState.hits));       // 全ヒットをハイライト
   const id = searchState.hits[searchState.i];  // 現在のヒットへズーム
-  network.focus(id, { scale: 1.1, animation: true });
+  network.focus(nodeIds.get(id), { scale: 1.1, animation: true });
   showDetail(id);
 });
 
@@ -552,10 +574,6 @@ searchBox.addEventListener("keydown", (e) => {
 // mapping used to render as. Nothing in the graph should hold one, but the
 // file is hand-edited, and a stray `attrs: {}` key made every relation in
 // the shipped demo read "attrs: [object Object]".
-const show = (v) => (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
-const esc = (s) => show(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const linkify = (s) => esc(s).replace(/(https?:\\/\\/[^\\s<]+)/g,
-  '<a href="$1" target="_blank" rel="noopener">$1</a>');
 
 function relHTML(t, other, arrow) {
   const attrs = Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k));
@@ -591,11 +609,11 @@ document.getElementById("detail").addEventListener("click", (e) => {
   if (n) focusNode(n.dataset.node);
 });
 network.on("click", (params) => {
-  if (params.nodes.length) showDetail(params.nodes[0]);
+  if (params.nodes.length) showDetail(ids[params.nodes[0]]);
 });
 function focusNode(id) {
-  network.selectNodes([id]);
-  network.focus(id, { scale: 1.1, animation: true });
+  network.selectNodes(visualIds([id]));
+  network.focus(nodeIds.get(id), { scale: 1.1, animation: true });
   showDetail(id);
 }
 
@@ -640,7 +658,7 @@ document.getElementById("btn-run").onclick = async () => {
     }
     const rows = [];
     for (const binding of result) {
-      const row = {};
+      const row = Object.create(null);
       for (const [k, term] of binding) row[k] = shorten(term.value);
       rows.push(row);
     }
@@ -651,8 +669,8 @@ document.getElementById("btn-run").onclick = async () => {
       "</table>";
     const hits = [...new Set(rows.flatMap(r => Object.values(r)))].filter(v => ids.includes(v));
     if (hits.length) {
-      network.selectNodes(hits);
-      network.fit({ nodes: hits, animation: true });
+      network.selectNodes(visualIds(hits));
+      network.fit({ nodes: visualIds(hits), animation: true });
     }
   } catch (err) {
     box.innerHTML = `<div class="err">${esc(err.message || err)}</div>`;
@@ -672,7 +690,7 @@ def to_html(
     event_predicates=None,
     layout: str = "auto",
 ) -> str:
-    """Render the graph to a self-contained interactive HTML workbench.
+    """Render the graph to a single-file interactive HTML workbench (CDN dependencies).
 
     event_predicates: which predicates represent change events (red
     diamonds + bottom timeline bar). None uses a heuristic — predicates
@@ -712,21 +730,39 @@ def to_html(
         f"{len(triples)} triples &middot; {n_nodes} nodes &middot; one YAML file"
     )
 
-    html = (
-        _TEMPLATE
-        .replace("__TITLE__", title)
-        .replace("__SUBTITLE__", subtitle)
-        .replace("__TRIPLES__", json.dumps(triples, ensure_ascii=False))
-        .replace("__PREDICATES__", json.dumps(colors, ensure_ascii=False))
-        .replace("__NODES_META__", json.dumps(nodes_meta, ensure_ascii=False))
-        .replace("__NODE_TYPES__", json.dumps(type_colors, ensure_ascii=False))
-        .replace("__NT__", json.dumps(nt, ensure_ascii=False))
-        .replace("__EVENT_PREDICATES__", json.dumps(event_preds, ensure_ascii=False))
-        .replace("__GRAPHS__", json.dumps(graph_colors, ensure_ascii=False))
-        .replace("__LEVELS__", json.dumps(_levels(triples, nodes_meta), ensure_ascii=False))
-        .replace("__FLOW_DEFAULT__", "true" if flow_default else "false")
-        .replace("__CONTENT_HASH__", db.content_hash())
-    )
+    def json_safe(value):
+        # YAML permits nonfinite numbers; JSON.parse does not. Display their
+        # spelling as text instead of letting one property break the page.
+        import math
+        if isinstance(value, float) and not math.isfinite(value):
+            return str(value)
+        if isinstance(value, dict):
+            return {k: json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(v) for v in value]
+        return value
+
+    def script_json(value):
+        # JSON.parse avoids JavaScript object-literal __proto__ semantics.
+        encoded = json.dumps(json.dumps(json_safe(value), ensure_ascii=False,
+                                        allow_nan=False), ensure_ascii=False)
+        encoded = (encoded.replace("<", "\\u003c").replace(">", "\\u003e")
+                   .replace("&", "\\u0026").replace("\u2028", "\\u2028")
+                   .replace("\u2029", "\\u2029"))
+        return f"JSON.parse({encoded})"
+
+    replacements = {
+        "TITLE": escape(str(title), quote=True), "SUBTITLE": subtitle,
+        "TRIPLES": script_json(triples), "PREDICATES": script_json(colors),
+        "NODES_META": script_json(nodes_meta), "NODE_TYPES": script_json(type_colors),
+        "NT": script_json(nt), "EVENT_PREDICATES": script_json(event_preds),
+        "GRAPHS": script_json(graph_colors),
+        "LEVELS": script_json(_levels(triples, nodes_meta)),
+        "FLOW_DEFAULT": "true" if flow_default else "false",
+        "CONTENT_HASH": db.content_hash(),
+    }
+    # Replacement values are data, and must never be expanded as templates.
+    html = re.sub(r"__([A-Z_]+)__", lambda m: replacements[m[1]], _TEMPLATE)
     if path is not None:
         from . import storage, storage_sql
 

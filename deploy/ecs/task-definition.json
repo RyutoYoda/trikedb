@@ -1,0 +1,50 @@
+{
+  "family": "trikedb",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "ARM64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_ECS_EXECUTION_ROLE",
+  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_TRIKE_TASK_ROLE",
+  "containerDefinitions": [
+    {
+      "name": "trikedb",
+      "image": "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/trikedb:0.36.0",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "TRIKEDB_GRAPH_URL",
+          "value": "s3://YOUR_PRIVATE_BUCKET/graphs/team.yaml"
+        },
+        {
+          "name": "TRIKEDB_PUBLIC_URL",
+          "value": "https://kg.example.com"
+        },
+        {
+          "name": "TRIKEDB_OAUTH_ISSUER",
+          "value": "https://idp.example.com/realms/team"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/trikedb",
+          "awslogs-region": "YOUR_REGION",
+          "awslogs-stream-prefix": "server"
+        }
+      }
+    }
+  ]
+}

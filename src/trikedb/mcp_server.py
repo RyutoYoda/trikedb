@@ -40,7 +40,7 @@ def _transport_security(public_url):
 
 
 def build_server(
-    path: Union[str, Path], auth=None, public_url=None, stateless: bool = False
+    path: Union[str, Path], auth=None, public_url=None, stateless: bool = False, graph=None
 ):
     """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
     ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
@@ -77,7 +77,16 @@ def build_server(
         p = Path(path)
         if p.exists() and not p.stat().st_mode & 0o200:
             raise PermissionError(f"{path} is read-only; MCP server needs write access")
-    db = TrikeDB(path, autosave=True)
+    db = graph if graph is not None else TrikeDB(path, autosave=True)
+
+    from functools import wraps
+
+    def serialized(fn):
+        @wraps(fn)
+        def call(*args, **kwargs):
+            with db._lock:
+                return fn(*args, **kwargs)
+        return call
     settings, verifier = auth if auth else (None, None)
 
     #: Longest a single retry will sleep. The delay doubles up to here and
@@ -134,6 +143,7 @@ def build_server(
     )
 
     @server.tool()
+    @serialized
     def sparql(query: str) -> Any:
         """Run SPARQL 1.1 against the graph. Prefix t: is pre-bound (write t:PROVIDES).
 
@@ -143,6 +153,7 @@ def build_server(
         return write(lambda: db.sparql(query))
 
     @server.tool()
+    @serialized
     def search(query: str, k: int = 10, model: Optional[str] = None) -> list:
         """Semantic search: rank facts by meaning, not spelling.
 
@@ -157,6 +168,7 @@ def build_server(
         return db.search(query, k=k, model=model)
 
     @server.tool()
+    @serialized
     def find(question: str, where: Optional[dict] = None, k: int = 10,
              model: Optional[str] = None) -> list:
         """Hybrid retrieval: semantic recall + a hard structured filter.
@@ -171,6 +183,7 @@ def build_server(
         return db.find(question, where=where, k=k, model=model)
 
     @server.tool()
+    @serialized
     def match(
         s: Optional[str] = None, p: Optional[str] = None, o: Optional[str] = None
     ) -> list:
@@ -180,6 +193,7 @@ def build_server(
         return [t.to_dict() for t in db.triples(s=s, p=p, o=o)]
 
     @server.tool()
+    @serialized
     def add_triple(s: str, p: str, o: str, attrs: Optional[dict] = None) -> dict:
         """Add (or upsert) one fact. Rejected if p is outside the ontology.
 
@@ -188,6 +202,7 @@ def build_server(
         return write(lambda: db.add(s, p, o, **(attrs or {})).to_dict())
 
     @server.tool()
+    @serialized
     def remove_triples(
         s: Optional[str] = None, p: Optional[str] = None, o: Optional[str] = None
     ) -> int:
@@ -199,6 +214,7 @@ def build_server(
         return write(lambda: db.remove(s=s, p=p, o=o))
 
     @server.tool()
+    @serialized
     def set_node(name: str, props: dict, replace: bool = False) -> dict:
         """Attach (merge) free-form properties onto a node.
 
@@ -210,6 +226,7 @@ def build_server(
         return write(lambda: db.set_node(name, replace=replace, **props))
 
     @server.tool()
+    @serialized
     def get_node(name: str) -> dict:
         """Everything known about a node: properties plus its outgoing and incoming triples."""
         return {
@@ -223,11 +240,13 @@ def build_server(
         }
 
     @server.tool()
+    @serialized
     def ontology() -> dict:
         """The allowed predicates with their descriptions. Empty means free-form."""
         return dict(db.ontology)
 
     @server.tool()
+    @serialized
     def stats() -> dict:
         """Graph summary: triple/node counts and triples per predicate."""
         return {
@@ -240,6 +259,7 @@ def build_server(
         }
 
     @server.tool()
+    @serialized
     def import_source(file_path: str) -> int:
         """Merge triples from a CSV/TSV file, Markdown document (s/p/o tables), or another YAML graph.
 

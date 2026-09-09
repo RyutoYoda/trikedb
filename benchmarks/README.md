@@ -6,7 +6,7 @@
 
 # Benchmarks
 
-Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
+Historical measurements; 8B uses 300 questions and 27B uses 150. F1 was rescored on 2026-09-09; timings were not rerun. Graph conditions include grounding instructions.
 
 | | |
 |---|---|
@@ -22,28 +22,21 @@ Measured on [WebQSP](https://aclanthology.org/P16-2033/), 300 questions.
 
 | condition | Hits@1 | F1 | n |
 |---|---|---|---|
-| `qwen3:8b` alone | 42.7% | 27.9% | 300 |
-| `qwen3:8b` + graph | **77.7%** | **57.4%** | 300 |
-| `qwen3.8:27b` alone | 44.0% | 30.6% | 150 |
-| `qwen3.8:27b` + graph | 67.3% | 57.1% | 150 |
+| `qwen3:8b` alone | 42.7% | 27.7% | 300 |
+| `qwen3:8b` + graph | **77.7%** | **59.2%** | 300 |
+| `qwen3.8:27b` alone | 44.0% | 30.2% | 150 |
+| `qwen3.8:27b` + graph | 67.3% | 56.7% | 150 |
 
-Same model, same prompt, same questions. The only change is whether the
-retrieved triples are in the context. The graph is worth +35 points on the 8B
-(paired McNemar p = 9e-20) — while **3.4x the parameters is worth nothing
-without one** (44.0% against 42.7%, p = 1.0).
+Within each model, the graph and no-graph arms use matching questions. The 8B pair has 300 answers per arm; the 27B pair has 150. The stored graph runs are named `grounded`: they combine retrieved triples with extra instructions to copy answer names. The observed +35 points for 8B therefore measures **retrieval plus grounding instructions**. Historical answer logs do not contain the exact prompts, so their style cannot be independently reconstructed from the answers alone. New runs record prompt text, SHA-256, model, condition and style.
 
-The 27B scores lower *with* a graph, and that is not a capability result: it
-answers "I don't know" on 30 of 150 questions where the 8B does on 4, and 19 of
-those had the answer in the context. Restrict to the 120 questions both
-answered and the difference disappears (88.3% against 84.2%, p = 0.27). Swap
-the reader and the abstention instruction needs retuning.
+On the same 300 questions, answer-string presence in retrieved context is 268/300 (89.3%), while correct answers are 233/300 (77.7%). Their cross-tabulation is:
 
-The chart above reads as one pipeline: of the same 300 questions, trikedb put
-the answer in the context for 89.3%, and the reader turned 77.7% of them into a
-correct answer. The 11.6-point gap is 38 questions whose answer was in front of
-the model and did not come out of it — so a perfect reader on this same
-retrieval would score 89.3%, and the ceiling here belongs to the reader, not
-the graph.
+| | Correct answer | Incorrect answer |
+|---|---:|---:|
+| Gold string in context | 230 | 38 |
+| Gold string absent | 3 | 29 |
+
+The 38 misses are 12.7 percentage points; subtracting 3 context-absent correct answers yields a net gap of 35/300 (11.7 points before rounding). String presence is neither proof of sufficient evidence nor a strict upper bound on model accuracy.
 
 ## Against a knowledge file
 
@@ -92,27 +85,11 @@ reading with its condition attached. The file scored 82.0% at 492 facts and
 71.0% at 1,625: it got worse as it grew, which lowered the bar. 88.4% is the
 number measured where the file is at its best, so it is the one to quote.
 
-The file has no such knob. It is already sending everything, so 82.0% is its
-ceiling at 492 facts and no budget buys more. The graph reaches 88.0% and is
-still 3.1x cheaper.
+The whole-file arm deliberately sends all Markdown content. Its observed 82% at 492 facts is a result for that prompt, reader and sample, not a ceiling for files. Markdown can also be indexed, split into sections, or retrieved semantically. The 88.4% token reduction with 86% versus 82% accuracy is an observation on these 100 questions, not a universal accuracy advantage.
 
-The reason the gap grows is that markdown has no index. The file has to be
-sent whole, because there is no way to hand over only the Solomon section
-without reading the file first — so what it sends is the size of the
-*project*. The graph is addressable, so it sends the size of the *answer*:
-~15 triples
-whether the corpus holds 492 facts or 3,998. The ratio is roughly total facts
-over facts the question needs, and only the numerator grows.
+The growth curve follows the harness: whole-file input grows with the corpus; capped retrieval sends at most the chosen number of facts. At 2,246 and 3,998 facts the recorded token/character counts indicate context truncation, so those whole-file rows do not measure reading the entire corpus. They do not establish a universal Ollama truncation policy.
 
-"Does not fit" is measured, not skipped: at 2,246 facts the rendered file is
-143,157 characters and the reader read 20,482 tokens of it — 7.0 characters
-per token against 3.4 for a prompt that fits. Ollama does not refuse an
-over-long prompt, it cuts it in half and answers from the remainder.
-
-**Retrieval, not just retrieval.** Grepping the same file at the graph's
-budget is the control, and it costs the same ~380 tokens: 68.0% at 492 facts
-falling to 61.0% at 3,998, against the graph's 77.0% → 68.0%. So 7-14 points
-of the graph's result is the graph and not the act of retrieving.
+Keyword retrieval of the same Markdown scores 68% → 61%, versus 77% → 68% for hybrid retrieval with 15 facts. This compares two retrieval algorithms. It does not isolate a causal benefit of graph structure; a Markdown control with matching embeddings and ranking would be needed.
 
 **Which retrieval matters more than whether.** trikedb can be asked six ways
 and they are not interchangeable, so all of them are priced before any model
@@ -157,11 +134,6 @@ at 3,998 — it starts working to find things in a file that large, and that is
 part of why its token count climbs. Most of each number is the harness's own
 prompt — 31,014 tokens for Claude Code with no project knowledge at all —
 which neither arm avoids.
-Subtract it and the knowledge itself is **+10,304 tokens as a file against
-+363 as a graph — 96.5% less**. The whole-request saving is smaller than that
-only because two thirds of the request is harness overhead neither arm can
-avoid.
-
 Codex is the cleaner result: as the corpus grows its file arm gets both more
 expensive and *less* accurate (73.3% → 56.7%) while the graph arm holds
 66.7% on a flat 20,510 tokens.
@@ -282,36 +254,10 @@ from the working directory looking for a knowledge file, and an unrelated
 
 ## What this does not show
 
-- **Not a comparison against other tools.** No vector store, no other triple
-  store, no plain-text RAG was run. "A graph helps" is measured; "trikedb helps
-  more than X" is not.
-- **Not the curation premise.** The graphs here are the dataset's own Freebase
-  subgraphs, so this validates trikedb as a retrieval and storage layer, not
-  the claim that hand-curated graphs are better.
-- **Not the file story.** Each question uses a fresh in-memory graph, so
-  nothing here exercises git review, diffs, or a persisted file.
-- **Absolute scores are below published SOTA** (mid-to-high 80s Hits@1), which
-  uses GPT-4-class or task-fine-tuned readers.
-  [RoG](https://arxiv.org/abs/2310.01061) (ICLR 2024) reports F1 70.8 with a
-  fine-tuned LLaMA-2-7B, and its metric implementation is what `score`
-  reproduces. Other leaderboard figures are deliberately not tabulated here:
-  they are easy to mis-transcribe, and a table of unverified numbers next to
-  your own is worse than no table.
-- **Gold labels are noisy.** Roughly 10% of sampled questions have
-  questionable answers, which caps honest absolute scores on raw WebQSP labels.
-- **Not dollars.** The agent rows are token counts. Cost depends on which
-  cache band each token lands in — a cache read is a tenth of normal input, a
-  cache write more than one — and on whether the session was still alive.
-  Every `claude -p` and `codex exec` here is a fresh session, which is what a
-  scripted or CI task is and is *not* what a long interactive session is. In a
-  session that stays warm the file is written to cache once and read cheaply
-  after, and the dollar gap narrows while the token gap does not.
-- **Not the agent's own retrieval.** The knowledge-file rows retrieve once
-  before the agent runs. Letting the agent drive the MCP server itself is
-  measured and reported, and it was worse; making *that* path good is not
-  something this benchmark shows how to do.
-- **The corpus bounds it.** The answer is reachable within two hops of
-  something the question names for 76 of 100 questions, so no arm can score
-  much above that. Fixing an earlier curation bug moved this from 36 to 76 —
-  the check that missed it asked whether the answer *string* was in the file,
-  which a disconnected corpus passes.
+- These are historical observations, not a fresh model or performance run of this release. Accuracy summaries were rescored from saved answers after fixing F1; timing and token measurements were retained.
+- Hits@1 is a local normalized substring check over the answer text; F1 uses newline-separated predictions, matched-prediction precision and matched-gold recall. Both are bounded by 0 and 1. This scorer is not claimed to reproduce an official WebQSP/RoG scorer, and these numbers should not be directly ranked against published scores.
+- WebQSP question-specific graphs and curated memory corpora are separate experiments. Gold-informed curation and retained reachable questions limit generalization. Answer-string presence and two-hop reachability do not establish an accuracy ceiling.
+- There is no matched vector-RAG or alternative database control. Retrieval, grounding instructions, graph representation and ranking effects are not independently identified.
+- Agent results use fresh sessions. Compare within the same harness, corpus, condition and cache state. Cache creation, cache reads, fresh input and output have different costs; token reductions alone are not dollar savings. Subtracting independent medians does not isolate knowledge cost.
+- Codex file runs use median 1, 2 and 3 turns at 492, 1,625 and 3,998 facts; pre-retrieved graph runs use 1. Claude Code uses 1 for both. The chart therefore includes a harness-loop difference.
+- External warehouse durability, production throughput and long interactive sessions are outside these benchmark results.
