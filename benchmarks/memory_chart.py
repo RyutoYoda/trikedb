@@ -1,4 +1,4 @@
-"""Render memory_data.json as one line: what a question costs, as knowledge grows.
+"""Render memory_data.json as one line: tokens per question, as knowledge grows.
 
     python benchmarks/memory_bench.py sweep bench_out/memory \
         --json benchmarks/memory_data.json
@@ -6,8 +6,8 @@
 
 Two series, one axis pair, a number printed on every point. Nothing else.
 
-Two earlier versions tried to carry cost and accuracy in one figure — first as
-stacked panels, then as a cost-quality scatter — and both failed the only test
+Two earlier versions tried to carry tokens and accuracy in one figure — first
+as stacked panels, then as a token-quality scatter — and both failed the test
 that matters, which is whether a reader who is not the author can say what
 they are looking at within a few seconds. The scatter failed in a specific
 way worth recording: the series had different numbers of points (three sizes
@@ -15,7 +15,12 @@ for the file, five for the graph), the graph's five landed within 35 tokens of
 each other and so read as one blob, and only the file's points carried
 labels. Every one of those was defensible and together they were unreadable.
 
-So this figure answers one question — **does the cost grow with the
+The axis is tokens, and the wording stays tokens. Tokens are not cost: a
+token's price depends on which cache band it lands in, and the same count can
+differ severalfold in money. This benchmark counts tokens and does not measure
+money, so calling the axis "cost" would be claiming something it cannot show.
+
+So this figure answers one question — **does the token count grow with the
 project?** — and the accuracy numbers live in the table in README.md, where a
 reader is already reading numbers. `md_grep` is left out for the same reason:
 it settles a different question (is it the retrieval or the graph) and the
@@ -47,7 +52,7 @@ GRAPH = "#eb6834"
 
 TEXT = {
     "en": {
-        "title": "The file's cost grows with the project. The graph's does not.",
+        "title": "The file's tokens grow with the project. The graph's do not.",
         "sub": ("WebQSP · 100 questions · qwen3:8b · one corpus, written out "
                 "both ways · prompt tokens the server actually counted<br>"
                 "<b>Hits@1</b> · whole file 82%→71% · 15 facts 77%→72% — the "
@@ -60,7 +65,7 @@ TEXT = {
         "stop": "past here the file no longer<br>fits the model's context window",
     },
     "jp": {
-        "title": "ファイルのコストは知識量に比例する。グラフはしない。",
+        "title": "ファイルのトークンは知識量に比例する。グラフはしない。",
         "sub": ("WebQSP · 100問 · qwen3:8b · 同一コーパスを両方の形で書き出した · "
                 "サーバが実際に数えたプロンプトトークン<br>"
                 "<b>Hits@1</b> · 全文 82%→71% · 15件 77%→72% — "
@@ -72,7 +77,7 @@ TEXT = {
         "stop": "これ以上はファイルが<br>モデルの文脈窓に入らない",
     },
     "zh": {
-        "title": "文件的成本随项目增长，图谱的不会。",
+        "title": "文件的 token 随项目增长，图谱的不会。",
         "sub": ("WebQSP · 100 题 · qwen3:8b · 同一份语料写成两种形态 · "
                 "服务端实际统计的提示词 token<br>"
                 "<b>Hits@1</b> · 全文 82%→71% · 返回 15 条 77%→72% —— "

@@ -98,8 +98,9 @@ still 3.1x cheaper.
 
 The reason the gap grows is that markdown has no index. The file has to be
 sent whole, because there is no way to hand over only the Solomon section
-without reading the file first — so its cost is the size of the *project*.
-The graph is addressable, so its cost is the size of the *answer*: ~15 triples
+without reading the file first — so what it sends is the size of the
+*project*. The graph is addressable, so it sends the size of the *answer*:
+~15 triples
 whether the corpus holds 492 facts or 3,998. The ratio is roughly total facts
 over facts the question needs, and only the numerator grows.
 
@@ -153,10 +154,10 @@ lands in and on session lifetime, and this benchmark controls neither.
 30 questions, `claude-haiku-4.5` and Codex's default. Every row is one turn
 except Codex's file arm, which took a second turn at 1,625 facts and a third
 at 3,998 — it starts working to find things in a file that large, and that is
-part of why its cost climbs. Most of each number is the harness's own system
+part of why its token count climbs. Most of each number is the harness's own
 prompt — 31,014 tokens for Claude Code with no project knowledge at all —
 which neither arm avoids.
-Subtract it and the knowledge itself costs **+10,304 tokens as a file against
+Subtract it and the knowledge itself is **+10,304 tokens as a file against
 +363 as a graph — 96.5% less**. The whole-request saving is smaller than that
 only because two thirds of the request is harness overhead neither arm can
 avoid.
