@@ -52,7 +52,7 @@
 测过 —— Claude Code 用 `CLAUDE.md`，Codex 用 `AGENTS.md`（见下面的智能体一节）。
 这里这张表是一次 HTTP 调用背后的原始模型，文件只是一段载荷，叫什么名字无关紧要。
 
-![token 与准确率的散点图，每个点是一种语料规模](memory_zh.png)
+![语料变大时每题的提示词 token 数](memory_zh.png)
 
 | 项目中的事实条数 | 整份知识文件 | trikedb，返回 15 条 |
 |---|---|---|

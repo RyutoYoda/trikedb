@@ -59,7 +59,7 @@ were measured in the one that reads them — `CLAUDE.md` in Claude Code,
 model behind one HTTP call, where the file is a payload and its name is
 arbitrary.
 
-![Prompt tokens against accuracy, one point per corpus size](memory.png)
+![Prompt tokens per question as the corpus grows](memory.png)
 
 | facts in the project | as a knowledge file | trikedb, 15 facts returned |
 |---|---|---|
