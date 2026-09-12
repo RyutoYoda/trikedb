@@ -2461,6 +2461,28 @@ def test_sql_init_creates_the_projection_views(warehouse, capsys):
     assert "CREATE OR REPLACE VIEW" not in capsys.readouterr().out
 
 
+def test_the_predicate_view_says_what_python_says_about_a_declaration():
+    """DESCRIPTION is the prose either way a predicate is written, and a
+    predicate that declares only a shape has an empty description here just
+    as it does in Python — not a NULL the two disagree about. Checked
+    against a real Snowflake for the values; pinned here for the SQL."""
+    from trikedb.storage_sql import _BIGQUERY_VIEWS, _SNOWFLAKE_VIEWS
+
+    sf = _SNOWFLAKE_VIEWS["KG_PREDICATE"]
+    assert "COALESCE(p.value:description::string, '')" in sf
+    assert "ELSE p.value::string END AS DESCRIPTION" in sf   # the plain form
+    assert "TO_JSON(p.value) END AS SHAPE" in sf
+
+    bq = _BIGQUERY_VIEWS["KG_PREDICATE"]
+    assert "predicates[k].description" in bq
+    assert "'object', '', NULL" in bq
+    assert "AS SHAPE" in bq
+
+    # and a graph that declares nothing structured still has the column
+    db = TrikeDB(ontology={"P": "a -> b"})
+    assert db.ontology["P"] == "a -> b" and db.predicate_rules == {}
+
+
 def test_write_retry_survives_heavy_contention_without_long_sleeps(tmp_path, monkeypatch):
     """Eight attempts with uncapped doubling was measurably too tight.
 

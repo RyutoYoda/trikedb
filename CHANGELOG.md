@@ -64,7 +64,11 @@ An action layer you can run, and a declaration that is actually enforced.
   so the page and the library never disagree.
 - The SQL views (`KG_PREDICATE`, Snowflake and BigQuery alike) understand
   the declared form and expose it in a new `SHAPE` column; `DESCRIPTION`
-  keeps working for both spellings.
+  keeps working for both spellings, and a predicate that declares a shape
+  and no prose reads as an empty description there just as it does in
+  Python. Verified against a real Snowflake: every value that is not an
+  object — string, empty string, number, array, null — comes back byte
+  identical to what the previous view returned.
 - The GitHub Pages demos are regenerated.
 
 **Compatibility:** every graph written before this release loads and behaves
@@ -76,7 +80,7 @@ changes on old data is the fix itself: two same-`(s, p, o)` events at
 different times, which previously collapsed into one row, now both survive
 a rewrite.
 
-**Verification:** 266 tests passed, including end-to-end passes through the
+**Verification:** 267 tests passed, including end-to-end passes through the
 MCP tools and the CLI on a wheel installed into a clean virtualenv —
 shape enforcement holds on `add_triple`, on `act`, and on SPARQL `INSERT`
 alike. The Chromium smoke test adds a section for `act()`

@@ -203,7 +203,11 @@ _SNOWFLAKE_VIEWS = {
     "KG_PREDICATE": (
         "SELECT g.name AS GRAPH,\n"
         "       p.key AS PREDICATE,\n"
-        "       CASE WHEN TYPEOF(p.value) = 'OBJECT' THEN p.value:description::string\n"
+        # COALESCE to '' so a predicate that declares a shape and no prose
+        # reads the same here as it does in Python, where the description of
+        # {domain: job} is "" and not a missing value.
+        "       CASE WHEN TYPEOF(p.value) = 'OBJECT'\n"
+        "            THEN COALESCE(p.value:description::string, '')\n"
         "            ELSE p.value::string END AS DESCRIPTION,\n"
         "       CASE WHEN TYPEOF(p.value) = 'OBJECT' THEN TO_JSON(p.value) END AS SHAPE\n"
         "FROM {table} g,\n"
@@ -340,8 +344,12 @@ _BIGQUERY_VIEWS = {
     "KG_PREDICATE": (
         "SELECT g.name AS GRAPH,\n"
         "       k AS PREDICATE,\n"
+        # The trailing '' is the shape-without-prose case; see the Snowflake
+        # view above.
         "       COALESCE(JSON_VALUE(d.parsed.ontology.predicates[k].description),\n"
-        "                JSON_VALUE(d.parsed.ontology.predicates[k])) AS DESCRIPTION,\n"
+        "                JSON_VALUE(d.parsed.ontology.predicates[k]),\n"
+        "                IF(JSON_TYPE(d.parsed.ontology.predicates[k]) = 'object', '', NULL))\n"
+        "                AS DESCRIPTION,\n"
         "       CASE WHEN JSON_TYPE(d.parsed.ontology.predicates[k]) = 'object'\n"
         "            THEN TO_JSON_STRING(d.parsed.ontology.predicates[k]) END AS SHAPE\n"
         "FROM {table} g,\n"
