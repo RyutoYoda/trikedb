@@ -16,6 +16,8 @@ from html import escape
 from pathlib import Path
 from typing import Union
 
+from .db import TIME_ATTRS
+
 PALETTE = [
     "#4f8ef7", "#f7784f", "#2fbf71", "#b04ff7", "#f7c34f",
     "#4ff7e3", "#f74f9e", "#8ef74f", "#f74f4f", "#4f6af7",
@@ -28,7 +30,6 @@ PALETTE = [
 # shipped Freebase demo change events, among them people.person.parents
 # and book.author.works_written, and redrew 62% of the nodes as red
 # diamonds. A relation is not an event just because it is spelled out.
-TIME_ATTRS = ("at", "when", "date", "time", "timestamp", "occurred", "recorded")
 _LEADING_DATE = re.compile(r"^\d{4}[-/]\d{1,2}")
 
 
@@ -336,11 +337,28 @@ const facet = (t, keys) => { for (const k of keys) if (t[k] !== undefined) retur
 const timeOf = (t) => facet(t, TIME_KEYS) ||
   (String(t.o).match(/^\\d{4}[-/]\\d{1,2}(?:[-/]\\d{1,2})?/) || [""])[0];
 const stateOf = (t) => facet(t, STATE_KEYS);
+
+// A sort key, not the string anyone sees: pad every number so 2025/4/1
+// lands where 2025-04-01 does, then drop the separators so two spellings
+// of the same day compare equal instead of comparing their punctuation.
+const timeKey = (t) => timeOf(t).replace(/\\d+/g, (d) => d.padStart(4, "0"))
+                                .replace(/\\D/g, "");
+// Newest first. Two events can land on the same day, and a stable sort
+// then leaves the FIRST one standing as the latest — the opposite of true
+// for a log you append to. File order breaks the tie: written later,
+// happened later.
+const eventOrder = new Map(eventTriples.map((t, i) => [t, i]));
+const byTime = (a, b) =>
+  timeKey(b).localeCompare(timeKey(a)) || eventOrder.get(b) - eventOrder.get(a);
 const eventsOf = Object.create(null);   // node -> its events, newest first
 eventTriples.forEach(t => (eventsOf[t.s] ??= []).push(t));
-Object.values(eventsOf).forEach(l => l.sort((a, b) => timeOf(b).localeCompare(timeOf(a))));
-// the state of a node is the state the last event left it in
+Object.values(eventsOf).forEach(l => l.sort(byTime));
+// The state act() wrote onto the node, if it wrote one; otherwise the state
+// the node's last event left it in, which is how a graph hand-written in
+// YAML says the same thing. Same rule as TrikeDB.state() in Python.
 const currentState = (id) => {
+  const stored = (NODES_META[id] || {}).state;
+  if (stored !== undefined && stored !== null && stored !== "") return String(stored);
   for (const t of eventsOf[id] || []) { const s = stateOf(t); if (s) return s; }
   return "";
 };
@@ -711,7 +729,7 @@ function focusNode(id) {
 // Newest first, and every chip names the node the event belongs to — the
 // bar is the same action log the detail panel shows, read across the graph.
 const eventsBar = document.getElementById("events");
-const timeline = eventTriples.slice().sort((a, b) => timeOf(b).localeCompare(timeOf(a)));
+const timeline = eventTriples.slice().sort(byTime);
 if (!timeline.length) eventsBar.style.display = "none";
 timeline.forEach(t => {
   const chip = document.createElement("span");

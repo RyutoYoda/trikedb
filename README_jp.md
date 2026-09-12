@@ -118,8 +118,13 @@ from trikedb import TrikeDB
 # YAML 1ファイルに住む、型付きの知識グラフ。宣言した述語がスキーマになり、
 # そのホワイトリストが書き込み時にタイポやゴミを捕まえる。
 db = TrikeDB("pipeline.yaml", ontology={
-    "PROVIDES":   "SaaS vendor -> ingestion job",
-    "INGESTS_TO": "ingestion job -> warehouse table",
+    "PROVIDES":   "SaaS vendor -> ingestion job",          # 説明は「文書」
+    # 形（shape）は「強制」される: 型の合わないノード同士にこのエッジを書くと、
+    # 保存されずに弾かれる — よくある「向きが逆」も含めて
+    "INGESTS_TO": {"description": "ingestion job -> warehouse table",
+                   "domain": "job", "range": "table"},
+    "AFFECTED_BY": {"description": "warehouse table -> change event",
+                    "domain": "table"},
     "MIGRATED_TO": "deprecated table -> its replacement",
 })
 
@@ -136,6 +141,17 @@ db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 # ノードを説明する: `type` はグラフに色を付け、クエリもできる。他は何でも付けられる。
 db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
             url="https://catalog.example/raw_crm_contacts")
+
+# db.add("RAW_CRM_CONTACTS", "INGESTS_TO", "crm-sync-job") も OntologyError:
+# INGESTS_TO は job -> table と宣言されていて、これは table -> job だから。
+
+# ノードに何かが起きた？ メモを書くのではなく、実行する。act() は時刻を打ち、
+# 記録を追記し、そのアクションが残した状態へノードを移す — 3つは分離しない。
+db.act("RAW_CRM_CONTACTS", "AFFECTED_BY", "email column dropped for privacy",
+       by="data-platform", state="applied")     # at= を省略すれば「今」
+db.state("RAW_CRM_CONTACTS")     # 'applied' — ノード自体が変わっている
+db.history("RAW_CRM_CONTACTS")   # そのノードに起きたこと全部、新しい順
+# 同じアクションをもう一度実行すれば、上書きではなく2件目の記録が残る。
 
 # 質問する — 依存ゼロでパターンを結合するか …
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
@@ -201,6 +217,14 @@ trikedb sparql pipeline.yaml \
 
 # 意味検索: 綴りではなく意味で（[semantic] エクストラ）
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
+
+# 述語が何と何を繋ぐかを宣言する。以後それは強制される
+trikedb ontology pipeline.yaml --link INGESTS_TO=job>table
+
+# やったことを記録する: ノードは新しい状態に移り、ログには実行が残る
+trike act pipeline.yaml RAW_CRM_CONTACTS AFFECTED_BY "email column dropped" \
+  --state applied --by data-platform
+trike history pipeline.yaml RAW_CRM_CONTACTS
 
 trikedb stats pipeline.yaml
 trike ui generate pipeline.yaml -o pipeline.html
@@ -491,8 +515,11 @@ trikedb のファイルは、トップレベルのキーが3つある普通の Y
 ```yaml
 ontology:            # 任意 — 省略すれば述語は自由形式
   predicates:
-    PROVIDES: "SaaS vendor -> ingestion job"
-    AFFECTED_BY: "table -> change event"
+    PROVIDES: "SaaS vendor -> ingestion job"      # 説明は「文書」
+    # 形は「強制」される: `domain` は主語に許されるノード型、`range` は目的語に
+    # 許される型。向きが逆のエッジは弾かれる。
+    INGESTS_TO: {description: "job -> warehouse table", domain: job, range: table}
+    AFFECTED_BY: {description: "table -> change event", domain: table}
 
 nodes:               # 任意 — 自由形式のノードプロパティ
   salesflow-crm: {type: saas, url: "https://salesflow.example", plan: enterprise}
@@ -515,6 +542,8 @@ triples:
 盗む価値のある慣習が3つ（[`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) を参照）:
 
 - **変更イベントは、それが変えたノードにぶら下げる。** 時刻属性（`at:` / `when:` / `date:` …）を持つトリプルは、宙に浮いたメモではなく*主語*ノードに起きた変更イベントとして扱われます。HTML ビューは最新イベントの `state:` をノードのラベルに載せ、詳細パネルに履歴（いつ・誰が・何を）を新しい順で並べます。これがアクションレイヤーです — 「このテーブルは今どの状態で、何がそうしたのか」をノードから読み取れます。自動判定させたくなければ `--events AFFECTED_BY` で述語を固定できます。
+- **アクションは「説明する」ものではなく「実行する」もの。** `db.act(...)`（`trike act`、または MCP の `act` ツール）は、時刻を打ち、イベントを追記し、そのアクションが残した状態へノードを移します — 1回の書き込みで、3つとも起きるか1つも起きないか。読み戻しは `db.state(node)` と `db.history(node)`。同じアクションを2回実行すれば記録は2件残ります: イベントの同一性には「いつ起きたか」が含まれるので、ログへの追記がログを消すことはありません。
+- **宣言は、文書のままにも、強制にもできる。** `INGESTS_TO: "job -> table"` はただのコメントですが、`INGESTS_TO: {domain: job, range: table}` はルールです — 向きが逆のエッジは書き込み時に弾かれ、エラーは「どちら向きなら通るか」まで言います。エッジより後から書かれた型もノード側から検証されるので、どちらを先に書いたかでグラフがオントロジーに従うかどうかが決まることはありません。まだ検証しようがないもの（型の付いていない端点）は `trikedb audit` が報告します。
 - エッジの **`deprecated: true`** は HTML ビューで破線として描画され、エージェントが死んだ経路を除外できるようにします。
 - **`via:` / `schedule:`** 属性は、ノード集合を汚さずに運用上の詳細を運びます。
 - **ノードプロパティは増え続けます。** それが RDF の約束です: `type`、`url`、`schema`、オーナー — チームが必要とするものを何でも — スキーマ移行なしに付けられます。`type` は HTML ビューで色分けを駆動し、ノードプロパティは SPARQL でクエリできます（`?x t:type "table"`）。コードからは `db.set_node("RAW_CRM_CONTACTS", pii=True)` で設定します。

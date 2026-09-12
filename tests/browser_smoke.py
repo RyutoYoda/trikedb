@@ -65,6 +65,55 @@ def run():
         assert page.locator("#events .chip").count() == 3
         assert not errors, errors
 
+        # --- which event is "the latest" when the dates do not settle it --
+        order = TrikeDB()
+        order.add("JOB", "AFFECTED_BY", "first write of the day",
+                  at="2025-05-09", state="applied")
+        order.add("JOB", "AFFECTED_BY", "second write, same day",
+                  at="2025-05-09", state="rolled-back")
+        # unpadded, so a plain string compare ranks "4" after "12"
+        order.add("PAD", "AFFECTED_BY", "December", at="2025-12-1",
+                  state="applied")
+        order.add("PAD", "AFFECTED_BY", "April", at="2025-4-1",
+                  state="superseded")
+        ordered = Path(root) / "ordering.html"
+        order.to_html(ordered)
+        page.goto(ordered.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        # a tie on the day is broken by file order: appended later, later
+        assert page.evaluate("currentState('JOB')") == "rolled-back"
+        assert page.evaluate("timeOf(eventsOf['JOB'][0])") == "2025-05-09"
+        # December beats April however sloppily the two are written
+        assert page.evaluate("currentState('PAD')") == "applied"
+        assert page.evaluate("timeOf(eventsOf['PAD'][0])") == "2025-12-1"
+        assert page.evaluate("timeOf(timeline[0])") == "2025-12-1"
+        assert not errors, errors
+
+        # --- act(): the node really changed, and the log kept both runs ---
+        acted = TrikeDB(ontology={"AFFECTED_BY": {"description": "table -> change",
+                                                  "domain": "table"}})
+        acted.set_node("PIPELINE", type="table")
+        acted.act("PIPELINE", "AFFECTED_BY", "restarted after failure",
+                  at="2025-04-01", by="alice", state="applied")
+        acted.act("PIPELINE", "AFFECTED_BY", "restarted after failure",
+                  at="2025-09-12", by="bob", state="rolled-back")
+        run = Path(root) / "acted.html"
+        acted.to_html(run)
+        page.goto(run.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        # the same sentence twice is two things that happened, not one fact
+        assert page.evaluate("eventsOf['PIPELINE'].length") == 2
+        # the state act() wrote onto the node is what the page shows
+        assert page.evaluate("NODES_META['PIPELINE'].state") == "rolled-back"
+        assert page.evaluate("currentState('PIPELINE')") == "rolled-back"
+        assert "\u25b8 rolled-back" in page.evaluate(
+            "nodes.get(nodeIds.get('PIPELINE')).label").lower()
+        page.evaluate("showDetail('PIPELINE')")
+        detail = page.locator("#detail-body").inner_text()
+        assert "alice" in detail and "bob" in detail
+        assert detail.index("2025-09-12") < detail.index("2025-04-01")
+        assert not errors, errors
+
         attack = TrikeDB()
         payload = '<img src=x onerror=document.documentElement.dataset.reviewInjected=1>'
         script = '</script><script>document.documentElement.dataset.reviewInjected=1</script>'
@@ -97,7 +146,7 @@ def run():
         assert not errors, errors
         browser.close()
         print(json.dumps({"normal_graph": "passed", "sparql": "passed",
-                          "action_layer": "passed",
+                          "action_layer": "passed", "act_and_log": "passed",
                           "html_injection_and_special_names": "passed"}))
 
 

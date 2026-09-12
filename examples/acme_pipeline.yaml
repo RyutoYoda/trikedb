@@ -6,13 +6,18 @@
 # LLM agent can Read this one file and reason about the pipeline
 # without hallucinating table names.
 
+# A predicate can be a description, which is a comment nobody checks, or a
+# declared shape, which is enforced: write one of these edges between the
+# wrong node types and it is refused, not stored. `domain` is the type
+# allowed as the subject, `range` the type allowed as the object.
 ontology:
   predicates:
-    PROVIDES: "SaaS vendor -> ingestion job"
-    INGESTS_TO: "ingestion job -> warehouse table"
-    AFFECTED_BY: "warehouse table -> change event"
-    SUPPLEMENTS: "table -> table it fills gaps for"
-    MIGRATED_TO: "deprecated table -> its replacement"
+    PROVIDES: {description: "SaaS vendor -> ingestion job", domain: saas, range: job}
+    INGESTS_TO: {description: "ingestion job -> warehouse table", domain: job, range: table}
+    # the object of a change event is prose, so only the subject has a type
+    AFFECTED_BY: {description: "warehouse table -> change event", domain: table}
+    SUPPLEMENTS: {description: "table -> table it fills gaps for", domain: table, range: table}
+    MIGRATED_TO: {description: "deprecated table -> its replacement", domain: table, range: table}
 
 # node properties: type drives color + legend, everything else shows in
 # the detail panel and is queryable via SPARQL (?x t:type "table")

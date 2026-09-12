@@ -3,6 +3,89 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.38.0
+
+An action layer you can run, and a declaration that is actually enforced.
+0.37.0 could *describe* both; this release makes the machine do them.
+
+- **Running the same action twice destroyed the first record.** A triple's
+  identity was `(s, p, o)`, so "restarted after failure" in April and the
+  identical line in September were one triple, and `add()` — an upsert —
+  overwrote April's record with September's. A log you can delete from by
+  appending to it is not a log. The time an event carries is now part of
+  what that event *is*: two runs of the same action are two rows. Plain
+  relations, which carry no time, still upsert exactly as before.
+- **`act()` — the one door for "I did something."** It stamps the time
+  (`at=` to override, otherwise now, with the local offset), appends the
+  event, and moves the node to the state the action left it in — one write,
+  all of it or none of it. The stamp is to the microsecond, because an
+  agent acts faster than a second: five actions in a loop, timed to the
+  second, claimed one instant between them. An event whose state never reached the node would
+  be a log of something that did not happen. `history(name)` reads a node's
+  events back newest-first; `state(name)` says where it stands now.
+  Available as `db.act(...)`, the MCP tool `act`, and `trike act`.
+- **A declared link is enforced, not just documented.** `INGESTS_TO:
+  {description: ..., domain: job, range: table}` now refuses the backwards
+  edge at write time — on `add`, on `act`, through SPARQL `INSERT`, through
+  the MCP tools and the CLI — and says which way round does fit. The plain
+  string form (`PROVIDES: "vendor -> job"`) is unchanged and still just a
+  comment. Declare one at runtime with `declare_link()`, `trikedb ontology
+  --link P=domain>range`, and it first measures the graph it is being added
+  to: an existing link that already contradicts it is an error, not a
+  silent pass.
+- **Checked where checking is possible, reported where it is not.** Types
+  get written after the edges that use them as often as before, so a link is
+  refused only when the endpoint's type is actually known; `set_node()`
+  applies the same rule from the node's side, so the order you wrote things
+  in never decides whether the graph obeys its ontology. What no write path
+  could check, `audit` reports as `unchecked-link`, and anything that got in
+  another way (a hand edit, a declaration added later) as an error finding.
+- **`audit` no longer calls two events a duplicate.** Its near-duplicate
+  heuristic compared text alone, so two real events with the same wording on
+  different days were reported as something to clean up — advice to delete
+  history. And its `duplicate-triple` check compared only `(s, p, o)`, so
+  two actions an agent ran in the same instant, doing different things,
+  failed the audit with an error. An event is compared whole now: two are
+  duplicates only when every attribute matches, which is a genuine
+  double-write. A plain fact, carrying no time, is still just its
+  `(s, p, o)`, and the same event in two workspace members is still caught.
+- **"The latest event" was decided by the wrong thing when two events shared
+  a day.** The sort is stable, so a tie on the date left the *first* line
+  standing as the most recent — the opposite of true for a log you append
+  to. Ties now break on file order: written later, happened later.
+- **Unpadded dates sorted as text, not as dates.** `2025-4-1` compared
+  greater than `2025-12-1` (and than `2025-04-02`), so a node could wear the
+  state of an event that was months old. Event ordering now pads each number
+  before comparing, and ignores whether the day was written with `-` or `/`.
+  What is displayed is unchanged — only the sort key is normalized.
+- **The HTML view shows the state the action wrote.** A node's badge and
+  detail panel prefer the `state` property `act()` set, falling back to the
+  state its newest event left it in — the same rule as `state()` in Python,
+  so the page and the library never disagree.
+- The SQL views (`KG_PREDICATE`, Snowflake and BigQuery alike) understand
+  the declared form and expose it in a new `SHAPE` column; `DESCRIPTION`
+  keeps working for both spellings.
+- The GitHub Pages demos are regenerated.
+
+**Compatibility:** every graph written before this release loads and behaves
+as it did, and its `content_hash` is unchanged — the declarations are added
+to the fingerprint only when a graph actually has one, so HTML exported
+earlier still passes `trikedb check`. `self.ontology` values stay plain
+strings for everything that reads a description. The one behaviour that
+changes on old data is the fix itself: two same-`(s, p, o)` events at
+different times, which previously collapsed into one row, now both survive
+a rewrite.
+
+**Verification:** 266 tests passed, including end-to-end passes through the
+MCP tools and the CLI on a wheel installed into a clean virtualenv —
+shape enforcement holds on `add_triple`, on `act`, and on SPARQL `INSERT`
+alike. The Chromium smoke test adds a section for `act()`
+(two runs of one action kept as two events, the node wearing the state the
+second wrote, both actors listed newest-first), the README quickstart was
+run verbatim in a clean directory against that install, and the two
+same-instant bugs above were both found by running the release the way a
+user would and are pinned by tests.
+
 ## 0.37.0
 
 - **Events are an action layer now: every event belongs to the node it

@@ -198,8 +198,38 @@ def build_server(
         """Add (or upsert) one fact. Rejected if p is outside the ontology.
 
         Same (s, p, o) merges attrs. Use attrs for provenance and detail:
-        source URL, date, schedule, deprecated, note..."""
+        source URL, date, schedule, deprecated, note...
+
+        For something that *happened* — you changed a table, ran a job,
+        deprecated a feed — call `act` instead, so the node ends up in its
+        new state and the record of the change cannot go missing."""
         return write(lambda: db.add(s, p, o, **(attrs or {})).to_dict())
+
+    @server.tool()
+    @serialized
+    def act(s: str, p: str, o: str, state: Optional[str] = None,
+            by: Optional[str] = None, at: Optional[str] = None,
+            attrs: Optional[dict] = None) -> dict:
+        """Record that you did something to node `s`, and move it to its new state.
+
+        `o` is what happened in words, `state` the state it leaves `s` in,
+        `by` who did it, `at` when (omit it and now is stamped). The event
+        is appended, never merged: doing the same thing twice leaves two
+        records. Use this whenever you change something the graph
+        describes — reading back `get_node(s)` then shows the new state
+        and `history(s)` shows how it got there."""
+        return write(lambda: db.act(s, p, o, state=state, by=by, at=at,
+                                    **(attrs or {})).to_dict())
+
+    @server.tool()
+    @serialized
+    def history(name: str) -> dict:
+        """What has happened to a node, newest first, and the state it is in now."""
+        return {
+            "name": name,
+            "state": db.state(name),
+            "events": [t.to_dict() for t in db.history(name)],
+        }
 
     @server.tool()
     @serialized
@@ -242,8 +272,17 @@ def build_server(
     @server.tool()
     @serialized
     def ontology() -> dict:
-        """The allowed predicates with their descriptions. Empty means free-form."""
-        return dict(db.ontology)
+        """The allowed predicates. Empty means free-form.
+
+        A predicate with `domain`/`range` is enforced, not documented: an
+        edge written between the wrong node types is refused, so read this
+        before writing rather than after being rejected."""
+        return {
+            p: ({"description": desc,
+                 **{k: list(v) for k, v in db.predicate_rules[p].items()}}
+                if p in db.predicate_rules else desc)
+            for p, desc in db.ontology.items()
+        }
 
     @server.tool()
     @serialized

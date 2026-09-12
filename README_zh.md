@@ -118,8 +118,13 @@ from trikedb import TrikeDB
 # 一个住在单个 YAML 文件里的、带类型的知识图谱。你声明的谓词就是模式 —
 # 这份白名单会在写入时拦住拼写错误和垃圾数据。
 db = TrikeDB("pipeline.yaml", ontology={
-    "PROVIDES":   "SaaS vendor -> ingestion job",
-    "INGESTS_TO": "ingestion job -> warehouse table",
+    "PROVIDES":   "SaaS vendor -> ingestion job",          # 描述只是「文档」
+    # 形状则会被「强制」：把这条边写在类型不对的节点之间会被拒收，而不是存下来 —
+    # 包括最常见的那种：方向写反了
+    "INGESTS_TO": {"description": "ingestion job -> warehouse table",
+                   "domain": "job", "range": "table"},
+    "AFFECTED_BY": {"description": "warehouse table -> change event",
+                    "domain": "table"},
     "MIGRATED_TO": "deprecated table -> its replacement",
 })
 
@@ -136,6 +141,17 @@ db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 # 描述节点：`type` 会给图着色，并且可查询；其他任何东西都可以挂上去。
 db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
             url="https://catalog.example/raw_crm_contacts")
+
+# db.add("RAW_CRM_CONTACTS", "INGESTS_TO", "crm-sync-job") 同样会抛 OntologyError：
+# INGESTS_TO 声明的是 job -> table，而这是 table -> job。
+
+# 节点上发生了什么？别写一条备注去描述它 — 去执行它。act() 打上时间、追加记录，
+# 并把节点移到这次动作留下的状态，三件事要么一起发生，要么都不发生。
+db.act("RAW_CRM_CONTACTS", "AFFECTED_BY", "email column dropped for privacy",
+       by="data-platform", state="applied")     # 省略 at= 就是「现在」
+db.state("RAW_CRM_CONTACTS")     # 'applied' — 节点本身已经不一样了
+db.history("RAW_CRM_CONTACTS")   # 它身上发生过的一切，最新的在前
+# 同一个动作再执行一次，得到的是第二条记录，而不是被覆盖掉的一条。
 
 # 提问 — 零依赖地连接模式 ……
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
@@ -201,6 +217,14 @@ trikedb sparql pipeline.yaml \
 
 # 语义检索：按含义而不是拼写（[semantic] 附加项）
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
+
+# 声明一个谓词连接的是什么，从此它就会被强制执行
+trikedb ontology pipeline.yaml --link INGESTS_TO=job>table
+
+# 记录你做过的事：节点移到新状态，日志留下这次执行
+trike act pipeline.yaml RAW_CRM_CONTACTS AFFECTED_BY "email column dropped" \
+  --state applied --by data-platform
+trike history pipeline.yaml RAW_CRM_CONTACTS
 
 trikedb stats pipeline.yaml
 trike ui generate pipeline.yaml -o pipeline.html
@@ -491,8 +515,11 @@ trikedb serve graph.yaml --public-url https://kg.example.com \
 ```yaml
 ontology:            # 可选 — 省略它就是自由形式的谓词
   predicates:
-    PROVIDES: "SaaS vendor -> ingestion job"
-    AFFECTED_BY: "table -> change event"
+    PROVIDES: "SaaS vendor -> ingestion job"      # 描述只是「文档」
+    # 形状会被「强制」：`domain` 是主语允许的节点类型，`range` 是宾语允许的类型。
+    # 方向写反的边会被拒收。
+    INGESTS_TO: {description: "job -> warehouse table", domain: job, range: table}
+    AFFECTED_BY: {description: "table -> change event", domain: table}
 
 nodes:               # 可选 — 自由形式的节点属性
   salesflow-crm: {type: saas, url: "https://salesflow.example", plan: enterprise}
@@ -515,6 +542,8 @@ triples:
 三个值得借走的惯例（参见 [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)）：
 
 - **变更事件挂在它改变的那个节点上。** 带时间属性（`at:` / `when:` / `date:` …）的三元组会被当作发生在*主语*节点上的变更事件，而不是一条飘在外面的备注。HTML 视图把最新那条事件的 `state:` 写在节点标签上，并在详情面板里按时间倒序列出历史（何时、谁、做了什么）。这就是行动层 — 「这张表现在是什么状态、是什么把它变成这样的」可以直接从节点上读出来。不想用自动判定，就用 `--events AFFECTED_BY` 钉死谓词。
+- **动作是被执行的，不是被描述的。** `db.act(...)`（`trike act`，或 MCP 的 `act` 工具）会打上时间、追加这条事件、并把节点移到这次动作留下的状态 — 一次写入，三件事要么全发生要么全不发生。读回来用 `db.state(node)` 和 `db.history(node)`。同一个动作跑两次就留下两条记录：事件的身份里包含「什么时候发生」，所以往日志里追加永远不会把日志抹掉。
+- **声明可以只是文档，也可以被强制。** `INGESTS_TO: "job -> table"` 只是注释；`INGESTS_TO: {domain: job, range: table}` 是规则 — 方向写反的边在写入时就被拒收，而且错误信息会告诉你哪个方向才走得通。比边更晚写进来的类型也会从节点这一侧被检查，所以「先写哪个」不会决定这张图是否遵守它自己的本体。还无从检查的东西（没有类型的端点）由 `trikedb audit` 报告。
 - 边上的 **`deprecated: true`** 会在 HTML 视图里渲染成虚线，并让智能体能过滤掉死路。
 - **`via:` / `schedule:`** 这类属性承载运维细节，而不污染节点集合。
 - **节点属性会一直长。** 这就是 RDF 的承诺：挂上 `type`、`url`、`schema`、负责人 — 你的团队需要什么都行 — 不需要模式迁移。`type` 驱动 HTML 视图里的颜色分组，而节点属性在 SPARQL 里可查询（`?x t:type "table"`）。在代码里用 `db.set_node("RAW_CRM_CONTACTS", pii=True)` 设置它们。

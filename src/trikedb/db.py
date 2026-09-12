@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 import fnmatch
 import json
 import shlex
@@ -62,6 +63,38 @@ def _plain(value):
     return value
 
 
+_DIGIT_RUN = re.compile(r"\d+")
+
+
+def _time_key(text: str) -> str:
+    """Sort key for a time somebody typed, not the string anyone sees.
+
+    Pad every number so 2025/4/1 lands where 2025-04-01 does, and drop the
+    separators so two spellings of the same day compare equal instead of
+    comparing their punctuation. Left as plain text compare otherwise, a
+    node wears the state of an event months out of date.
+    """
+    return "".join(m.group().zfill(4) for m in _DIGIT_RUN.finditer(text))
+
+
+def _now() -> str:
+    """Local time, with its offset — what an action stamps.
+
+    To the microsecond, because an agent acts faster than a second — a loop
+    of five actions stamped to the second claimed one instant between them,
+    and a log whose rows all say the same time is not telling you when
+    anything happened. Ties are still possible and still fine: history()
+    settles them by the order they were written.
+    """
+    return datetime.datetime.now().astimezone().isoformat(timespec="microseconds")
+
+
+# One of these attributes is what makes a triple a change event rather than
+# a plain relation: it happened, and here is when. Shared with html.py,
+# which draws events, and with identity(), which keeps two of them apart.
+TIME_ATTRS = ("at", "when", "date", "time", "timestamp", "occurred", "recorded")
+
+
 @dataclass
 class Triple:
     """A single subject-predicate-object statement, with optional attributes."""
@@ -81,8 +114,21 @@ class Triple:
             result["rdf_terms"] = deepcopy(self.rdf_terms)
         return result
 
+    def when(self) -> str:
+        """When this says it happened, or "" if it is not an event."""
+        for key in TIME_ATTRS:
+            if key in self.attrs:
+                return str(self.attrs[key])
+        return ""
+
     def identity(self):
-        return self.spo() + (json.dumps(self.rdf_terms, sort_keys=True),)
+        # The time is part of what an event *is*. Without it, "restarted
+        # after failure" in April and the same line in September are one
+        # triple, and add() — an upsert on (s, p, o) — quietly overwrites
+        # the April record with the September one. A log you can delete
+        # from by appending to it is not a log.
+        return self.spo() + (self.when(),
+                             json.dumps(self.rdf_terms, sort_keys=True))
 
     def as_rdf(self, base="urn:trikedb:"):
         from rdflib import BNode, Literal, URIRef
@@ -252,6 +298,11 @@ class TrikeDB:
         self.nodes_meta: dict = {}
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
+        #: predicate -> {"domain": (type, ...), "range": (type, ...)} for the
+        #: predicates that declare one. Kept beside self.ontology rather than
+        #: inside it so a description stays a plain string for everything
+        #: that reads one, and so a graph that declares nothing pays nothing.
+        self.predicate_rules: dict = {}
         self._triples: list = []
         #: open batch() blocks; while any is open, autosave holds its write
         self._batch_depth = 0
@@ -278,7 +329,8 @@ class TrikeDB:
             "oxigraph" if _oxigraph_available() else "rdflib")
         if ontology is not None:
             if isinstance(ontology, dict):
-                self.ontology = {str(k): str(v or "") for k, v in ontology.items()}
+                for key, value in ontology.items():
+                    self._declare_predicate(str(key), value)
             else:
                 self.ontology = {str(p): "" for p in ontology}
         if self.path is not None and _exists(self.path, self._connection):
@@ -295,6 +347,7 @@ class TrikeDB:
         """
         self.nodes_meta = {}
         self.ontology = {}
+        self.predicate_rules = {}
         self._triples = []
         self.workspace = None
         self.read_only = self._read_only_requested   # a reload must not grant writes
@@ -351,7 +404,7 @@ class TrikeDB:
             )
         if isinstance(preds, dict):
             for k, v in preds.items():
-                self.ontology.setdefault(str(k), str(v or ""))
+                self._declare_predicate(str(k), v, keep_existing=True)
         elif isinstance(preds, (list, tuple)):
             for p in preds:
                 self.ontology.setdefault(str(p), "")
@@ -404,6 +457,8 @@ class TrikeDB:
             sub = TrikeDB(gpath, connection=self._connection)
             for k, v in sub.ontology.items():
                 self.ontology.setdefault(k, v)
+            for k, rule in sub.predicate_rules.items():
+                self.predicate_rules.setdefault(k, rule)
             for n, props in sub.nodes_meta.items():
                 merged = self.nodes_meta.setdefault(n, {})
                 for k, v in props.items():
@@ -458,7 +513,9 @@ class TrikeDB:
             raise ValueError("no path given and TrikeDB was created without one")
         doc: dict = {}
         if self.ontology:
-            doc["ontology"] = {"predicates": dict(self.ontology)}
+            doc["ontology"] = {
+                "predicates": {p: self._declaration(p) for p in self.ontology}
+            }
         if self.nodes_meta:
             doc["nodes"] = {k: dict(v) for k, v in self.nodes_meta.items()}
         doc["triples"] = [t.to_dict() for t in self._triples]
@@ -483,15 +540,135 @@ class TrikeDB:
 
     # -------------------------------------------------------------- writing
 
-    def add(self, s: str, p: str, o: str, *, rdf_terms=None, **attrs: Any) -> Triple:
-        """Add (or upsert) a triple. Same (s, p, o) merges attributes.
+    def _declare_predicate(self, name: str, value: Any, *,
+                           keep_existing: bool = False) -> None:
+        """Record one predicate declaration: a description, or a shape.
 
-        Absolute-URI predicates (http://...) are exempt from the ontology
-        check — they are meta-level statements (OWL declarations, interop).
+        ``INGESTS_TO: "job -> table"`` is a comment; nothing checks it. The
+        mapping form says the same thing to the machine::
+
+            INGESTS_TO: {description: ..., domain: job, range: table}
         """
-        self._guard_writable()
-        s, p = _term(s, "s"), _term(p, "p")
-        _validate_rdf_terms(rdf_terms or {})
+        if keep_existing and name in self.ontology:
+            return
+        if not isinstance(value, dict):
+            self.ontology[name] = str(value or "")
+            return
+        self.ontology[name] = str(value.get("description") or "")
+        rule = {}
+        for key in ("domain", "range"):
+            want = value.get(key)
+            if want is None or want == "":
+                continue
+            if isinstance(want, (list, tuple)):
+                rule[key] = tuple(str(t) for t in want)
+            else:
+                rule[key] = (str(want),)
+        if rule:
+            self.predicate_rules[name] = rule
+        else:
+            self.predicate_rules.pop(name, None)
+
+    def _declaration(self, name: str) -> Any:
+        """What this predicate looks like in the file: a string, or a shape."""
+        rule = self.predicate_rules.get(name)
+        if not rule:
+            return self.ontology[name]
+        out: dict = {}
+        if self.ontology[name]:
+            out["description"] = self.ontology[name]
+        for key in ("domain", "range"):
+            want = rule.get(key)
+            if want:
+                out[key] = list(want) if len(want) > 1 else want[0]
+        return out
+
+    def declare_link(self, predicate: str, *, domain=None, range=None,
+                     description: Optional[str] = None) -> dict:
+        """Declare what a predicate connects, and have it enforced.
+
+        ``domain`` is the node type allowed as the subject, ``range`` the
+        one allowed as the object (either may be a list). Once declared,
+        an edge written the wrong way round is refused instead of stored —
+        which is the whole point of writing the declaration down.
+        """
+        predicate = _term(predicate, "p")
+        spec: dict = {"description": description
+                      if description is not None else self.ontology.get(predicate, "")}
+        if domain is not None:
+            spec["domain"] = domain
+        if range is not None:
+            spec["range"] = range
+        self._declare_predicate(predicate, spec)
+        for t in self._triples:
+            if t.p == predicate:
+                self._check_link(t.s, t.p, t.o)
+        self._autosave()
+        return {"description": self.ontology[predicate],
+                **{k: list(v) for k, v in self.predicate_rules.get(predicate, {}).items()}}
+
+    @staticmethod
+    def _rule_text(rule: dict, key: str) -> str:
+        want = rule.get(key)
+        return "|".join(want) if want else "any"
+
+    def _fits(self, rule: dict, s: str, o: str) -> bool:
+        for name, key in ((s, "domain"), (o, "range")):
+            want = rule.get(key)
+            if not want:
+                continue
+            have = (self.nodes_meta.get(name) or {}).get("type")
+            if have is None or str(have) not in want:
+                return False
+        return True
+
+    def _check_link(self, s: str, p: str, o: str) -> None:
+        """Refuse a link that contradicts its own declaration.
+
+        Only where the type is actually known. Types get written after the
+        edges that use them as often as before, and rejecting on a type
+        nobody has stated yet would make a correct import fail on the order
+        it happens to be in. What is still unknown, ``audit()`` reports.
+        """
+        rule = self.predicate_rules.get(p)
+        if not rule:
+            return
+        for role, name, key in (("subject", s, "domain"), ("object", o, "range")):
+            want = rule.get(key)
+            have = (self.nodes_meta.get(name) or {}).get("type")
+            if not want or have is None or str(have) in want:
+                continue
+            hint = (f" — the other way round ({o} {p} {s}) fits"
+                    if self._fits(rule, o, s) else "")
+            raise OntologyError(
+                f"{p} is declared {self._rule_text(rule, 'domain')} -> "
+                f"{self._rule_text(rule, 'range')}, so its {role} cannot be "
+                f"{name!r}, which is a {have!r}{hint}"
+            )
+
+    def _check_node_type(self, name: str, new_type: str) -> None:
+        """Would typing this node this way break an edge already written?
+
+        The other half of _check_link, read from the node's side, so that
+        which of the two was written first cannot decide whether the graph
+        obeys its own ontology.
+        """
+        for t in self._triples:
+            rule = self.predicate_rules.get(t.p)
+            if not rule:
+                continue
+            for role, key, end in (("subject", "domain", t.s),
+                                   ("object", "range", t.o)):
+                want = rule.get(key)
+                if end != name or not want or new_type in want:
+                    continue
+                raise OntologyError(
+                    f"{name!r} is the {role} of ({t.s} {t.p} {t.o}), which is "
+                    f"declared {self._rule_text(rule, key)} there — typing it "
+                    f"{new_type!r} would contradict a link already in the graph"
+                )
+
+    def _check_predicate(self, p: str) -> None:
         if (
             self.ontology
             and p not in self.ontology
@@ -501,12 +678,24 @@ class TrikeDB:
                 f"predicate {p!r} is not in the ontology "
                 f"(allowed: {sorted(self.ontology)})"
             )
+
+    def add(self, s: str, p: str, o: str, *, rdf_terms=None, **attrs: Any) -> Triple:
+        """Add (or upsert) a triple. Same (s, p, o) merges attributes.
+
+        Absolute-URI predicates (http://...) are exempt from the ontology
+        check — they are meta-level statements (OWL declarations, interop).
+        """
+        self._guard_writable()
+        s, p = _term(s, "s"), _term(p, "p")
+        _validate_rdf_terms(rdf_terms or {})
+        self._check_predicate(p)
         triple = Triple.from_dict({"s": s, "p": p, "o": o, **attrs,
                                    "rdf_terms": rdf_terms or {}})
         if triple.rdf_terms:
             actual_p = _shorten(triple.as_rdf()[1], "urn:trikedb:")
             if self.ontology and actual_p not in self.ontology and not actual_p.startswith(("http://", "https://")):
                 raise OntologyError(f"predicate {actual_p!r} is not in the ontology")
+        self._check_link(triple.s, triple.p, triple.o)
         key = triple.identity()
         index = self._spo_index()
         existing = index.get(key)
@@ -574,14 +763,16 @@ class TrikeDB:
         finished import stays out of the file it would have to be undone from.
         """
         with self._lock:
-            snapshot = deepcopy((self._triples, self.nodes_meta, self.ontology))
+            snapshot = deepcopy((self._triples, self.nodes_meta,
+                                 self.ontology, self.predicate_rules))
             self._batch_depth += 1
             try:
                 yield self
                 if self._batch_depth == 1 and self.autosave and self.path:
                     self.save()
             except BaseException:
-                self._triples, self.nodes_meta, self.ontology = snapshot
+                (self._triples, self.nodes_meta, self.ontology,
+                 self.predicate_rules) = snapshot
                 self._index = self._rdf_cache = None
                 raise
             finally:
@@ -609,6 +800,9 @@ class TrikeDB:
                 f"it with {props['type']!r} — pass replace (--replace on the "
                 f"CLI) to change it deliberately"
             )
+        if self.predicate_rules and "type" in props and props["type"] != old:
+            # Before mutating: a refused type must leave the node as it was.
+            self._check_node_type(str(name), str(props["type"]))
         merged.update(deepcopy(props))
         self._autosave()
         return deepcopy(merged)
@@ -616,6 +810,84 @@ class TrikeDB:
     def node(self, name: str) -> dict:
         """The properties attached to a node (empty dict if none)."""
         return deepcopy(self.nodes_meta.get(str(name), {}))
+
+    # -------------------------------------------------------------- actions
+
+    def act(self, s: str, p: str, o: str, *, state: Optional[str] = None,
+            by: Optional[str] = None, at: Any = None, **attrs: Any) -> Triple:
+        """Run an action: change the node, and leave the record of it.
+
+        An action *is* an event — the same triple the graph already stores,
+        with the time on it. What act() adds is that the three things
+        happen together and cannot come apart:
+
+        * it stamps the time (``at=`` overrides, otherwise now), so an
+          action always says when;
+        * it appends, never merges — running the same action twice is two
+          things happening, and the first must survive the second;
+        * when the action says what state it left the node in, that state
+          is written onto the node.
+
+        So afterwards the node *is* different, not merely described by a
+        line further down the file: ``db.node(s)["state"]`` is where it
+        ended up and ``db.history(s)`` is how it got there.
+        """
+        self._guard_writable()
+        s, p = _term(s, "s"), _term(p, "p")
+        self._check_predicate(p)
+        payload: dict = {}
+        if at is not None:
+            payload["at"] = _plain(at)
+        elif not any(k in attrs for k in TIME_ATTRS):
+            payload["at"] = _now()   # the caller spelled no time; an action has one
+        if by is not None:
+            payload["by"] = by
+        if state is not None:
+            payload["state"] = state
+        payload.update(attrs)
+        triple = Triple.from_dict({"s": s, "p": p, "o": o, **payload})
+        self._check_link(triple.s, triple.p, triple.o)
+        with self.batch():
+            # One write, and nothing half-applied: an event whose state
+            # never reached the node would be a log of something that
+            # did not happen.
+            self._triples.append(triple)
+            self._index = None
+            if state is not None:
+                self.nodes_meta.setdefault(s, {})["state"] = str(state)
+        return deepcopy(triple)
+
+    def history(self, name: str, p: Optional[str] = None) -> list:
+        """Everything that happened to this node, newest first.
+
+        The fold the HTML export draws, available to whatever is reading
+        the graph — an agent asking "what has been done to this table"
+        should not have to open a browser to find out.
+        """
+        name = str(name)
+        rows = [(i, t) for i, t in enumerate(self._triples)
+                if t.s == name and t.when() and (p is None or t.p == p)]
+        # Newest first, and a tie on the day goes to whichever was appended
+        # later: written later, happened later.
+        rows.sort(key=lambda row: (_time_key(row[1].when()), row[0]), reverse=True)
+        return [deepcopy(t) for _, t in rows]
+
+    def state(self, name: str) -> Optional[str]:
+        """What state this node is in now, or None if nothing ever said.
+
+        The property act() wrote, if there is one; otherwise the state
+        carried by the node's latest event, so a graph hand-written in
+        YAML answers the question the same way one built through act()
+        does.
+        """
+        stored = (self.nodes_meta.get(str(name)) or {}).get("state")
+        if stored is not None:
+            return str(stored)
+        for event in self.history(name):
+            for key in ("state", "status"):
+                if key in event.attrs:
+                    return str(event.attrs[key])
+        return None
 
     # -------------------------------------------------------------- reading
 
@@ -976,6 +1248,7 @@ class TrikeDB:
             row = Triple.from_rdf(*triple, base=base)
             if self.ontology and row.p not in self.ontology and not row.p.startswith(("http://", "https://")):
                 raise OntologyError(f"update inserts predicate {row.p!r} not in the ontology")
+            self._check_link(row.s, row.p, row.o)
             kept.append(row)
         before = len(self._triples)
         if wanted != facts:
@@ -1093,6 +1366,12 @@ class TrikeDB:
                 key=lambda d: _json.dumps(d, sort_keys=True, ensure_ascii=False),
             ),
         }
+        if self.predicate_rules:
+            # Added only when there is one, so that every graph written
+            # before declarations existed keeps the fingerprint its
+            # exported HTML was stamped with. See check().
+            doc["links"] = {p: {k: list(v) for k, v in rule.items()}
+                            for p, rule in self.predicate_rules.items()}
         return hashlib.sha256(
             _json.dumps(doc, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()[:16]

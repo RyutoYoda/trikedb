@@ -68,7 +68,10 @@ required:
 ```yaml
 ontology:              # optional predicate whitelist (+ descriptions)
   predicates:
-    PROVIDES: "SaaS vendor -> ingestion job"
+    PROVIDES: "SaaS vendor -> ingestion job"   # a description documents
+    # a shape is enforced: the edge written between the wrong node types
+    # is refused on the way in, not stored and reported later
+    INGESTS_TO: {description: "job -> table", domain: job, range: table}
 
 nodes:                 # optional free-form node properties
   salesflow-crm: {type: saas, label: SalesFlow, url: "https://...", plan: enterprise}
@@ -86,6 +89,24 @@ Conventions worth adopting: `prov:` (where a fact came from),
 `deprecated: true` (rendered dashed), and change events written on the
 node they changed — an `AFFECTED_BY` triple whose subject is that node,
 carrying `at:` (when), `by:` (who) and `state:` (what it left behind).
+
+Write those through `act()` rather than `add()`: it stamps the time,
+appends the event and moves the node to the state that action left it
+in, as one write. An event's identity includes its time, so the same
+action run twice leaves two records — appending to a log can never
+overwrite it.
+
+A predicate declaration can be a description (a comment; nothing checks
+it) or a shape (`domain` = the node type allowed as the subject,
+`range` = the type allowed as the object), which is enforced by every
+write path: `add`, `act`, SPARQL `INSERT`, the MCP tools and the CLI.
+The check runs only where the endpoint's type is known — types are
+written after the edges that use them as often as before — and
+`set_node` runs the same check from the node's side, so the order the
+two were written in cannot decide whether the graph obeys its own
+ontology. What no write path could check yet, `audit` reports as
+`unchecked-link`; a contradiction that got in some other way (a
+hand-edited file, a declaration added afterwards) is an error finding.
 
 Edge attributes are **SPARQL-queryable**: every attributed triple is
 also exported as a standard RDF reification (a statement resource with
@@ -204,7 +225,11 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 
 | Method | What it does |
 |---|---|
-| `add(s, p, o, **attrs)` | Upsert a triple (same s,p,o merges attrs). Raises `OntologyError` for undeclared predicates; absolute-URI predicates are exempt (OWL meta-statements) |
+| `add(s, p, o, **attrs)` | Upsert a triple (same s,p,o merges attrs — an event also by its time, so two runs of one action stay two facts). Raises `OntologyError` for undeclared predicates and for links that contradict a declared `domain`/`range`; absolute-URI predicates are exempt (OWL meta-statements) |
+| `act(s, p, o, state=, by=, at=, **attrs)` | Run an action: stamp the time (`at=` overrides, else now), append the event, and move node `s` to `state` — one write, all of it or none. Appends rather than merges: the same action twice is two records |
+| `history(name, p=None)` | Everything that happened to a node, newest first (ties on the day broken by file order) |
+| `state(name)` | The state the node is in now: the property `act()` wrote, else the state its latest event left behind |
+| `declare_link(p, domain=, range=, description=)` | Declare what a predicate connects and have it enforced from then on. Measures the graph it is added to and raises if an existing link already contradicts it |
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
@@ -243,7 +268,9 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb search FILE "query" [-k N]` | Semantic search over facts and nodes (`[semantic]` extra) |
 | `trikedb import FILE SRC...` | Merge CSV/TSV/Markdown/YAML sources |
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
-| `trikedb ontology FILE [--set P=desc]` | Show / extend the predicate vocabulary |
+| `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | Show / extend the predicate vocabulary. `--link INGESTS_TO=job>table` declares a shape and has it enforced; either side may be blank, or `a\|b` for several types |
+| `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | Record something you did: the node moves to its new state and the log keeps the run |
+| `trike history FILE NAME` | What happened to a node, newest first, and the state it is in now |
 | `trikedb stats FILE` | Triples per predicate, node count |
 | `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional: `workspace.yaml` or `graph.yaml` if either is there, else the only graph in the directory, else the only workspace among them (a union is not a rival candidate — it contains the others) |
 | `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Write the workbench to a file you can publish. (`trikedb html` still works and does the same, but the name moved under `ui`) |
@@ -261,7 +288,7 @@ and workspace files.
 
 ## MCP: the ontology layer for agents
 
-Eleven tools, one server definition, two transports:
+Thirteen tools, one server definition, two transports:
 
 | Tool | Kind | Notes |
 |---|---|---|
@@ -270,8 +297,10 @@ Eleven tools, one server definition, two transports:
 | `find` | read | hybrid retrieval: semantic recall + structured `where` filter (`[semantic]` extra) |
 | `match` | read | pattern matching with attrs |
 | `get_node` | read | props + outgoing/incoming edges |
-| `ontology` / `stats` | read | vocabulary / summary |
+| `history` | read | a node's events newest-first, plus the state it is in now |
+| `ontology` / `stats` | read | vocabulary (declared shapes included) / summary |
 | `add_triple` / `set_node` / `remove_triples` | write | ontology-guarded, autosaved |
+| `act` | write | an agent recording what it did: appends the event and moves the node to its new state |
 | `import_source` | write | deterministic file ingestion |
 
 ```bash
@@ -861,6 +890,15 @@ flowchart LR
     A -->|clean| PR("commit / PR — or the graph's own history")
     A -->|"findings (--json)"| LLM("hand the report to an agent<br/>merge proposals as a PR")
 ```
+
+`audit` findings: `duplicate-triple` and `link-contradicts-declaration`
+are errors (exit 1); `name-collision`, `similar-facts`, `orphan-node`,
+`unused-predicate` and `unchecked-link` are warnings. An event is
+compared whole: two of them are duplicates only when every attribute
+matches — same time, same actor, same state. Two actions that read alike
+on two days, or two that landed in the same instant and did different
+things, are two things that happened, not one fact written twice. That
+is a log doing its job.
 
 `audit` is deterministic on purpose; semantic near-duplicates beyond its
 heuristics are an agent's job, with the ontology guard keeping whatever

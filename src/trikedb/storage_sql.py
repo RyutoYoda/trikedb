@@ -203,7 +203,9 @@ _SNOWFLAKE_VIEWS = {
     "KG_PREDICATE": (
         "SELECT g.name AS GRAPH,\n"
         "       p.key AS PREDICATE,\n"
-        "       p.value::string AS DESCRIPTION\n"
+        "       CASE WHEN TYPEOF(p.value) = 'OBJECT' THEN p.value:description::string\n"
+        "            ELSE p.value::string END AS DESCRIPTION,\n"
+        "       CASE WHEN TYPEOF(p.value) = 'OBJECT' THEN TO_JSON(p.value) END AS SHAPE\n"
         "FROM {table} g,\n"
         "     LATERAL FLATTEN(input => TRY_PARSE_JSON(g.doc):ontology:predicates) p"
     ),
@@ -338,7 +340,10 @@ _BIGQUERY_VIEWS = {
     "KG_PREDICATE": (
         "SELECT g.name AS GRAPH,\n"
         "       k AS PREDICATE,\n"
-        "       JSON_VALUE(d.parsed.ontology.predicates[k]) AS DESCRIPTION\n"
+        "       COALESCE(JSON_VALUE(d.parsed.ontology.predicates[k].description),\n"
+        "                JSON_VALUE(d.parsed.ontology.predicates[k])) AS DESCRIPTION,\n"
+        "       CASE WHEN JSON_TYPE(d.parsed.ontology.predicates[k]) = 'object'\n"
+        "            THEN TO_JSON_STRING(d.parsed.ontology.predicates[k]) END AS SHAPE\n"
         "FROM {table} g,\n"
         "     UNNEST([STRUCT(SAFE.PARSE_JSON(g.doc) AS parsed)]) d,\n"
         "     UNNEST(JSON_KEYS(d.parsed.ontology.predicates, 1)) AS k"

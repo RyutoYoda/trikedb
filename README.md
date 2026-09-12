@@ -118,8 +118,13 @@ from trikedb import TrikeDB
 # A typed knowledge graph that lives in one YAML file. The predicates you declare
 # are the schema — that whitelist catches typos and junk on write.
 db = TrikeDB("pipeline.yaml", ontology={
-    "PROVIDES":   "SaaS vendor -> ingestion job",
-    "INGESTS_TO": "ingestion job -> warehouse table",
+    "PROVIDES":   "SaaS vendor -> ingestion job",          # a description documents
+    # a shape is enforced: write this edge between the wrong node types and it is
+    # refused, not stored — including the common one, written backwards
+    "INGESTS_TO": {"description": "ingestion job -> warehouse table",
+                   "domain": "job", "range": "table"},
+    "AFFECTED_BY": {"description": "warehouse table -> change event",
+                    "domain": "table"},
     "MIGRATED_TO": "deprecated table -> its replacement",
 })
 
@@ -136,6 +141,18 @@ db.add("LEGACY_DUMP", "MIGRATED_TO", "RAW_CRM_CONTACTS", deprecated=True)
 # Describe nodes: `type` colors the graph and is queryable; attach anything else.
 db.set_node("RAW_CRM_CONTACTS", type="table", pii=True,
             url="https://catalog.example/raw_crm_contacts")
+
+# db.add("RAW_CRM_CONTACTS", "INGESTS_TO", "crm-sync-job") would raise OntologyError
+# too: INGESTS_TO is declared job -> table, and that is a table -> job.
+
+# Something happened to a node? Don't write a note about it — run it. act()
+# stamps the time, appends the record, and moves the node to the state that
+# action left it in, and the three cannot come apart.
+db.act("RAW_CRM_CONTACTS", "AFFECTED_BY", "email column dropped for privacy",
+       by="data-platform", state="applied")     # at= defaults to now
+db.state("RAW_CRM_CONTACTS")     # 'applied' — the node itself is different now
+db.history("RAW_CRM_CONTACTS")   # everything that happened to it, newest first
+# Run the same action again and you get a second record, not an overwritten one.
 
 # Ask questions — join patterns with zero dependencies …
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
@@ -201,6 +218,14 @@ trikedb sparql pipeline.yaml \
 
 # semantic search: meaning, not spelling ([semantic] extra)
 trikedb search pipeline.yaml "what syncs the CRM?" -k 5
+
+# declare what a predicate connects, and have it enforced from then on
+trikedb ontology pipeline.yaml --link INGESTS_TO=job>table
+
+# record something you did: the node moves to its new state, the log keeps the run
+trike act pipeline.yaml RAW_CRM_CONTACTS AFFECTED_BY "email column dropped" \
+  --state applied --by data-platform
+trike history pipeline.yaml RAW_CRM_CONTACTS
 
 trikedb stats pipeline.yaml
 trike ui generate pipeline.yaml -o pipeline.html
@@ -628,8 +653,11 @@ A trikedb file is ordinary YAML with three top-level keys (only `triples` is req
 ```yaml
 ontology:            # optional — omit it for free-form predicates
   predicates:
-    PROVIDES: "SaaS vendor -> ingestion job"
-    AFFECTED_BY: "table -> change event"
+    PROVIDES: "SaaS vendor -> ingestion job"      # a description documents
+    # a shape is enforced: `domain` is the node type allowed as the subject,
+    # `range` the type allowed as the object. A backwards edge is refused.
+    INGESTS_TO: {description: "job -> warehouse table", domain: job, range: table}
+    AFFECTED_BY: {description: "table -> change event", domain: table}
 
 nodes:               # optional — free-form node properties
   salesflow-crm: {type: saas, url: "https://salesflow.example", plan: enterprise}
@@ -652,6 +680,8 @@ triples:
 Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)):
 
 - **Change events hang off the node they changed.** A triple carrying a time attribute (`at:`, `when:`, `date:`, ...) is a change event on its *subject*, not a note floating on its own: the HTML view puts the newest event's `state:` on the node's label and lists the history — when, who, what — in the detail panel. That is the action layer: "what state is this table in, and what put it there?" is something you read off the node. Use `--events AFFECTED_BY` to pin the predicates by hand instead of auto-detecting them.
+- **An action is run, not described.** `db.act(...)` (`trike act`, or the `act` MCP tool) stamps the time, appends the event, and moves the node to the state that action left it in — one write, all three or none. Read it back with `db.state(node)` and `db.history(node)`. Two runs of the same action leave two records: an event's identity includes when it happened, so appending to the log can never overwrite it.
+- **A declaration can be enforced instead of just documented.** `INGESTS_TO: "job -> table"` is a comment; `INGESTS_TO: {domain: job, range: table}` is a rule — the edge written backwards is refused on the way in, and the error names the direction that does work. Types written after the edges that use them are checked too, from the node's side, so which came first cannot decide whether the graph obeys its own ontology. What nothing could check yet — an endpoint with no type — `trikedb audit` reports.
 - **`deprecated: true`** on edges renders them dashed in the HTML view and lets agents filter dead paths.
 - **`via:` / `schedule:`** attributes carry operational detail without polluting the node set.
 - **Node properties keep growing.** That's the RDF promise: attach `type`, `url`, `schema`, owners — whatever your team needs — without a schema migration. `type` drives color grouping in the HTML view, and node properties are queryable in SPARQL (`?x t:type "table"`). Set them from code with `db.set_node("RAW_CRM_CONTACTS", pii=True)`.

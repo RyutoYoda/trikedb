@@ -65,7 +65,10 @@ YAMLファイル1枚がデータベース。トップレベルは3キーで、�
 ```yaml
 ontology:              # 任意 — 述語のホワイトリスト(+説明)
   predicates:
-    PROVIDES: "SaaSベンダー -> 取り込みジョブ"
+    PROVIDES: "SaaSベンダー -> 取り込みジョブ"   # 説明は「文書」
+    # 形(shape)は「強制」される: 型の合わないノード同士に書かれたエッジは、
+    # 保存して後で報告するのではなく、書き込み時点で弾かれる
+    INGESTS_TO: {description: "ジョブ -> テーブル", domain: job, range: table}
 
 nodes:                 # 任意 — ノードの自由なプロパティ
   salesflow-crm: {type: saas, label: SalesFlow, url: "https://...", plan: enterprise}
@@ -82,6 +85,21 @@ triples:
 採用を勧める慣習: `prov:`(事実の出典)、`deprecated: true`(破線描画)、
 変更イベントは変えたノードを主語にした `AFFECTED_BY` トリプルで書き、
 `at:`(いつ)・`by:`(誰が)・`state:`(どの状態にしたか)を付ける。
+
+これらは `add()` ではなく `act()` で書く: 時刻を打ち、イベントを追記し、
+そのアクションが残した状態へノードを移す — までを1回の書き込みで行う。
+イベントの同一性には時刻が含まれるので、同じアクションを2回実行すれば
+記録は2件残る — ログへの追記がログを消すことはない。
+
+述語の宣言は、説明(ただのコメント。何も検証しない)にも、形(`domain` =
+主語に許されるノード型、`range` = 目的語に許される型)にもできる。形は
+すべての書き込み経路 — `add`・`act`・SPARQL `INSERT`・MCPツール・CLI —
+で強制される。検証されるのは端点の型が分かっている場合だけ(型はエッジの
+後から書かれることも同じくらい多い)で、`set_node` は同じ検証をノード側
+から行う。どちらを先に書いたかで、グラフがオントロジーに従うかどうかが
+決まることはない。どの書き込み経路でもまだ検証しようがなかったものは
+`audit` が `unchecked-link` として報告し、別経路で入り込んだ矛盾
+(手編集、後から追加された宣言)はエラー所見になる。
 
 エッジ属性は**SPARQLで引ける**: 属性付きトリプルは標準のRDF具体化
 (reification — `rdf:subject/predicate/object` を持つstatementリソース+属性)
@@ -194,7 +212,11 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 
 | メソッド | 説明 |
 |---|---|
-| `add(s, p, o, **attrs)` | トリプルをupsert(同一s,p,oは属性マージ)。未宣言の述語は `OntologyError`。絶対URIの述語は例外(OWLメタ文用) |
+| `add(s, p, o, **attrs)` | トリプルをupsert(同一s,p,oは属性マージ。イベントは時刻も同一性に含むので、同じアクションの2回の実行は2件のまま)。未宣言の述語、および宣言された `domain`/`range` に反するリンクは `OntologyError`。絶対URIの述語は例外(OWLメタ文用) |
+| `act(s, p, o, state=, by=, at=, **attrs)` | アクションを実行する: 時刻を打ち(`at=` で上書き、省略なら今)、イベントを追記し、ノード `s` を `state` へ移す — 1回の書き込みで、全部起きるか1つも起きないか。マージではなく追記なので、同じアクション2回は2件の記録 |
+| `history(name, p=None)` | そのノードに起きたこと全部、新しい順(同日の同着はファイル順で解決) |
+| `state(name)` | ノードが今いる状態: `act()` が書いたプロパティ、無ければ最新イベントが残した状態 |
+| `declare_link(p, domain=, range=, description=)` | 述語が何と何を繋ぐかを宣言し、以後それを強制する。追加先のグラフを検証し、既存のリンクが既に矛盾していれば例外 |
 | `remove(s=, p=, o=)` | パターン一致を全削除。削除数を返す |
 | `triples(s=, p=, o=, **attrs)` | パターンマッチ。`None`=ワイルドカード、`*`/`?` glob、attrsは完全一致フィルタ |
 | `query([patterns])` | `?変数` の複数パターン結合(SPARQL的BGP、依存ゼロ) |
@@ -233,7 +255,9 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb search FILE "クエリ" [-k N]` | 意味検索 — 事実とノードを意味でランク付け(`[semantic]` extra) |
 | `trikedb import FILE SRC...` | CSV/TSV/Markdown/YAMLソースをマージ |
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
-| `trikedb ontology FILE [--set P=desc]` | 語彙の表示/拡張 |
+| `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 語彙の表示/拡張。`--link INGESTS_TO=job>table` は形を宣言し、以後強制する。どちらの側も空でよく、`a\|b` で複数型 |
+| `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | やったことを記録する: ノードは新しい状態に移り、ログには実行が残る |
+| `trike history FILE NAME` | そのノードに何が起きたかを新しい順で、いま何の状態かと一緒に |
 | `trikedb stats FILE` | 述語別トリプル数・ノード数 |
 | `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可: `workspace.yaml` か `graph.yaml` があればそれ、無ければディレクトリ内の唯一のグラフ、それも無ければ唯一のワークスペース（ユニオンは他を含むので競合候補ではない） |
 | `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す。(`trikedb html` も同じ動作のまま残してあるが、名前は `ui` の下に移した) |
@@ -251,7 +275,7 @@ workspaceファイルを受け付ける。
 
 ## MCP: エージェントのためのオントロジーレイヤー
 
-ツール11個・サーバー定義は1つ・トランスポートは2つ:
+ツール13個・サーバー定義は1つ・トランスポートは2つ:
 
 | ツール | 種別 | 備考 |
 |---|---|---|
@@ -260,8 +284,10 @@ workspaceファイルを受け付ける。
 | `find` | 読み | ハイブリッド検索: 意味recall + 構造`where`フィルタ(`[semantic]` extra) |
 | `match` | 読み | 属性つきパターンマッチ |
 | `get_node` | 読み | プロパティ+入出エッジ |
-| `ontology` / `stats` | 読み | 語彙 / サマリ |
+| `history` | 読み | ノードのイベントを新しい順で、いまの状態つき |
+| `ontology` / `stats` | 読み | 語彙(宣言された形も含む) / サマリ |
 | `add_triple` / `set_node` / `remove_triples` | 書き | オントロジー検証つき・autosave |
+| `act` | 書き | エージェントが「やったこと」を記録する: イベントを追記し、ノードを新しい状態へ移す |
 | `import_source` | 書き | 決定論的ファイル取り込み |
 
 ```bash
@@ -809,6 +835,13 @@ flowchart LR
     A -->|クリーン| PR("commit / PR — またはグラフ自身の履歴")
     A -->|"所見あり (--json)"| LLM("レポートをエージェントに渡す<br/>マージ案をPRとして提案させる")
 ```
+
+`audit` の所見: `duplicate-triple` と `link-contradicts-declaration` は
+エラー(終了コード1)、`name-collision`・`similar-facts`・`orphan-node`・
+`unused-predicate`・`unchecked-link` は警告。イベントは丸ごと比較される:
+時刻・実行者・残した状態まで全部一致して初めて重複。別の日に同じ文面で
+書かれた2つも、同じ瞬間に入って別のことをした2つも、二度書かれた1つの
+事実ではなく「起きた2つのこと」 — それはログが仕事をしているだけだから。
 
 `audit` は意図的に決定論。ヒューリスティクスを超える意味的な重複整理は
 エージェントの仕事で、エージェントが何を書こうとオントロジーガードが

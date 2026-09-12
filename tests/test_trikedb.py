@@ -1,3 +1,4 @@
+import datetime
 from pathlib import Path
 
 import pytest
@@ -250,6 +251,187 @@ def test_action_layer_is_readable_by_an_agent_not_just_the_html():
         ' FILTER(?s != "applied") }'
     )
     assert unsettled == [{"node": "RAW_SPEND"}]
+
+
+def test_the_same_action_twice_leaves_two_records():
+    # add() is an upsert on (s, p, o), which for a plain fact is right and
+    # for an event is a shredder: the September restart would take the
+    # April one's place and the graph would show one restart, ever.
+    db = TrikeDB()
+    db.add("JOB", "AFFECTED_BY", "restarted after failure",
+           at="2025-04-01", by="alice", state="applied")
+    db.add("JOB", "AFFECTED_BY", "restarted after failure",
+           at="2025-09-12", by="bob", state="rolled-back")
+    assert len(db) == 2
+    assert [t.attrs["by"] for t in db.history("JOB")] == ["bob", "alice"]
+    # and a plain fact still merges, because nothing about it happened
+    db.add("JOB", "AFFECTED_BY", "owned by data-platform")
+    db.add("JOB", "AFFECTED_BY", "owned by data-platform", note="since 2024")
+    assert len(db) == 3
+
+
+def test_act_changes_the_node_and_leaves_the_log(tmp_path):
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path)
+    db.act("RAW_SPEND", "AFFECTED_BY", "units changed to micros",
+           at="2025-04-01", by="adastra", state="applied")
+    event = db.act("RAW_SPEND", "AFFECTED_BY", "backfill superseded",
+                   at="2025-07-02", by="data-platform", state="pending-review")
+    # the object itself moved — not merely a line further down the file
+    assert db.node("RAW_SPEND")["state"] == "pending-review"
+    assert db.state("RAW_SPEND") == "pending-review"
+    # ...and how it got there is all still there, newest first
+    assert [t.when() for t in db.history("RAW_SPEND")] == ["2025-07-02", "2025-04-01"]
+    assert event.attrs["by"] == "data-platform"
+    # both halves survive the file, and neither happened without the other
+    assert TrikeDB(path).state("RAW_SPEND") == "pending-review"
+    assert len(TrikeDB(path).history("RAW_SPEND")) == 2
+
+
+def test_act_stamps_the_time_nobody_gave_it():
+    db = TrikeDB()
+    stamped = db.act("JOB", "RAN", "nightly load")
+    assert stamped.when().startswith(str(datetime.date.today()))
+    # unless the caller already said when, in their own spelling
+    spelled = db.act("JOB", "RAN", "backfill", when="2024-01-01")
+    assert spelled.when() == "2024-01-01" and "at" not in spelled.attrs
+
+
+def test_state_falls_back_to_the_latest_event():
+    # a graph written by hand in YAML has no state property on the node,
+    # and must still answer the question act() answers
+    db = TrikeDB()
+    db.add("T", "AFFECTED_BY", "April", at="2025-4-1", state="superseded")
+    db.add("T", "AFFECTED_BY", "December", at="2025-12-1", state="applied")
+    assert db.node("T") == {}
+    # December, however sloppily the two dates are written
+    assert db.state("T") == "applied"
+    assert db.state("never heard of it") is None
+
+
+def test_a_declared_link_is_refused_the_wrong_way_round(tmp_path):
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path, ontology={
+        "INGESTS_TO": {"description": "ingestion job -> warehouse table",
+                       "domain": "job", "range": "table"},
+        "PROVIDES": "vendor -> job",
+    })
+    db.set_node("crm-sync-job", type="job")
+    db.set_node("RAW_CRM", type="table")
+    db.add("crm-sync-job", "INGESTS_TO", "RAW_CRM")
+    with pytest.raises(OntologyError) as caught:
+        db.add("RAW_CRM", "INGESTS_TO", "crm-sync-job")
+    # and it says which way round does work, because that is the fix
+    assert "the other way round" in str(caught.value)
+    assert len(db) == 1
+    # an undeclared predicate is still free to connect anything
+    db.add("RAW_CRM", "PROVIDES", "crm-sync-job")
+    # the declaration itself survives the file it was written to
+    reopened = TrikeDB(path)
+    assert reopened.predicate_rules["INGESTS_TO"] == {"domain": ("job",),
+                                                      "range": ("table",)}
+    assert reopened.ontology["INGESTS_TO"] == "ingestion job -> warehouse table"
+    with pytest.raises(OntologyError):
+        reopened.add("RAW_CRM", "INGESTS_TO", "crm-sync-job")
+
+
+def test_a_type_that_arrives_after_the_edge_is_still_checked():
+    # types get written after the edges that use them as often as before,
+    # so neither door can be the only one that checks
+    db = TrikeDB(ontology={"INGESTS_TO": {"domain": "job", "range": "table"}})
+    db.set_node("RAW_CRM", type="table")
+    db.add("mystery", "INGESTS_TO", "RAW_CRM")      # type unknown: allowed
+    with pytest.raises(OntologyError):
+        db.set_node("mystery", type="table")
+    assert db.node("mystery") == {}                  # and nothing was written
+    db.set_node("mystery", type="job")               # the type it must have
+    assert db.node("mystery") == {"type": "job"}
+
+
+def test_declare_link_measures_the_graph_it_is_added_to():
+    db = TrikeDB(ontology={"INGESTS_TO": "job -> table"})
+    db.set_node("a", type="table")
+    db.set_node("b", type="table")
+    db.add("a", "INGESTS_TO", "b")
+    with pytest.raises(OntologyError):
+        db.declare_link("INGESTS_TO", domain="job", range="table")
+    db.declare_link("INGESTS_TO", domain=["job", "table"], range="table")
+    assert db.predicate_rules["INGESTS_TO"]["domain"] == ("job", "table")
+
+
+def test_audit_reports_what_the_write_path_could_not_check():
+    from trikedb.audit import audit
+
+    db = TrikeDB(ontology={"INGESTS_TO": {"domain": "job", "range": "table"}})
+    db.set_node("RAW_CRM", type="table")
+    db.add("mystery", "INGESTS_TO", "RAW_CRM")
+    kinds = {f["kind"] for f in audit(db)}
+    assert "unchecked-link" in kinds
+    # a file hand-edited past the guard is an error, not a warning
+    db.nodes_meta["mystery"] = {"type": "table"}
+    findings = [f for f in audit(db) if f["kind"] == "link-contradicts-declaration"]
+    assert len(findings) == 1 and "mystery" in findings[0]["detail"]
+    assert findings[0]["severity"] == "error"
+
+
+def test_audit_does_not_call_two_events_a_duplicate():
+    from trikedb.audit import audit
+
+    db = TrikeDB()
+    for when, who in (("2025-04-01", "alice"), ("2025-09-12", "bob")):
+        db.act("JOB", "AFFECTED_BY", "restarted after failure", at=when, by=who)
+    assert [f for f in audit(db) if f["severity"] == "error"] == []
+    assert not [f for f in audit(db) if f["kind"] == "similar-facts"]
+
+
+def test_two_actions_in_the_same_instant_are_two_actions():
+    # an agent acts faster than a second. Two acts that land on the same
+    # stamp are still two things it did — audit calling them a duplicate
+    # would fail the build of someone who simply worked quickly.
+    from trikedb.audit import audit
+
+    db = TrikeDB()
+    same = "2026-09-12T23:47:26+09:00"
+    db.act("TBL", "AFFECTED_BY", "reloaded", at=same, by="agent", state="applied")
+    db.act("TBL", "AFFECTED_BY", "reloaded", at=same, by="agent", state="rolled-back")
+    assert len(db.history("TBL")) == 2
+    assert db.state("TBL") == "rolled-back"        # the later row wins the tie
+    assert [f for f in audit(db) if f["severity"] == "error"] == []
+
+    # but the identical row twice over is a double-write, and still an error
+    twice = TrikeDB()
+    for _ in range(2):
+        twice.act("TBL", "AFFECTED_BY", "reloaded", at=same, state="applied")
+    assert [f["kind"] for f in audit(twice)] == ["duplicate-triple"]
+
+
+def test_an_unstamped_action_is_timed_finely_enough_to_tell_apart():
+    # to the second, a loop of five actions claimed one instant between them
+    db = TrikeDB()
+    for i in range(5):
+        db.act("TBL", "AFFECTED_BY", f"step {i}", state=str(i))
+    events = db.history("TBL")
+    assert [t.o for t in events] == [f"step {i}" for i in reversed(range(5))]
+    assert db.state("TBL") == "4"
+    stamps = [t.when() for t in events]
+    assert all("." in s and s[-6] in "+-" for s in stamps)   # sub-second, offset
+    assert stamps == sorted(stamps, reverse=True)            # and never backwards
+
+    # a fine stamp still sorts against a coarse one somebody typed by hand
+    db.act("TBL", "AFFECTED_BY", "last year", at="2025-01-01", state="stale")
+    assert db.history("TBL")[0].o == "step 4"
+
+
+def test_a_graph_without_declarations_keeps_its_fingerprint():
+    # every HTML already exported carries the old hash; adding a feature
+    # nobody used must not make `trikedb check` call all of them stale
+    db = TrikeDB(ontology={"P": "a -> b"})
+    db.add("a", "P", "b")
+    before = db.content_hash()
+    db.declare_link("P", domain="x")
+    assert db.content_hash() != before
+    db.declare_link("P")                     # the declaration withdrawn again
+    assert db.content_hash() == before
 
 
 def test_examples_load_and_query():
@@ -3606,3 +3788,80 @@ def test_semantic_tools_expose_the_model_override_everywhere():
     cli = (Path(__file__).resolve().parent.parent
            / "src" / "trikedb" / "cli.py").read_text(encoding="utf-8")
     assert '"--model"' in cli, "the CLI lost its --model flag"
+
+
+def test_mcp_exposes_the_action_door_and_the_declared_shape(tmp_path):
+    pytest.importorskip("mcp")
+    import asyncio
+    import json as _json
+
+    from trikedb.mcp_server import build_server
+
+    path = tmp_path / "g.yaml"
+    db = TrikeDB(path, ontology={
+        "AFFECTED_BY": {"description": "table -> change event", "domain": "table"},
+    })
+    db.set_node("RAW_CRM", type="table")
+    db.save()
+    server = build_server(path)
+
+    names = {t.name for t in asyncio.run(server.list_tools())}
+    assert {"act", "history"} <= names
+
+    async def call(name, args):
+        content = await server.call_tool(name, args)
+        blocks = content[0] if isinstance(content, tuple) else content
+        return _json.loads(blocks[0].text)
+
+    # an agent reading the ontology sees the shape it has to obey, not prose
+    onto = asyncio.run(call("ontology", {}))
+    assert onto["AFFECTED_BY"] == {"description": "table -> change event",
+                                   "domain": ["table"]}
+
+    asyncio.run(call("act", {"s": "RAW_CRM", "p": "AFFECTED_BY",
+                             "o": "email column dropped", "at": "2025-06-15",
+                             "by": "data-platform", "state": "applied"}))
+    done = asyncio.run(call("act", {"s": "RAW_CRM", "p": "AFFECTED_BY",
+                                    "o": "email column dropped", "at": "2025-07-02",
+                                    "by": "data-platform", "state": "rolled-back"}))
+    assert done["state"] == "rolled-back"
+
+    told = asyncio.run(call("history", {"name": "RAW_CRM"}))
+    assert told["state"] == "rolled-back"
+    assert [e["at"] for e in told["events"]] == ["2025-07-02", "2025-06-15"]
+    # and the node an agent reads back really is in the new state
+    node = asyncio.run(call("get_node", {"name": "RAW_CRM"}))
+    assert node["properties"]["state"] == "rolled-back"
+    assert TrikeDB(path).state("RAW_CRM") == "rolled-back"   # autosaved
+
+
+def test_cli_acts_declares_and_tells_the_history(tmp_path, capsys):
+    from trikedb.cli import main
+
+    g = str(tmp_path / "g.yaml")
+    assert main(["add", g, "crm-sync-job", "INGESTS_TO", "RAW_CRM"]) == 0
+    assert main(["node", g, "crm-sync-job", "-a", "type=job"]) == 0
+    assert main(["node", g, "RAW_CRM", "-a", "type=table"]) == 0
+    capsys.readouterr()
+
+    assert main(["ontology", g, "--link", "INGESTS_TO=job>table",
+                 "--set", "AFFECTED_BY=table -> change event"]) == 0
+    assert "\"domain\"" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as refused:   # the CLI exits, loudly
+        main(["add", g, "RAW_CRM", "INGESTS_TO", "crm-sync-job"])
+    assert "the other way round" in str(refused.value)
+
+    assert main(["act", g, "RAW_CRM", "AFFECTED_BY", "reloaded from the v3 feed",
+                 "--state", "applied", "--by", "alice", "--at", "2025-04-01"]) == 0
+    assert "RAW_CRM is now: applied" in capsys.readouterr().out
+    assert main(["act", g, "RAW_CRM", "AFFECTED_BY", "reloaded from the v3 feed",
+                 "--state", "rolled-back", "--by", "bob", "--at", "2025-09-12"]) == 0
+    capsys.readouterr()
+
+    assert main(["history", g, "RAW_CRM"]) == 0
+    told = capsys.readouterr().out
+    assert "now: rolled-back" in told
+    assert told.index("2025-09-12") < told.index("2025-04-01")   # newest first
+    assert "by alice" in told and "by bob" in told               # both runs kept
+    assert main(["history", g, "nobody"]) == 0
+    assert "nothing recorded" in capsys.readouterr().out

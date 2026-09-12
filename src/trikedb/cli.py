@@ -39,6 +39,28 @@ def main(argv=None) -> int:
         help="attach an attribute to the triple",
     )
 
+    p_act = sub.add_parser(
+        "act", help="record something you did, and move the node to its new state"
+    )
+    p_act.add_argument("file")
+    p_act.add_argument("s", help="the node it happened to")
+    p_act.add_argument("p")
+    p_act.add_argument("o", help="what happened, in words")
+    p_act.add_argument("--state", default=None,
+                       help="the state it leaves the node in")
+    p_act.add_argument("--by", default=None, help="who did it")
+    p_act.add_argument("--at", default=None, help="when (default: now)")
+    p_act.add_argument(
+        "-a", "--attr", action="append", default=[], metavar="key=value",
+        help="attach a further attribute to the event",
+    )
+
+    p_hist = sub.add_parser(
+        "history", help="what happened to a node, newest first"
+    )
+    p_hist.add_argument("file")
+    p_hist.add_argument("name")
+
     p_rm = sub.add_parser("rm", help="remove triples matching a pattern")
     p_rm.add_argument("file")
     p_rm.add_argument("-s", default=None)
@@ -101,6 +123,11 @@ def main(argv=None) -> int:
     p_onto.add_argument(
         "--set", action="append", default=[], metavar="PRED=description",
         help="add or update a predicate (a schema change — review it like one)",
+    )
+    p_onto.add_argument(
+        "--link", action="append", default=[], metavar="PRED=domain>range",
+        help="declare what a predicate connects, and have it enforced "
+             "(INGESTS_TO=job>table). Either side may be blank or a|b.",
     )
 
     p_stats = sub.add_parser("stats", help="summarize the graph")
@@ -300,6 +327,32 @@ def _cmd_add(args) -> int:
     return 0
 
 
+def _cmd_act(args) -> int:
+    attrs = _parse_attrs(args.attr)
+    db = TrikeDB(args.file)
+    event = db.act(args.s, args.p, args.o, state=args.state, by=args.by,
+                   at=args.at, **attrs)
+    state = db.state(args.s)
+    print(f"{args.s} {args.p} {args.o}  @ {event.when()}"
+          + (f"\n{args.s} is now: {state}" if state else ""))
+    return 0
+
+
+def _cmd_history(args) -> int:
+    db = TrikeDB(args.file)
+    events = db.history(args.name)
+    if not events:
+        print(f"nothing recorded for {args.name!r}")
+        return 0
+    print(f"{args.name} — now: {db.state(args.name) or 'no state recorded'}")
+    for t in events:
+        who = t.attrs.get("by")
+        state = t.attrs.get("state") or t.attrs.get("status")
+        trail = "  ".join(x for x in (who and f"by {who}", state) if x)
+        print(f"  {t.when()}  {t.o}" + (f"   ({trail})" if trail else ""))
+    return 0
+
+
 def _cmd_rm(args) -> int:
     if not args.s and not args.p and not args.o:
         print("error: give at least one of -s / -p / -o", file=sys.stderr)
@@ -398,12 +451,24 @@ def _cmd_find(args) -> int:
 
 def _cmd_ontology(args) -> int:
     db = TrikeDB(args.file)
-    if args.set:
+    if args.set or args.link:
         for pair in args.set:
             pred, _, desc = pair.partition("=")
             db.ontology[pred.strip()] = desc.strip()
+        for pair in args.link:
+            pred, _, shape = pair.partition("=")
+            domain, _, rng = shape.partition(">")
+            db.declare_link(
+                pred.strip(),
+                domain=[t for t in domain.split("|") if t.strip()] or None,
+                range=[t for t in rng.split("|") if t.strip()] or None,
+            )
         db.save()
-    print(json.dumps(db.ontology, ensure_ascii=False, indent=2))
+    shown = {p: ({"description": desc,
+                  **{k: list(v) for k, v in db.predicate_rules[p].items()}}
+                 if p in db.predicate_rules else desc)
+             for p, desc in db.ontology.items()}
+    print(json.dumps(shown, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -638,6 +703,8 @@ _COMMANDS = {
     "find": _cmd_find,
     "import": _cmd_import,
     "add": _cmd_add,
+    "act": _cmd_act,
+    "history": _cmd_history,
     "rm": _cmd_rm,
     "node": _cmd_node,
     "ontology": _cmd_ontology,

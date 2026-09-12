@@ -4,18 +4,21 @@ Ontologies accumulate facts from many hands (and agents). These
 heuristics catch the decay modes that the ontology guard cannot:
 duplicated facts across workspace members, same-entity-different-
 spelling node names, near-duplicate free-text facts, orphaned node
-properties, and declared-but-unused predicates.
+properties, declared-but-unused predicates, and links that do not
+hold up against the shape their predicate declares.
 
-Severity: "error" findings (duplicate-triple) fail `trikedb audit`;
+Severity: "error" findings (duplicate-triple, link-contradicts-
+declaration) fail `trikedb audit`;
 the rest are warnings unless --strict. Semantic dedup beyond these
 heuristics is a job for an LLM agent reviewing the report.
 """
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
-ERROR_KINDS = {"duplicate-triple"}
+ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration"}
 
 
 def audit(db) -> list:
@@ -26,7 +29,16 @@ def audit(db) -> list:
     #    workspace member graphs) — a real duplicate, not a warning
     seen: dict = {}
     for t in db:
-        key = t.spo()
+        # An event is compared whole. Two events can be the same sentence on
+        # two days ("restarted after failure") — two things that happened,
+        # not one fact written twice — and two actions in the same
+        # millisecond are still two actions, told apart by who ran them and
+        # what state each left behind. Only a row identical down to its last
+        # attribute is a double-write. A plain fact, carrying no time, is
+        # still just its (s, p, o).
+        body = {k: v for k, v in t.attrs.items() if k != "graph"}
+        key = t.spo() + ((json.dumps(body, sort_keys=True, default=str),)
+                         if t.when() else ())
         where = t.attrs.get("graph", "-")
         if key in seen:
             findings.append({
@@ -49,19 +61,25 @@ def audit(db) -> list:
             })
 
     # 3. near-duplicate free-text facts on the same subject+predicate
-    #    (token overlap > 60% of the smaller fact)
+    #    (token overlap > 60% of the smaller fact). Two events at two
+    #    different times are excluded however alike they read: "restarted
+    #    after failure" in April and again in September is a log doing its
+    #    job, and calling that a near-duplicate asks you to delete history.
     events: dict = defaultdict(list)
     for t in db:
         if any(c.isspace() for c in t.o):
-            events[(t.s, t.p)].append(t.o)
+            events[(t.s, t.p)].append((t.o, t.when()))
     for (s, p), texts in events.items():
         for i in range(len(texts)):
             for j in range(i + 1, len(texts)):
-                a, b = set(texts[i].split()), set(texts[j].split())
+                if texts[i][1] != texts[j][1]:
+                    continue
+                a, b = set(texts[i][0].split()), set(texts[j][0].split())
                 if a and b and len(a & b) / min(len(a), len(b)) > 0.6:
                     findings.append({
                         "kind": "similar-facts", "severity": "warning",
-                        "detail": f"{s} {p}: {texts[i][:50]!r} ≈ {texts[j][:50]!r}",
+                        "detail": f"{s} {p}: {texts[i][0][:50]!r} "
+                                  f"≈ {texts[j][0][:50]!r}",
                     })
 
     # 4. node properties for nodes no triple mentions.
@@ -86,4 +104,36 @@ def audit(db) -> list:
                 "detail": p,
             })
 
+    # 6. links measured against the shape their predicate declares. add()
+    #    refuses one it can see is wrong, but a type can arrive after the
+    #    edge, and a file can be hand-edited — so what the write path let
+    #    through on a missing type gets reported here rather than assumed.
+    rules = getattr(db, "predicate_rules", {})
+    for t in db:
+        rule = rules.get(t.p)
+        if not rule:
+            continue
+        shape = "%s -> %s" % (_names(rule.get("domain")), _names(rule.get("range")))
+        for role, name, key in (("subject", t.s, "domain"), ("object", t.o, "range")):
+            want = rule.get(key)
+            if not want:
+                continue
+            have = (db.nodes_meta.get(name) or {}).get("type")
+            if have is None:
+                findings.append({
+                    "kind": "unchecked-link", "severity": "warning",
+                    "detail": f"{t.p} declares {shape}, but its {role} {name!r} "
+                              f"has no type — nothing checked it",
+                })
+            elif str(have) not in want:
+                findings.append({
+                    "kind": "link-contradicts-declaration", "severity": "error",
+                    "detail": f"{t.p} declares {shape}, but its {role} {name!r} "
+                              f"is a {have!r}",
+                })
+
     return findings
+
+
+def _names(want) -> str:
+    return "|".join(want) if want else "any"
