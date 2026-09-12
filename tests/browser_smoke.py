@@ -34,6 +34,37 @@ def run():
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
 
+        # --- action layer: an event belongs to the node it happened to ----
+        ops = TrikeDB()
+        ops.add("RAW_SPEND", "AFFECTED_BY", "units changed to micros",
+                at="2025-04-01", by="adastra", state="applied")
+        ops.add("RAW_SPEND", "AFFECTED_BY", "backfill sheet superseded",
+                at="2025-07-02", by="data-platform", state="pending-review")
+        ops.add("Baltic states", "EVENTS", "Operation Bagration", at="1944-06-22")
+        ops.add("Operation Bagration", "PART_OF", "WWII")
+        ops.set_node("RAW_SPEND", type="table")
+        actions = Path(root) / "actions.html"
+        ops.to_html(actions)
+        page.goto(actions.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        # the node wears the state the last event left it in
+        assert page.evaluate("currentState('RAW_SPEND')") == "pending-review"
+        assert page.evaluate("eventsOf['RAW_SPEND'].length") == 2
+        assert page.evaluate("timeOf(eventsOf['RAW_SPEND'][0])") == "2025-07-02"  # newest first
+        # a real node that an event points at is still a real node
+        assert page.evaluate("eventNodes.has('Operation Bagration')") is False
+        assert page.evaluate("eventNodes.has('units changed to micros')") is True
+        assert "\u25b8 pending-review" in page.evaluate(
+            "nodes.get(nodeIds.get('RAW_SPEND')).label").lower()
+        # and the history reads off the node, newest first, with its state
+        page.evaluate("showDetail('RAW_SPEND')")
+        detail = page.locator("#detail-body").inner_text()
+        assert "events" in detail.lower()   # the h3 is uppercased by CSS
+        assert "pending-review" in detail and "2025-07-02" in detail
+        assert detail.index("2025-07-02") < detail.index("2025-04-01")
+        assert page.locator("#events .chip").count() == 3
+        assert not errors, errors
+
         attack = TrikeDB()
         payload = '<img src=x onerror=document.documentElement.dataset.reviewInjected=1>'
         script = '</script><script>document.documentElement.dataset.reviewInjected=1</script>'
@@ -66,6 +97,7 @@ def run():
         assert not errors, errors
         browser.close()
         print(json.dumps({"normal_graph": "passed", "sparql": "passed",
+                          "action_layer": "passed",
                           "html_injection_and_special_names": "passed"}))
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import fnmatch
 import json
 import shlex
@@ -41,6 +42,24 @@ def _term(value, field: str, whole=None) -> str:
         shown = f": {whole!r}" if whole is not None else ""
         raise ValueError(f"triple {field} is empty{shown}")
     return str(value)
+
+
+def _plain(value):
+    """YAML scalars json can hold.
+
+    An unquoted ``at: 2025-04-01`` — the natural way to date an event —
+    comes back from PyYAML as a ``datetime.date``, which json refuses.
+    That put a TypeError between a perfectly ordinary graph and
+    ``content_hash()``, ``to_html()`` and every JSON surface downstream.
+    Dates are kept, as the ISO text they were written as.
+    """
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    return value
 
 
 @dataclass
@@ -118,7 +137,7 @@ class Triple:
         _validate_rdf_terms(terms)
         s, p = _term(s, "s", data), _term(p, "p", data)
         o = str(o) if terms.get("o", {}).get("kind") == "literal" and o is not None else _term(o, "o", data)
-        return cls(s, p, o, d, deepcopy(terms))
+        return cls(s, p, o, _plain(d), deepcopy(terms))
 
 
 #: libyaml if PyYAML was built with it, which is the usual case. Four to five
@@ -337,7 +356,7 @@ class TrikeDB:
             for p in preds:
                 self.ontology.setdefault(str(p), "")
         for name, props in (data.get("nodes") or {}).items():
-            self.nodes_meta[str(name)] = dict(props or {})
+            self.nodes_meta[str(name)] = _plain(dict(props or {}))
         for item in data.get("triples") or []:
             self._triples.append(Triple.from_dict(item))
         self._rdf_cache = None

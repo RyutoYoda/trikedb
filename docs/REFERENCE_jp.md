@@ -80,7 +80,8 @@ triples:
 ```
 
 採用を勧める慣習: `prov:`(事実の出典)、`deprecated: true`(破線描画)、
-変更イベントは `AFFECTED_BY` 述語+日付入り自由文のオブジェクトで。
+変更イベントは変えたノードを主語にした `AFFECTED_BY` トリプルで書き、
+`at:`(いつ)・`by:`(誰が)・`state:`(どの状態にしたか)を付ける。
 
 エッジ属性は**SPARQLで引ける**: 属性付きトリプルは標準のRDF具体化
 (reification — `rdf:subject/predicate/object` を持つstatementリソース+属性)
@@ -473,7 +474,10 @@ OAUTH_ISSUER=https://idp.example.com/
   入力中に件数表示、Enter/Shift+Enterでヒット巡回、**text2sparql** ボタンで
   検索語をCONTAINSクエリに変換してコンソールで編集続行
 - ブラウザ内SPARQLコンソール(Oxigraph WASM、初回使用時にCDNからロード)
-- 変更イベントは赤ダイヤ+下部タイムラインバー(`--events AFFECTED_BY` で述語を固定)
+- アクションレイヤー: 時刻属性(`at:`・`when:`・`date:` など)付きのトリプルは
+  主語ノードの変更イベント。ノードのラベルに最新の `state:`、詳細パネルに
+  履歴を新しい順で、下部バーは新しい順のタイムライン。それ自体が実体でない
+  イベント本文は赤ダイヤ(`--events AFFECTED_BY` で述語を固定)
 - ライト/ダーク切替(保存される)、`trikedb check` 用のコンテンツハッシュ埋め込み
 
 ## グラフをどこに置くか

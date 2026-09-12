@@ -502,15 +502,19 @@ triples:
   # 朴素事实用紧凑形式
   - {s: adastra-ads, p: PROVIDES, o: ads-spend-collector}
 
-  # 任何额外的键都会变成边属性
+  # 任何额外的键都会变成边属性 — 而带时间属性(at:, when:, date: ...)的
+  # 三元组会成为发生在它主语上的变更事件
   - s: RAW_AD_SPEND_DAILY
     p: AFFECTED_BY
-    o: "2025-04-01 adastra API v3: spend now in micros (was cents)"
+    o: adastra API v3 — spend now reported in micros (was cents)
+    at: 2025-04-01        # 什么时候发生的
+    by: adastra-ads       # 谁做的
+    state: applied        # 把 RAW_AD_SPEND_DAILY 留在了什么状态
 ```
 
 三个值得借走的惯例（参见 [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)）：
 
-- **把变更事件当作宾语。** 指向带日期的事件字符串的 `AFFECTED_BY` 边给你的图谱一段记忆 — 「这个数字为什么在四月变了？」变成了一个查询。
+- **变更事件挂在它改变的那个节点上。** 带时间属性（`at:` / `when:` / `date:` …）的三元组会被当作发生在*主语*节点上的变更事件，而不是一条飘在外面的备注。HTML 视图把最新那条事件的 `state:` 写在节点标签上，并在详情面板里按时间倒序列出历史（何时、谁、做了什么）。这就是行动层 — 「这张表现在是什么状态、是什么把它变成这样的」可以直接从节点上读出来。不想用自动判定，就用 `--events AFFECTED_BY` 钉死谓词。
 - 边上的 **`deprecated: true`** 会在 HTML 视图里渲染成虚线，并让智能体能过滤掉死路。
 - **`via:` / `schedule:`** 这类属性承载运维细节，而不污染节点集合。
 - **节点属性会一直长。** 这就是 RDF 的承诺：挂上 `type`、`url`、`schema`、负责人 — 你的团队需要什么都行 — 不需要模式迁移。`type` 驱动 HTML 视图里的颜色分组，而节点属性在 SPARQL 里可查询（`?x t:type "table"`）。在代码里用 `db.set_node("RAW_CRM_CONTACTS", pii=True)` 设置它们。
@@ -585,7 +589,7 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 
 **在线演示：** https://ryutoyoda.github.io/trikedb/ · **工作区演示：** https://ryutoyoda.github.io/trikedb/workspace.html
 
-导出的 HTML 是一个小工作台，不只是一张图：点一个节点会打开右侧面板列出它的全部属性（URL 会变成链接），右上角可以搜索节点，打开 **SPARQL 控制台**就能在浏览器里跑真正的 SPARQL 1.1 — 由编译成 WASM 的 [Oxigraph](https://github.com/oxigraph/oxigraph) 驱动，首次使用时从 CDN 加载。变更事件渲染成红色菱形，底部带一条时间轴；初始布局会随图谱形状自适应（`--layout flow|free|auto`）。用节点类型的复选框筛选视图（带**全选 / 全不选**快捷方式）— 类型多起来时图例会横向滚动 — 在工作区里也可以用同样的方式切换成员图谱。
+导出的 HTML 是一个小工作台，不只是一张图：点一个节点会打开右侧面板列出它的全部属性（URL 会变成链接），右上角可以搜索节点，打开 **SPARQL 控制台**就能在浏览器里跑真正的 SPARQL 1.1 — 由编译成 WASM 的 [Oxigraph](https://github.com/oxigraph/oxigraph) 驱动，首次使用时从 CDN 加载。有历史的节点会把当前状态写在标签上，并在详情面板里按时间倒序列出事件（何时、谁、做了什么）；本身不是实体的事件正文渲染成红色菱形，底部那条是倒序时间轴；初始布局会随图谱形状自适应（`--layout flow|free|auto`）。用节点类型的复选框筛选视图（带**全选 / 全不选**快捷方式）— 类型多起来时图例会横向滚动 — 在工作区里也可以用同样的方式切换成员图谱。
 
 ## 基准测试
 

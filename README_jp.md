@@ -502,15 +502,19 @@ triples:
   # 素の事実にはコンパクト形式
   - {s: adastra-ads, p: PROVIDES, o: ads-spend-collector}
 
-  # 余分なキーはエッジ属性になる
+  # 余分なキーはエッジ属性になる — そして時刻属性(at:, when:, date: ...)が
+  # 付いたトリプルは、その主語に起きた変更イベントになる
   - s: RAW_AD_SPEND_DAILY
     p: AFFECTED_BY
-    o: "2025-04-01 adastra API v3: spend now in micros (was cents)"
+    o: adastra API v3 — spend now reported in micros (was cents)
+    at: 2025-04-01        # いつ起きたか
+    by: adastra-ads       # 誰がやったか
+    state: applied        # RAW_AD_SPEND_DAILY をどの状態にしたか
 ```
 
 盗む価値のある慣習が3つ（[`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) を参照）:
 
-- **変更イベントを目的語にする。** 日付入りのイベント文字列を指す `AFFECTED_BY` のエッジは、グラフに記憶を与えます — 「なぜこの数字は4月に変わったのか？」がクエリになります。
+- **変更イベントは、それが変えたノードにぶら下げる。** 時刻属性（`at:` / `when:` / `date:` …）を持つトリプルは、宙に浮いたメモではなく*主語*ノードに起きた変更イベントとして扱われます。HTML ビューは最新イベントの `state:` をノードのラベルに載せ、詳細パネルに履歴（いつ・誰が・何を）を新しい順で並べます。これがアクションレイヤーです — 「このテーブルは今どの状態で、何がそうしたのか」をノードから読み取れます。自動判定させたくなければ `--events AFFECTED_BY` で述語を固定できます。
 - エッジの **`deprecated: true`** は HTML ビューで破線として描画され、エージェントが死んだ経路を除外できるようにします。
 - **`via:` / `schedule:`** 属性は、ノード集合を汚さずに運用上の詳細を運びます。
 - **ノードプロパティは増え続けます。** それが RDF の約束です: `type`、`url`、`schema`、オーナー — チームが必要とするものを何でも — スキーマ移行なしに付けられます。`type` は HTML ビューで色分けを駆動し、ノードプロパティは SPARQL でクエリできます（`?x t:type "table"`）。コードからは `db.set_node("RAW_CRM_CONTACTS", pii=True)` で設定します。
@@ -585,7 +589,7 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 
 **ライブデモ:** https://ryutoyoda.github.io/trikedb/ · **ワークスペースのデモ:** https://ryutoyoda.github.io/trikedb/workspace.html
 
-エクスポートされる HTML は単なる絵ではなく小さなワークベンチです: ノードをクリックすると全プロパティを載せた右パネルが出て（URL はリンクになります）、右上でノードを検索でき、**SPARQL コンソール**を開けばブラウザ内で本物の SPARQL 1.1 を実行できます — WASM にコンパイルされた [Oxigraph](https://github.com/oxigraph/oxigraph) が、初回利用時に CDN から読み込まれます。変更イベントは赤い菱形として描画され、下部にタイムラインバーが付きます。初期レイアウトはグラフの形に適応します（`--layout flow|free|auto`）。ノード型のチェックボックスで表示を絞り込めます（**全選択 / 全解除**のショートカット付き）— 型が増えると凡例は横スクロールします — ワークスペースならメンバーグラフも同じように切り替えられます。
+エクスポートされる HTML は単なる絵ではなく小さなワークベンチです: ノードをクリックすると全プロパティを載せた右パネルが出て（URL はリンクになります）、右上でノードを検索でき、**SPARQL コンソール**を開けばブラウザ内で本物の SPARQL 1.1 を実行できます — WASM にコンパイルされた [Oxigraph](https://github.com/oxigraph/oxigraph) が、初回利用時に CDN から読み込まれます。履歴を持つノードは現在の状態をラベルに表示し、詳細パネルにイベント（いつ・誰が・何を）を新しい順で並べます。それ自体が実体ではないイベント本文は赤い菱形として描画され、下部のバーは新しい順のタイムラインです。初期レイアウトはグラフの形に適応します（`--layout flow|free|auto`）。ノード型のチェックボックスで表示を絞り込めます（**全選択 / 全解除**のショートカット付き）— 型が増えると凡例は横スクロールします — ワークスペースならメンバーグラフも同じように切り替えられます。
 
 ## ベンチマーク
 

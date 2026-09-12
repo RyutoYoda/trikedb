@@ -167,10 +167,89 @@ def test_html_export(db, tmp_path):
 
 def test_html_event_predicates_detected(tmp_path):
     db = TrikeDB()
-    db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")
+    db.add("T", "AFFECTED_BY", "2025-04 API v3: units changed")   # dated object
+    db.add("T2", "REVIEWED", "quarterly access review", at="2025-08-01")  # time attr
     db.add("a", "DEPENDS_ON", "b")
     html = db.to_html()
-    assert "AFFECTED_BY" in _html_value(html, "EVENT_PREDICATES")
+    preds = _html_value(html, "EVENT_PREDICATES")
+    assert "AFFECTED_BY" in preds and "REVIEWED" in preds
+    assert "DEPENDS_ON" not in preds
+
+
+def test_html_wordy_relation_is_not_an_event():
+    """An event is a fact with a time on it, not a fact that is spelled out.
+
+    The rule this replaced — "the object contains whitespace" — made 69 of
+    the 127 predicates in the shipped Freebase demo change events, among
+    them people.person.parents, and redrew 62% of the nodes as diamonds.
+    """
+    db = TrikeDB()
+    db.add("Nikola Tesla", "people.person.parents", "Milutin Tesla")
+    db.add("mdb", "LOADS_FROM", "mysql (asteria 17)")
+    assert _html_value(db.to_html(), "EVENT_PREDICATES") == []
+
+
+def test_html_event_object_that_is_a_node_stays_a_node():
+    """An event's object is only a payload diamond if it is nothing else.
+
+    Regression: every object of an event triple used to be redrawn as a
+    floating diamond, which stripped real entities of their type, label
+    and column — 32 of them in the shipped demo — and stranded them in a
+    row of their own, an event tied to nothing.
+    """
+    db = TrikeDB()
+    db.add("Baltic states", "EVENTS", "Operation Bagration")
+    db.add("Operation Bagration", "PART_OF", "WWII", at="1944-06-22")
+    db.add("RAW_SPEND", "AFFECTED_BY", "units changed to micros", at="2025-04-01")
+    payloads = _html_value(db.to_html(event_predicates=["EVENTS", "AFFECTED_BY"]),
+                           "EVENT_NODES")
+    assert "Operation Bagration" not in payloads   # a node in its own right
+    assert "units changed to micros" in payloads   # free text and nothing else
+
+
+def test_html_event_carries_state_to_the_node_it_happened_to():
+    db = TrikeDB()
+    db.add("proposal-17", "APPROVAL", "sent to the buyer",
+           at="2025-07-02", by="data-platform", state="pending-review")
+    html = db.to_html()
+    row = next(t for t in _html_value(html, "TRIPLES") if t["p"] == "APPROVAL")
+    assert row["state"] == "pending-review" and row["at"] == "2025-07-02"
+    # the events hang off their subject, and the subject wears the state
+    assert "eventsOf[t.s]" in html and "function currentState" not in html
+    assert "const currentState" in html
+
+
+def test_action_layer_is_readable_by_an_agent_not_just_the_html():
+    # The state a node is in has to reach an agent through the ordinary
+    # surfaces — match/get_node hand back attrs, and SPARQL sees them
+    # through the reification. An action layer only the renderer can read
+    # is a picture, not a layer.
+    db = TrikeDB()
+    db.add("RAW_SPEND", "AFFECTED_BY", "backfill superseded by the v3 feed",
+           at="2025-07-02", by="data-platform", state="pending-review")
+    db.add("RAW_SPEND", "AFFECTED_BY", "units changed to micros",
+           at="2025-04-01", by="adastra-ads", state="applied")
+
+    # what match() and get_node() return
+    events = [t.to_dict() for t in db.triples(s="RAW_SPEND", p="AFFECTED_BY")]
+    assert {e["state"] for e in events} == {"pending-review", "applied"}
+    assert all(e["at"] and e["by"] for e in events)
+
+    # what SPARQL sees: newest first, so row one is the current state
+    rows = db.sparql(
+        "SELECT ?node ?when ?state WHERE { ?st rdf:subject ?node ;"
+        " rdf:predicate t:AFFECTED_BY ; t:at ?when ; t:state ?state }"
+        " ORDER BY DESC(?when)"
+    )
+    assert rows[0] == {"node": "RAW_SPEND", "when": "2025-07-02",
+                       "state": "pending-review"}
+
+    # and the question that matters: what is not settled yet?
+    unsettled = db.sparql(
+        'SELECT ?node WHERE { ?st rdf:subject ?node ; t:state ?s .'
+        ' FILTER(?s != "applied") }'
+    )
+    assert unsettled == [{"node": "RAW_SPEND"}]
 
 
 def test_examples_load_and_query():
@@ -599,12 +678,32 @@ def test_mcp_rejects_ontology_violation_and_full_wipe(tmp_path):
         asyncio.run(raw_call("remove_triples", {}))
 
 
+def test_yaml_date_attribute_reaches_every_json_surface(tmp_path):
+    """`at: 2025-04-01` unquoted is a date to PyYAML, and json refuses one.
+
+    Which put a TypeError between an ordinary graph and content_hash(),
+    to_html() and every JSON surface downstream — on the very attribute
+    the event rule is built around.
+    """
+    g = tmp_path / "g.yaml"
+    g.write_text(
+        "nodes:\n  RAW_SPEND: {type: table, added: 2024-11-05}\n"
+        "triples:\n  - {s: RAW_SPEND, p: AFFECTED_BY, o: units changed, at: 2025-04-01}\n"
+    )
+    db = TrikeDB(g)
+    assert db.content_hash()
+    row = next(t for t in _html_value(db.to_html(), "TRIPLES") if t["p"] == "AFFECTED_BY")
+    assert row["at"] == "2025-04-01"                      # ISO text, not a date object
+    assert db.nodes_meta["RAW_SPEND"]["added"] == "2024-11-05"
+    assert _html_value(db.to_html(), "EVENT_PREDICATES") == ["AFFECTED_BY"]
+
+
 def test_html_explicit_event_predicates():
     db = TrikeDB()
     db.add("T", "AFFECTED_BY", "2025-04 API change happened")
     db.add("mdb", "LOADS_FROM", "mysql (asteria 17)")  # free text but NOT an event
     auto = db.to_html()
-    assert "LOADS_FROM" in _html_value(auto, "EVENT_PREDICATES")  # heuristic picks it up
+    assert _html_value(auto, "EVENT_PREDICATES") == ["AFFECTED_BY"]  # dated; the other is not
     explicit = db.to_html(event_predicates=["AFFECTED_BY"])
     block = _html_value(explicit, "EVENT_PREDICATES")
     assert "AFFECTED_BY" in block and "LOADS_FROM" not in block

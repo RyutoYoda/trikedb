@@ -51,13 +51,28 @@ triples:
   - {s: web-events-stream, p: INGESTS_TO, o: RAW_WEB_EVENTS, schedule: streaming}
   - {s: crm-nightly-dump, p: INGESTS_TO, o: LEGACY_CONTACTS_DUMP, deprecated: true}
 
-  # change events — the part most knowledge-graph tools can't express
+  # change events — the action layer. Every event hangs off the node whose
+  # state it changed, and carries when it happened, who did it and what
+  # state it left that node in. So "what is RAW_AD_SPEND_MANUAL's state
+  # right now" is a question the graph answers, not a string you re-read.
   - s: RAW_AD_SPEND_DAILY
     p: AFFECTED_BY
-    o: "2025-04-01 adastra API v3: spend now reported in micros (was cents)"
+    o: adastra API v3 — spend now reported in micros (was cents)
+    at: 2025-04-01
+    by: adastra-ads
+    state: applied
   - s: RAW_CRM_CONTACTS
     p: AFFECTED_BY
-    o: "2025-06-15 email column dropped for privacy compliance"
+    o: email column dropped for privacy compliance
+    at: 2025-06-15
+    by: data-platform
+    state: applied
+  - s: RAW_AD_SPEND_MANUAL
+    p: AFFECTED_BY
+    o: backfill sheet superseded by the adastra v3 feed
+    at: 2025-07-02
+    by: data-platform
+    state: pending-review
 
   # deprecations and gap-filling
   - {s: LEGACY_CONTACTS_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}

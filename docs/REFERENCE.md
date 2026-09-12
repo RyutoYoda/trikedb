@@ -83,8 +83,9 @@ triples:
 ```
 
 Conventions worth adopting: `prov:` (where a fact came from),
-`deprecated: true` (rendered dashed), change events as dated free-text
-objects on an `AFFECTED_BY` predicate.
+`deprecated: true` (rendered dashed), and change events written on the
+node they changed — an `AFFECTED_BY` triple whose subject is that node,
+carrying `at:` (when), `by:` (who) and `state:` (what it left behind).
 
 Edge attributes are **SPARQL-queryable**: every attributed triple is
 also exported as a standard RDF reification (a statement resource with
@@ -498,7 +499,11 @@ in [SCALING.md](SCALING.md).)
   Enter/Shift+Enter cycles hits, and **text2sparql** turns the search into
   an editable CONTAINS query in the console
 - in-browser SPARQL console (Oxigraph WASM, loaded from CDN on demand)
-- change events as red diamonds + a bottom timeline bar
+- the action layer: a triple carrying a time attribute (`at:`, `when:`,
+  `date:`, ...) is a change event on its subject — the node's label shows
+  the latest `state:`, the detail panel the history newest first, the
+  bottom bar a newest-first timeline, and event payloads that are not
+  entities render as red diamonds
   (`--events AFFECTED_BY` to pin which predicates count)
 - light/dark toggle (persisted), content hash embedded for `trikedb check`
 

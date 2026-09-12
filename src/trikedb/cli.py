@@ -115,8 +115,10 @@ def main(argv=None) -> int:
     p_html.add_argument("--title", default=None)
     p_html.add_argument(
         "--events", default=None, metavar="PRED1,PRED2",
-        help="comma-separated predicates to treat as change events "
-             "(default: auto-detect predicates whose objects look like free text)",
+        help="comma-separated predicates to treat as change events, attached "
+             "to the node each one happened to (default: auto-detect — "
+             "predicates whose triples carry a time attribute such as at:/when:, "
+             "or whose objects open with a date)",
     )
     p_html.add_argument(
         "--layout", default="auto", choices=["auto", "flow", "free"],

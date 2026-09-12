@@ -639,15 +639,19 @@ triples:
   # compact form for plain facts
   - {s: adastra-ads, p: PROVIDES, o: ads-spend-collector}
 
-  # any extra keys become edge attributes
+  # any extra keys become edge attributes — and a time attribute (at:, when:,
+  # date: ...) makes the triple a change event on its subject
   - s: RAW_AD_SPEND_DAILY
     p: AFFECTED_BY
-    o: "2025-04-01 adastra API v3: spend now in micros (was cents)"
+    o: adastra API v3 — spend now reported in micros (was cents)
+    at: 2025-04-01        # when it happened
+    by: adastra-ads       # who did it
+    state: applied        # what state it left RAW_AD_SPEND_DAILY in
 ```
 
 Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)):
 
-- **Change events as objects.** `AFFECTED_BY` edges pointing at dated event strings give your graph a memory — "why did this number change in April?" becomes a query.
+- **Change events hang off the node they changed.** A triple carrying a time attribute (`at:`, `when:`, `date:`, ...) is a change event on its *subject*, not a note floating on its own: the HTML view puts the newest event's `state:` on the node's label and lists the history — when, who, what — in the detail panel. That is the action layer: "what state is this table in, and what put it there?" is something you read off the node. Use `--events AFFECTED_BY` to pin the predicates by hand instead of auto-detecting them.
 - **`deprecated: true`** on edges renders them dashed in the HTML view and lets agents filter dead paths.
 - **`via:` / `schedule:`** attributes carry operational detail without polluting the node set.
 - **Node properties keep growing.** That's the RDF promise: attach `type`, `url`, `schema`, owners — whatever your team needs — without a schema migration. `type` drives color grouping in the HTML view, and node properties are queryable in SPARQL (`?x t:type "table"`). Set them from code with `db.set_node("RAW_CRM_CONTACTS", pii=True)`.
@@ -722,7 +726,7 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 **Live demo:** https://ryutoyoda.github.io/trikedb/ · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
 
-The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. Change events render as red diamonds with a timeline bar at the bottom; the initial layout adapts to graph shape (`--layout flow|free|auto`). Filter the view by toggling node-type checkboxes (with **all / none** shortcuts) — the legend slides horizontally when types get numerous — and, in a workspace, toggle member graphs the same way.
+The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. A node with a history wears its current state on its label and lists its events — when, who, what — newest first in the detail panel; event payloads that are not entities in their own right render as red diamonds, and the bottom bar is a newest-first timeline; the initial layout adapts to graph shape (`--layout flow|free|auto`). Filter the view by toggling node-type checkboxes (with **all / none** shortcuts) — the legend slides horizontally when types get numerous — and, in a workspace, toggle member graphs the same way.
 
 ## Benchmark
 

@@ -22,6 +22,30 @@ PALETTE = [
 ]
 
 
+# An event is a fact that happened *at a time*. Anything without one is a
+# plain relation, however wordy its object. The rule this replaces — "the
+# object contains whitespace" — called 69 of the 127 predicates in the
+# shipped Freebase demo change events, among them people.person.parents
+# and book.author.works_written, and redrew 62% of the nodes as red
+# diamonds. A relation is not an event just because it is spelled out.
+TIME_ATTRS = ("at", "when", "date", "time", "timestamp", "occurred", "recorded")
+_LEADING_DATE = re.compile(r"^\d{4}[-/]\d{1,2}")
+
+
+def _is_event(triple) -> bool:
+    """Does this triple record something that happened, and say when?
+
+    Either a time attribute (``at:``/``when:``/... — the action-log form,
+    which can also carry ``by:``, ``state:`` and the rest), or an object
+    that opens with a date (the free-text form the examples have always
+    used: ``o: "2025-04-01 adastra API v3: ..."``).
+    """
+    attrs = getattr(triple, "attrs", None) or {}
+    if any(k in attrs for k in TIME_ATTRS):
+        return True
+    return bool(_LEADING_DATE.match(str(triple.o)))
+
+
 def _levels(triples: list, nodes_meta: dict) -> dict:
     """A column number per node for the hierarchical ("flow") layout.
 
@@ -181,6 +205,17 @@ _TEMPLATE = """<!DOCTYPE html>
           font-size: 11px; white-space: nowrap; cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
   .chip:hover { border-color: #f7784f; }
   .chip b { color: #f7784f; font-weight: 700; margin-right: 6px; }
+  .state { display: inline-block; border: 1px solid #7a4444; border-radius: 7px; padding: 1px 7px;
+           font-size: 10px; color: #f7784f; white-space: nowrap; letter-spacing: .02em;
+           font-family: ui-monospace, Menlo, monospace; }
+  .when { font-size: 10px; color: var(--dim); white-space: nowrap;
+          font-family: ui-monospace, Menlo, monospace; }
+  .chip .when, .chip .state { margin-right: 6px; }
+  .rel.event { border-left: 2px solid #7a4444; }
+  .rel.event .evhead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+  .rel.event .evwhat { font-size: 12px; }
+  body.light .state { border-color: #d89b9b; color: #c73e1d; }
+  body.light .rel.event { border-left-color: #d89b9b; }
   body.light .chip { border-color: #d89b9b; color: #a33a30; }
   body.light .chip b { color: #c73e1d; }
   body.light .chip:hover { border-color: #c73e1d; }
@@ -248,6 +283,7 @@ const NODES_META = Object.assign(Object.create(null), __NODES_META__);
 const NODE_TYPES = Object.assign(Object.create(null), __NODE_TYPES__);
 const NT = __NT__;
 const EVENT_PREDICATES = __EVENT_PREDICATES__;
+const EVENT_NODES = __EVENT_NODES__;      // event objects that are payloads, not nodes
 const GRAPHS = Object.assign(Object.create(null), __GRAPHS__);   // workspace: {graph name: color}; {} otherwise
 const LEVELS = Object.assign(Object.create(null), __LEVELS__);   // computed column per node; a `level` prop overrides
 const BASE = "urn:trikedb:";
@@ -281,7 +317,33 @@ const visualIds = names => names.map(name => nodeIds.get(name));
 const degree = Object.create(null);
 TRIPLES.forEach(t => { degree[t.s] = (degree[t.s] || 0) + 1; degree[t.o] = (degree[t.o] || 0) + 1; });
 const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/\\n$/, "") : id;
-const eventNodes = new Set(TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p)).map(t => t.o));
+// ------------------------------------------------------- action layer
+// An event belongs to the node it happened to: its SUBJECT. That node
+// carries the state, so the state is shown on it and its history hangs
+// off it. The object is either a node in its own right (a named event,
+// a proposal record) or a scrap of free text that exists nowhere else —
+// and only the latter is drawn as a payload diamond. Redrawing every
+// object of an event triple as a diamond, as this used to, stripped 32
+// real entities in the shipped demo of their type, label and column and
+// stranded them in a row of their own: an event tied to nothing.
+const isEventTriple = (t) => EVENT_PREDICATES.includes(t.p);
+const eventTriples = TRIPLES.filter(isEventTriple);
+const eventNodes = new Set(EVENT_NODES);
+
+const TIME_KEYS = ["at", "when", "date", "time", "timestamp", "occurred", "recorded"];
+const STATE_KEYS = ["state", "status"];
+const facet = (t, keys) => { for (const k of keys) if (t[k] !== undefined) return String(t[k]); return ""; };
+const timeOf = (t) => facet(t, TIME_KEYS) ||
+  (String(t.o).match(/^\\d{4}[-/]\\d{1,2}(?:[-/]\\d{1,2})?/) || [""])[0];
+const stateOf = (t) => facet(t, STATE_KEYS);
+const eventsOf = Object.create(null);   // node -> its events, newest first
+eventTriples.forEach(t => (eventsOf[t.s] ??= []).push(t));
+Object.values(eventsOf).forEach(l => l.sort((a, b) => timeOf(b).localeCompare(timeOf(a))));
+// the state of a node is the state the last event left it in
+const currentState = (id) => {
+  for (const t of eventsOf[id] || []) { const s = stateOf(t); if (s) return s; }
+  return "";
+};
 // vis-network requires levels on ALL nodes or NONE, and works them out
 // itself — badly — when given none: one rework edge and a six-step process
 // spread over 53 columns. LEVELS covers every node, and a `level` property
@@ -302,6 +364,12 @@ const nodes = new vis.DataSet(ids.map(id => {
   }
   const meta = NODES_META[id] || {};
   const n = { id: nodeIds.get(id), label: meta.label ? String(meta.label) : wrap(id), value: degree[id] || 1 };
+  const evs = eventsOf[id];
+  if (evs) {   // this node has a history: read its state off the node itself
+    const st = currentState(id);
+    n.label += "\\n\\u25B8 " + (st || evs.length + (evs.length > 1 ? " events" : " event"));
+    n.borderWidth = 3;
+  }
   const tc = NODE_TYPES[meta.type];
   if (tc) n.color = { border: tc, background: "#1e2129",
                       highlight: { border: "#ffffff", background: "#2c4a6e" } };
@@ -585,15 +653,37 @@ function relHTML(t, other, arrow) {
   </div>`;
 }
 
+// An event reads as when / what state it left this node in / what happened,
+// with the rest of the action log (by, input, result) underneath — the point
+// of attaching events to a node is being able to read its state off it.
+function eventHTML(t) {
+  const when = timeOf(t), st = stateOf(t);
+  const skip = ["s", "p", "o", ...TIME_KEYS, ...STATE_KEYS];
+  const attrs = Object.entries(t).filter(([k]) => !skip.includes(k));
+  return `<div class="rel event">
+    <div class="evhead">
+      ${when ? `<span class="when">${esc(when)}</span>` : ""}
+      ${st ? `<span class="state">${esc(st)}</span>` : ""}
+      <span class="pred" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
+    </div>
+    <div class="evwhat">${ids.includes(t.o) ? `<a class="nodelink" data-node="${esc(t.o)}">${esc(t.o)}</a>` : linkify(t.o)}</div>
+    ${attrs.map(([k, v]) => `<div class="attr">${esc(k)}: ${linkify(v)}</div>`).join("")}
+  </div>`;
+}
+
 function showDetail(id) {
   const meta = NODES_META[id] || {};
-  const out = TRIPLES.filter(t => t.s === id);
+  const evs = eventsOf[id] || [];
+  const out = TRIPLES.filter(t => t.s === id && !isEventTriple(t));
   const inc = TRIPLES.filter(t => t.o === id);
   let html = `<h2>${esc(id)}</h2>`;
   if (meta.type) html += `<span class="pred" style="background:${NODE_TYPES[meta.type] || "#5a83b8"}">${esc(meta.type)}</span>`;
+  const st = currentState(id);
+  if (st) html += `<span class="state">${esc(st)}</span>`;
   const props = Object.entries(meta).filter(([k]) => k !== "type");
   if (props.length) html += "<h3>properties</h3>" + props.map(([k, v]) =>
     `<div class="rel"><div class="attr">${esc(k)}: ${linkify(v)}</div></div>`).join("");
+  if (evs.length) html += `<h3>events &middot; ${evs.length}</h3>` + evs.map(eventHTML).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
   document.getElementById("detail-body").innerHTML = html;
@@ -618,13 +708,20 @@ function focusNode(id) {
 }
 
 // ----------------------------------------------------------- events bar
+// Newest first, and every chip names the node the event belongs to — the
+// bar is the same action log the detail panel shows, read across the graph.
 const eventsBar = document.getElementById("events");
-const eventTriples = TRIPLES.filter(t => EVENT_PREDICATES.includes(t.p));
-if (!eventTriples.length) eventsBar.style.display = "none";
-eventTriples.forEach(t => {
+const timeline = eventTriples.slice().sort((a, b) => timeOf(b).localeCompare(timeOf(a)));
+if (!timeline.length) eventsBar.style.display = "none";
+timeline.forEach(t => {
   const chip = document.createElement("span");
   chip.className = "chip";
-  chip.innerHTML = `<b>${esc(t.s)}</b>${esc(t.o.length > 70 ? t.o.slice(0, 70) + "\\u2026" : t.o)}`;
+  const when = timeOf(t), st = stateOf(t);
+  chip.innerHTML = `<b>${esc(t.s)}</b>`
+    + (when ? `<span class="when">${esc(when)}</span>` : "")
+    + (st ? `<span class="state">${esc(st)}</span>` : "")
+    + esc(t.o.length > 70 ? t.o.slice(0, 70) + "\\u2026" : t.o);
+  chip.title = t.p;
   chip.onclick = () => focusNode(t.s);
   eventsBar.appendChild(chip);
 });
@@ -692,10 +789,13 @@ def to_html(
 ) -> str:
     """Render the graph to a single-file interactive HTML workbench (CDN dependencies).
 
-    event_predicates: which predicates represent change events (red
-    diamonds + bottom timeline bar). None uses a heuristic — predicates
-    whose objects contain whitespace, i.e. look like free text rather
-    than node names. Pass an explicit list (or []) to override it.
+    event_predicates: which predicates carry change events. An event is
+    attached to its subject — the node whose state it changed — which
+    gets the event's latest `state:` on its label and the full history
+    in the detail panel; the bottom bar is the same events as a timeline.
+    None detects them: a predicate is an event predicate when its triples
+    carry a time attribute (`at:`, `when:`, `date:`, ...) or their object
+    opens with a date. Pass an explicit list (or []) to override it.
 
     layout: initial layout — "flow" (hierarchical left-to-right, best
     for pipeline-shaped graphs), "free" (force-directed, best for dense
@@ -712,9 +812,15 @@ def to_html(
     nt = db.to_rdflib().serialize(format="nt")
 
     if event_predicates is None:
-        event_preds = sorted({t.p for t in db if any(c.isspace() for c in t.o)})
+        event_preds = sorted({t.p for t in db if _is_event(t)})
     else:
         event_preds = sorted({str(p) for p in event_predicates})
+
+    # Which objects of an event triple are payloads rather than nodes in
+    # their own right. A name the graph says anything else about — node
+    # properties, or an outgoing edge — is an entity, and stays one.
+    entity_ids = {t.s for t in db} | set(nodes_meta)
+    event_nodes = sorted({t.o for t in db if t.p in set(event_preds)} - entity_ids)
 
     graph_names = sorted({t.attrs.get("graph") for t in db if t.attrs.get("graph")})
     graph_colors = {g: PALETTE[(i + 3) % len(PALETTE)] for i, g in enumerate(graph_names)}
@@ -733,9 +839,15 @@ def to_html(
     def json_safe(value):
         # YAML permits nonfinite numbers; JSON.parse does not. Display their
         # spelling as text instead of letting one property break the page.
+        import datetime
         import math
         if isinstance(value, float) and not math.isfinite(value):
             return str(value)
+        # YAML also parses an unquoted 2025-04-01 into a date, and json
+        # cannot serialise one — which is to say the most natural way to
+        # write `at:` used to raise TypeError instead of rendering a page.
+        if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+            return value.isoformat()
         if isinstance(value, dict):
             return {k: json_safe(v) for k, v in value.items()}
         if isinstance(value, (list, tuple)):
@@ -756,6 +868,7 @@ def to_html(
         "TRIPLES": script_json(triples), "PREDICATES": script_json(colors),
         "NODES_META": script_json(nodes_meta), "NODE_TYPES": script_json(type_colors),
         "NT": script_json(nt), "EVENT_PREDICATES": script_json(event_preds),
+        "EVENT_NODES": script_json(event_nodes),
         "GRAPHS": script_json(graph_colors),
         "LEVELS": script_json(_levels(triples, nodes_meta)),
         "FLOW_DEFAULT": "true" if flow_default else "false",
