@@ -793,6 +793,30 @@ def test_an_object_valued_attribute_never_renders_as_object_object():
     assert any(t.get("attrs") == {} for t in _html_value(html, "TRIPLES"))   # the value survives
 
 
+def test_events_are_drawn_between_the_objects_not_in_a_corner():
+    """An action happened between two objects, so the page draws it on the
+    line between them — its date and the state it left behind, in the action
+    colour. It used to be filed in a strip pinned across the bottom, where
+    the events looked like a ticker belonging to nothing. The whole log is
+    still readable in time order, but from a button now, not a fixture."""
+    db = TrikeDB(autosave=False)
+    db.add("RAW_SPEND", "AFFECTED_BY", "units changed to micros",
+           at="2025-04-01", by="adastra", state="applied")
+    db.add("RAW_SPEND", "FEEDS", "MART_SPEND")
+    html = db.to_html()
+    # the event is a line in the graph that says when and what it left behind
+    assert "if (isEventTriple(t)) {" in html
+    assert 'const said = [when, st ? "\\u25B8 " + st : ""]' in html
+    assert 'const EVENT_EDGE_FONT = { dark: "#f7784f", light: "#b3261e" };' in html
+    # clicking a line answers for its subject — it used to do nothing at all
+    assert "if (params.edges.length) {" in html
+    # and the strip is gone: the log opens from the header instead
+    assert '<div id="events">' not in html
+    assert 'id="btn-events"' in html
+    assert "function showTimeline()" in html
+    assert "#graph { position: fixed; inset: 52px 0 0 0; }" in html
+
+
 def test_edge_labels_are_legible_on_a_hub():
     """Every edge label is drawn at the middle of its line, so a hub's fan
     of edges piles a dozen predicates into one spot and the demo page read
@@ -806,7 +830,7 @@ def test_edge_labels_are_legible_on_a_hub():
     # the lanes are gated on size: a small graph has no crowd to untangle,
     # and a label nudged off its own line for no reason is worse than none
     assert "const spreadLabels = TRIPLES.length > 150" in html
-    assert "e.font = { vadjust: LANES[k % LANES.length] }" in html
+    assert "font.vadjust = LANES[k % LANES.length];" in html
     assert "const hub = (degree[t.s] || 0) >= (degree[t.o] || 0) ? t.s : t.o;" in html
 
 

@@ -108,8 +108,17 @@ triples:
     by: data-platform
     state: rolled-back
 
-  # deprecations and gap-filling
-  - {s: LEGACY_CONTACTS_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}
+  # deprecations and gap-filling. The migration is an action that happened
+  # between two objects, so it is dated like one: the line between the old
+  # table and its replacement is where you read when it happened and what
+  # it left behind — not a note filed somewhere off to the side.
+  - s: LEGACY_CONTACTS_DUMP
+    p: MIGRATED_TO
+    o: RAW_CRM_CONTACTS
+    at: 2025-05-20
+    by: data-platform
+    state: migrated
+    deprecated: true
   - s: RAW_AD_SPEND_MANUAL
     p: SUPPLEMENTS
     o: RAW_AD_SPEND_DAILY

@@ -3,9 +3,10 @@
 The exported page is a small single-file "workbench" over the graph:
 a searchable network view, a right-hand detail panel showing every
 property of the clicked node (URLs become links — this is the RDF
-promise: keep attaching facts as properties), a bottom bar of change
-events, and a SPARQL console powered by Oxigraph compiled to WASM
-(loaded from CDN on first use, never hand-rolled).
+promise: keep attaching facts as properties), change events drawn on
+the line between the two objects they happened between, and a SPARQL
+console powered by Oxigraph compiled to WASM (loaded from CDN on first
+use, never hand-rolled).
 """
 
 from __future__ import annotations
@@ -130,7 +131,7 @@ _TEMPLATE = """<!DOCTYPE html>
   :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa; }
   body.light { --bg: #f4f5f8; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
-  #graph { position: fixed; inset: 52px 0 46px 0; }
+  #graph { position: fixed; inset: 52px 0 0 0; }
 
   #header { position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
             display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box;
@@ -179,7 +180,7 @@ _TEMPLATE = """<!DOCTYPE html>
   #results th { color: #7aa3d8; }
   #results .err { color: #f7784f; font-size: 12px; white-space: pre-wrap; }
 
-  #detail { position: fixed; top: 52px; right: 0; bottom: 46px; width: 330px; z-index: 18;
+  #detail { position: fixed; top: 52px; right: 0; bottom: 0; width: 330px; z-index: 18;
             background: var(--panel); border-left: 1px solid var(--border); padding: 14px 16px;
             box-sizing: border-box; overflow-y: auto; display: none; }
   #detail.open { display: block; }
@@ -198,28 +199,20 @@ _TEMPLATE = """<!DOCTYPE html>
   a.nodelink { color: var(--text); cursor: pointer; text-decoration: underline dotted; }
   .deprecated { opacity: .55; }
 
-  #events { position: fixed; bottom: 0; left: 0; right: 0; height: 46px; z-index: 20;
-            display: flex; gap: 8px; align-items: center; padding: 0 14px; box-sizing: border-box;
-            background: var(--panel); border-top: 1px solid var(--border); overflow-x: auto; }
-  #events .tag { font-size: 11px; color: var(--dim); white-space: nowrap; }
-  .chip { border: 1px solid #7a4444; color: #f0a0a0; border-radius: 7px; padding: 4px 9px;
-          font-size: 11px; white-space: nowrap; cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
-  .chip:hover { border-color: #f7784f; }
-  .chip b { color: #f7784f; font-weight: 700; margin-right: 6px; }
   .state { display: inline-block; border: 1px solid #7a4444; border-radius: 7px; padding: 1px 7px;
            font-size: 10px; color: #f7784f; white-space: nowrap; letter-spacing: .02em;
            font-family: ui-monospace, Menlo, monospace; }
   .when { font-size: 10px; color: var(--dim); white-space: nowrap;
           font-family: ui-monospace, Menlo, monospace; }
-  .chip .when, .chip .state { margin-right: 6px; }
   .rel.event { border-left: 2px solid #7a4444; }
+  .rel.event[data-node] { cursor: pointer; }
+  .rel.event[data-node]:hover { border-color: #f7784f; }
+  .rel.event .evhead .nodelink { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
   .rel.event .evhead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
   .rel.event .evwhat { font-size: 12px; }
   body.light .state { border-color: #d89b9b; color: #c73e1d; }
   body.light .rel.event { border-left-color: #d89b9b; }
-  body.light .chip { border-color: #d89b9b; color: #a33a30; }
-  body.light .chip b { color: #c73e1d; }
-  body.light .chip:hover { border-color: #c73e1d; }
+  body.light .rel.event[data-node]:hover { border-color: #c73e1d; }
 </style>
 </head>
 <body>
@@ -232,6 +225,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <input id="search" placeholder="search nodes...">
   <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
   <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
+  <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
@@ -256,10 +250,6 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div id="graph"></div>
-
-<div id="events">
-  <span class="tag">&#x26A0; events</span>
-</div>
 
 <script>
 const show = (v) => (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
@@ -329,6 +319,9 @@ const wrap = (id) => id.length > 14 ? id.replace(/([_\\-])/g, "$1\\n").replace(/
 // stranded them in a row of their own: an event tied to nothing.
 const isEventTriple = (t) => EVENT_PREDICATES.includes(t.p);
 const eventTriples = TRIPLES.filter(isEventTriple);
+// What an action is written in, on both grounds. Set on the edge itself,
+// so the theme's default edge colour does not swallow it.
+const EVENT_EDGE_FONT = { dark: "#f7784f", light: "#b3261e" };
 const eventNodes = new Set(EVENT_NODES);
 
 const TIME_KEYS = ["at", "when", "date", "time", "timestamp", "occurred", "recorded"];
@@ -408,14 +401,30 @@ const nodes = new vis.DataSet(ids.map(id => {
 const spreadLabels = TRIPLES.length > 150;
 const LANES = [0, -11, 11, -22, 22, -33, 33];
 const laneCount = Object.create(null);
+const eventEdgeIds = [];
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: nodeIds.get(t.s), to: nodeIds.get(t.o), label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
+  const font = {};
   if (spreadLabels) {
     const hub = (degree[t.s] || 0) >= (degree[t.o] || 0) ? t.s : t.o;
     const k = (laneCount[hub] = (laneCount[hub] || 0) + 1) - 1;
-    e.font = { vadjust: LANES[k % LANES.length] };
+    font.vadjust = LANES[k % LANES.length];
   }
+  // An action happens BETWEEN two objects, so that is where it is drawn:
+  // on the line, in its own colour, reading when it happened and what
+  // state it left behind. Filed away in a strip along the bottom instead,
+  // an event stops being part of the graph and becomes a ticker that
+  // looks like it belongs to nothing — which is exactly how it read.
+  if (isEventTriple(t)) {
+    const when = timeOf(t), st = stateOf(t);
+    const said = [when, st ? "\\u25B8 " + st : ""].filter(Boolean).join("  ");
+    if (said) e.label = said;
+    e.width = 2;
+    font.color = EVENT_EDGE_FONT.dark;
+    eventEdgeIds.push(i);
+  }
+  if (Object.keys(font).length) e.font = font;
   // the predicate leads the tooltip too: on a busy canvas the label a line
   // belongs to is not always the one nearest the cursor
   const lines = [t.p];
@@ -594,6 +603,13 @@ function applyTheme(name, persist = true) {
   network.unselectAll();
   network.setOptions({ nodes: { font: { color: th.font } },
                        edges: { font: { color: th.edgeFont, background: th.bg } } });
+  // An event edge carries its own font colour, so the options above do not
+  // reach it. Merge rather than replace — the lane (vadjust) lives there too.
+  if (eventEdgeIds.length) edges.update(eventEdgeIds.map(id => {
+    const f = Object.assign({}, edges.get(id).font);
+    f.color = EVENT_EDGE_FONT[name];
+    return { id, font: f };
+  }));
   nodes.update(nodes.get().map(n => {
     const ev = n.shape === "diamond";
     const c = n.color || {};
@@ -733,11 +749,19 @@ document.getElementById("btn-close").onclick = () => {
   document.body.classList.remove("detail-open");
 };
 document.getElementById("detail").addEventListener("click", (e) => {
-  const n = e.target.closest("a.nodelink");
+  const n = e.target.closest("a.nodelink") || e.target.closest(".rel.event[data-node]");
   if (n) focusNode(n.dataset.node);
 });
+// Clicking a line used to do nothing, which on a page where every line is
+// a fact is a dead end. An edge answers for its subject — the node the
+// relation hangs off, and for an event the node the event happened to, so
+// the panel that opens has the rest of that node's history in it.
 network.on("click", (params) => {
-  if (params.nodes.length) showDetail(ids[params.nodes[0]]);
+  if (params.nodes.length) { showDetail(ids[params.nodes[0]]); return; }
+  if (params.edges.length) {
+    const t = TRIPLES[params.edges[0]];
+    if (t) focusNode(t.s);
+  }
 });
 function focusNode(id) {
   network.selectNodes(visualIds([id]));
@@ -745,24 +769,34 @@ function focusNode(id) {
   showDetail(id);
 }
 
-// ----------------------------------------------------------- events bar
-// Newest first, and every chip names the node the event belongs to — the
-// bar is the same action log the detail panel shows, read across the graph.
-const eventsBar = document.getElementById("events");
+// ------------------------------------------------------- the action log
+// The events themselves live in the graph, on the line between the two
+// objects. This is the same log read across every node at once, in time
+// order — something you open when you want it, not a strip pinned across
+// the bottom where the events look detached from everything they touch.
 const timeline = eventTriples.slice().sort(byTime);
-if (!timeline.length) eventsBar.style.display = "none";
-timeline.forEach(t => {
-  const chip = document.createElement("span");
-  chip.className = "chip";
+const btnEvents = document.getElementById("btn-events");
+if (!timeline.length) btnEvents.style.display = "none";
+else btnEvents.textContent = "events \\u00b7 " + timeline.length;
+function timelineHTML(t) {
   const when = timeOf(t), st = stateOf(t);
-  chip.innerHTML = `<b>${esc(t.s)}</b>`
-    + (when ? `<span class="when">${esc(when)}</span>` : "")
-    + (st ? `<span class="state">${esc(st)}</span>` : "")
-    + esc(t.o.length > 70 ? t.o.slice(0, 70) + "\\u2026" : t.o);
-  chip.title = t.p;
-  chip.onclick = () => focusNode(t.s);
-  eventsBar.appendChild(chip);
-});
+  return `<div class="rel event" data-node="${esc(t.s)}">
+    <div class="evhead">
+      ${when ? `<span class="when">${esc(when)}</span>` : ""}
+      ${st ? `<span class="state">${esc(st)}</span>` : ""}
+      <a class="nodelink" data-node="${esc(t.s)}">${esc(t.s)}</a>
+    </div>
+    <div class="evwhat">${esc(t.o.length > 90 ? t.o.slice(0, 90) + "\\u2026" : t.o)}</div>
+  </div>`;
+}
+function showTimeline() {
+  document.getElementById("detail-body").innerHTML =
+    `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
+    + timeline.map(timelineHTML).join("");
+  document.getElementById("detail").classList.add("open");
+  document.body.classList.add("detail-open");
+}
+btnEvents.onclick = showTimeline;
 
 // ------------------------------------------------------- SPARQL console
 document.getElementById("btn-sparql").onclick = (e) => {
@@ -830,7 +864,10 @@ def to_html(
     event_predicates: which predicates carry change events. An event is
     attached to its subject — the node whose state it changed — which
     gets the event's latest `state:` on its label and the full history
-    in the detail panel; the bottom bar is the same events as a timeline.
+    in the detail panel. The event itself is drawn where it happened:
+    on the line between the two objects, in the action colour, labelled
+    with its date and the state it left behind. The `events` button in
+    the header reads the same log across every node in time order.
     None detects them: a predicate is an event predicate when its triples
     carry a time attribute (`at:`, `when:`, `date:`, ...) or their object
     opens with a date. Pass an explicit list (or []) to override it.

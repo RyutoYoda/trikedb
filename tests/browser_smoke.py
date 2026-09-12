@@ -62,7 +62,21 @@ def run():
         assert "events" in detail.lower()   # the h3 is uppercased by CSS
         assert "pending-review" in detail and "2025-07-02" in detail
         assert detail.index("2025-07-02") < detail.index("2025-04-01")
-        assert page.locator("#events .chip").count() == 3
+        # the event is drawn on the LINE between the two objects: its label
+        # is the date and the state it left behind, not the predicate name
+        ev = page.evaluate(
+            "edges.get(TRIPLES.findIndex(t => t.o === 'backfill sheet superseded'))")
+        assert ev["label"] == "2025-07-02  \u25b8 pending-review"
+        assert ev["font"]["color"] == "#f7784f"
+        assert page.evaluate("eventEdgeIds.length") == 3
+        # clicking a line opens the node it hangs off — it used to do nothing
+        page.evaluate("network.selectEdges([0]); focusNode(TRIPLES[0].s)")
+        assert page.locator("#detail").is_visible()
+        # and the whole log reads in time order from the header button
+        page.click("#btn-events")
+        log = page.locator("#detail-body").inner_text()
+        assert "action log" in log and "3 events" in log.lower()  # the h3 is uppercased by CSS
+        assert log.index("2025-07-02") < log.index("2025-04-01")
         assert not errors, errors
 
         # --- which event is "the latest" when the dates do not settle it --

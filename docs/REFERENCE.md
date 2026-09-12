@@ -530,9 +530,12 @@ in [SCALING.md](SCALING.md).)
 - in-browser SPARQL console (Oxigraph WASM, loaded from CDN on demand)
 - the action layer: a triple carrying a time attribute (`at:`, `when:`,
   `date:`, ...) is a change event on its subject — the node's label shows
-  the latest `state:`, the detail panel the history newest first, the
-  bottom bar a newest-first timeline, and event payloads that are not
-  entities render as red diamonds
+  the latest `state:` and the detail panel the history newest first. The
+  event is drawn where it happened: **on the line between the two
+  objects**, in the action colour, labelled with its date and the state
+  it left behind. Clicking any line opens the node it hangs off, and the
+  `events` button in the header reads the whole log across the graph in
+  time order. Event payloads that are not entities render as red diamonds
   (`--events AFFECTED_BY` to pin which predicates count)
 - light/dark toggle (persisted), content hash embedded for `trikedb check`
 
