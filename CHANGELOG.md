@@ -3,6 +3,40 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.38.1
+
+Events are drawn where they happened.
+
+- **An action happens *between* two objects, so that is where the page
+  draws it.** The event edge now reads as the action it is — its own
+  colour on the line, labelled with when it happened and the state it
+  left behind (`2025-04-01 ▸ applied`) instead of the predicate name.
+  A predicate pinned with `--events` that carries neither still falls
+  back to its name.
+- **The bottom bar is gone.** Change events used to be chips in a 46px
+  strip pinned across the bottom of the window, which made them look
+  like a ticker attached to nothing — the one thing an action layer
+  must not look like. The whole log still reads in time order, from an
+  `events · N` button in the header; the count is also how you can tell
+  at a glance whether a graph has an action layer at all. The canvas
+  and the detail panel get those 46px back.
+- **Clicking a line opens the node it hangs off.** Edge clicks did
+  nothing before, which on a page where every line is a fact is a dead
+  end. For an event that means the panel that opens already has the
+  rest of that node's history in it.
+- **Edge labels are legible on a hub.** A label is drawn at the middle
+  of its line, so a hub's fan wrote a dozen predicates in the same spot
+  and the demo page read `lotiationlolationtivets`. Labels now sit on an
+  opaque plate, and above 150 triples each edge of a hub gets its own
+  vertical lane. Small graphs are left alone — a label nudged off its
+  own line for no reason is worse than none.
+- `examples/acme_pipeline.yaml` is a real action log now: eight dated
+  events across five nodes, each with who did it and the state it left,
+  two nodes carrying more than one so `history()` reads as a history,
+  and a dated `MIGRATED_TO` so the demo contains the plain shape —
+  object, action, object. It ships as a third demo page,
+  [pipeline.html](https://ryutoyoda.github.io/trikedb/pipeline.html).
+
 ## 0.38.0
 
 An action layer you can run, and a declaration that is actually enforced.
