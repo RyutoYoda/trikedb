@@ -24,6 +24,7 @@
 <p align="center">
   <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 在线演示</a></b> — 600 条真实的 Freebase 事实，可以点击浏览，也能在浏览器里跑 SPARQL
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">工作区演示</a> — 同一批事实拆成 6 个领域图谱，平铺展示并可筛选
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">流水线演示</a> — 带动作日志的数据平台：每张表都写着自己当前的状态
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -616,7 +617,7 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式的谓词，没有本体。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — 可运行的 notebook 快速上手，图谱内联在里面。
 
-**在线演示：** https://ryutoyoda.github.io/trikedb/ · **工作区演示：** https://ryutoyoda.github.io/trikedb/workspace.html
+**在线演示：** https://ryutoyoda.github.io/trikedb/ · **工作区演示：** https://ryutoyoda.github.io/trikedb/workspace.html · **流水线演示：** https://ryutoyoda.github.io/trikedb/pipeline.html（动作层 —— 带日期、执行者和状态的事件）
 
 导出的 HTML 是一个小工作台，不只是一张图：点一个节点会打开右侧面板列出它的全部属性（URL 会变成链接），右上角可以搜索节点，打开 **SPARQL 控制台**就能在浏览器里跑真正的 SPARQL 1.1 — 由编译成 WASM 的 [Oxigraph](https://github.com/oxigraph/oxigraph) 驱动，首次使用时从 CDN 加载。有历史的节点会把当前状态写在标签上，并在详情面板里按时间倒序列出事件（何时、谁、做了什么）；本身不是实体的事件正文渲染成红色菱形，底部那条是倒序时间轴；初始布局会随图谱形状自适应（`--layout flow|free|auto`）。用节点类型的复选框筛选视图（带**全选 / 全不选**快捷方式）— 类型多起来时图例会横向滚动 — 在工作区里也可以用同样的方式切换成员图谱。
 

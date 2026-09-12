@@ -399,9 +399,23 @@ const nodes = new vis.DataSet(ids.map(id => {
   }
   return n;
 }));
+// A hub's edges all start at the same point, so their midpoints — where the
+// label goes — land on top of each other and a dozen predicates pile into
+// one unreadable smear. Hand each edge of a hub a different lane so the fan
+// reads as a list. A node with one or two edges keeps lane 0, on the line
+// where the label belongs; only a crowd gets spread out. Small graphs have
+// no crowd, so they are left alone entirely.
+const spreadLabels = TRIPLES.length > 150;
+const LANES = [0, -11, 11, -22, 22, -33, 33];
+const laneCount = Object.create(null);
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: nodeIds.get(t.s), to: nodeIds.get(t.o), label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
+  if (spreadLabels) {
+    const hub = (degree[t.s] || 0) >= (degree[t.o] || 0) ? t.s : t.o;
+    const k = (laneCount[hub] = (laneCount[hub] || 0) + 1) - 1;
+    e.font = { vadjust: LANES[k % LANES.length] };
+  }
   // the predicate leads the tooltip too: on a busy canvas the label a line
   // belongs to is not always the one nearest the cursor
   const lines = [t.p];
@@ -439,7 +453,13 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
-  edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0 },
+  // A label is drawn at the middle of its line, so on a hub every edge
+  // of the same length puts its text in the same place and what you read
+  // is several predicates written on top of each other. An opaque plate
+  // behind the text means the top one stays a word instead of becoming
+  // a smear — and six identical labels stacked just look like one.
+  edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0,
+                                 background: "#14161b" },
            smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
   interaction: { hover: true },
 });
@@ -561,9 +581,9 @@ if (gnames.length > 0) {
 
 // ---------------------------------------------------------- theme toggle
 const THEMES = {
-  dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e",
+  dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e", bg: "#14161b",
            hlBorder: "#ffffff", edgeHl: "#ffffff", evFont: "#f0a0a0", evBg: "#3a1f1f" },
-  light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7",
+  light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7", bg: "#f4f5f8",
            hlBorder: "#5a83b8", edgeHl: "#1b1e26", evFont: "#b3261e", evBg: "#fdeaea" },
 };
 function applyTheme(name, persist = true) {
@@ -573,7 +593,7 @@ function applyTheme(name, persist = true) {
   const sel = network.getSelection();
   network.unselectAll();
   network.setOptions({ nodes: { font: { color: th.font } },
-                       edges: { font: { color: th.edgeFont } } });
+                       edges: { font: { color: th.edgeFont, background: th.bg } } });
   nodes.update(nodes.get().map(n => {
     const ev = n.shape === "diamond";
     const c = n.color || {};

@@ -16,6 +16,8 @@ ontology:
     INGESTS_TO: {description: "ingestion job -> warehouse table", domain: job, range: table}
     # the object of a change event is prose, so only the subject has a type
     AFFECTED_BY: {description: "warehouse table -> change event", domain: table}
+    # an action on a job, not a table — a declared shape keeps the two apart
+    RESTARTED: {description: "ingestion job -> what an operator did to it", domain: job}
     SUPPLEMENTS: {description: "table -> table it fills gaps for", domain: table, range: table}
     MIGRATED_TO: {description: "deprecated table -> its replacement", domain: table, range: table}
 
@@ -78,6 +80,33 @@ triples:
     at: 2025-07-02
     by: data-platform
     state: pending-review
+  # a second event on a table that already had one: the node keeps both and
+  # wears the newer one's state, so the history is readable and the answer
+  # to "where does this stand" is still one value
+  - s: RAW_AD_SPEND_DAILY
+    p: AFFECTED_BY
+    o: micros conversion applied to the 2024 backfill as well
+    at: 2025-08-11
+    by: data-platform
+    state: applied
+  - s: RAW_CRM_CONTACTS
+    p: AFFECTED_BY
+    o: salesflow v2 renamed company_id to account_id
+    at: 2025-08-28
+    by: salesflow-crm
+    state: pending-review
+  - s: crm-sync-job
+    p: RESTARTED
+    o: hourly run wedged on a v2 pagination cursor
+    at: 2025-09-02T09:14:00+09:00
+    by: on-call
+    state: running
+  - s: RAW_WEB_EVENTS
+    p: AFFECTED_BY
+    o: session_id backfill reverted — it double-counted returning visitors
+    at: 2025-09-05
+    by: data-platform
+    state: rolled-back
 
   # deprecations and gap-filling
   - {s: LEGACY_CONTACTS_DUMP, p: MIGRATED_TO, o: RAW_CRM_CONTACTS, deprecated: true}

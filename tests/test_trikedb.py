@@ -439,9 +439,21 @@ def test_examples_load_and_query():
 
     examples = Path(__file__).resolve().parent.parent / "examples"
     acme = TrikeDB(examples / "acme_pipeline.yaml")
-    assert len(acme.ontology) == 5
+    assert set(acme.ontology) == {"PROVIDES", "INGESTS_TO", "AFFECTED_BY",
+                                  "RESTARTED", "SUPPLEMENTS", "MIGRATED_TO"}
     rows = acme.query(["?v PROVIDES ?j", "?j INGESTS_TO ?t"])
     assert {"v": "salesflow-crm", "j": "crm-sync-job", "t": "RAW_CRM_CONTACTS"} in rows
+    # the shipped example is what a visitor judges the action layer by, so it
+    # has to actually have one: dated events, and a node that carries more
+    # than one so its history reads as a history
+    events = [t for t in acme if t.when()]
+    assert len(events) >= 5
+    assert all(t.attrs.get("by") and t.attrs.get("state") for t in events)
+    assert len(acme.history("RAW_CRM_CONTACTS")) == 2
+    assert acme.state("RAW_CRM_CONTACTS") == "pending-review"
+    # and the declared shapes are enforced, which is what they are for
+    with pytest.raises(OntologyError):
+        acme.add("RAW_CRM_CONTACTS", "RESTARTED", "a table cannot be restarted")
 
     eco = TrikeDB(examples / "python_ecosystem.yaml")
     assert eco.ontology == {}
@@ -779,6 +791,23 @@ def test_an_object_valued_attribute_never_renders_as_object_object():
     html = db.to_html()
     assert "JSON.stringify" in html          # the guard is in the page
     assert any(t.get("attrs") == {} for t in _html_value(html, "TRIPLES"))   # the value survives
+
+
+def test_edge_labels_are_legible_on_a_hub():
+    """Every edge label is drawn at the middle of its line, so a hub's fan
+    of edges piles a dozen predicates into one spot and the demo page read
+    `lotiationlolationtivets`. Two things stop that: an opaque plate behind
+    the text, and a different vertical lane per edge of the same hub."""
+    db = TrikeDB(autosave=False)
+    db.add("a", "P", "b")
+    html = db.to_html()
+    assert 'background: "#14161b"' in html     # the plate, dark
+    assert "background: th.bg" in html         # and it follows the theme
+    # the lanes are gated on size: a small graph has no crowd to untangle,
+    # and a label nudged off its own line for no reason is worse than none
+    assert "const spreadLabels = TRIPLES.length > 150" in html
+    assert "e.font = { vadjust: LANES[k % LANES.length] }" in html
+    assert "const hub = (degree[t.s] || 0) >= (degree[t.o] || 0) ? t.s : t.o;" in html
 
 
 def test_nodes_carry_no_scaling_option():
