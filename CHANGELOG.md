@@ -3,6 +3,31 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.1
+
+Two demos of the same 614 facts, and only one of them showed anything the
+other did not.
+
+- **`/freebase.html` is gone; `/workspace.html` renders those facts.** The
+  page was one release old — 0.39.0 moved the old front page there — and it
+  drew exactly what `/workspace.html` draws, minus the six member-graph
+  filter chips. Two URLs for one dataset is a choice the reader has to make
+  before they know enough to make it. `examples/freebase_sample.yaml`
+  stays: a flat file of undeclared, undated third-party data is worth
+  keeping next to the declared graph, whether or not it is also a page.
+  The READMEs, in all three languages, point their demo links and the
+  screenshot at `/workspace.html` now.
+- **CI checks the pipeline demo now.** `docs-are-current` regenerated and
+  compared three of the four pages. `docs/pipeline.html` — the one that
+  shows the action layer — was not among them, so an edit to the renderer
+  or to `examples/acme_pipeline.yaml` could leave it stale without failing
+  anything. It takes the slot the Freebase check gave up.
+- **The sdist no longer carries a graph nothing linked.**
+  `examples/today_slides_graph.yaml` and its page were deleted after
+  0.39.0 was published, and `examples/` ships whole — so the file sat in
+  the 0.39.0 tarball with nothing pointing at it. Files on PyPI cannot be
+  edited after the fact; this is the release that drops it.
+
 ## 0.39.0
 
 An event can be an object, and an action can say when it may run.

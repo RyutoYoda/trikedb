@@ -24,8 +24,7 @@
 <p align="center">
   <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 在线演示</a></b> — 一家公司拆成五个图谱：每个动作都声明了「必须先发生什么」，都带日期和执行人，这些声明在页面上就能读到
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">流水线演示</a> — 带动作日志的数据平台：每张表都写着自己当前的状态
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/freebase.html">Freebase 演示</a> — 600 条第三方真实事实，可以点击浏览，也能在浏览器里跑 SPARQL
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">工作区演示</a> — 同一批 Freebase 事实拆成 6 个领域图谱，平铺展示并可筛选
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">工作区演示</a> — 600 条第三方真实事实拆成 6 个领域图谱，平铺展示并可筛选，也能在浏览器里跑 SPARQL
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -52,10 +51,10 @@ triples:
 
 这个文件**就是**数据库。没有服务器，没有守护进程，不需要云端部署。它在 git 里能干净地 diff，能和代码放在同一个仓库里长期存活 — 而且这正是 trikedb 真正围绕设计的一点 — **LLM 智能体可以直接 `Read` 它，参照明确的实体名进行领域推理。**
 
-它还能渲染成一个可交互的工作台（[Freebase 演示](https://ryutoyoda.github.io/trikedb/freebase.html) — 600 条真实的 Freebase 事实）：
+它还能渲染成一个可交互的工作台（[工作区演示](https://ryutoyoda.github.io/trikedb/workspace.html) — 600 条真实的 Freebase 事实）：
 
 <p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/freebase.html">
+  <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb 的 HTML 工作台 — 600 条 Freebase 事实以力导向聚类展示，右侧打开了节点详情面板">
   </a>
 </p>
@@ -639,13 +638,13 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 
 - [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — 一家虚构的家居与食品杂货零售商，拆成 5 个成员图谱（商品 / 交易 / 履约 / 组织 / 故障）并成一个**工作区**：567 条三元组，36 个谓词全部声明了 `domain` 和 `range`，9 个声明了 `requires`——什么必须已经发生过，11 个声明了 `by:`——谁有资格签下它。其中 240 条是带日期的动作，所以 `state('ORD-25101')` 不是读某个状态字段，而是从两个不同成员图谱里的事件拼出来的答案。在线演示用的就是它。
 - [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上面这 6 个文件就是它写出来的生成器。确定性的：跑一遍，已提交的 YAML 会逐字节复现，并且有一个测试守着这一点——所以要扩充这个演示，改的是生成器，不是数据。
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **真实数据**：来自 Freebase 知识图谱的约 600 条事实（CC BY，从 WebQSP 基准的子图中抽取），围绕 Tupac Shakur、阿加莎·克里斯蒂、尼古拉·特斯拉等。节点类型是从谓词的 domain 推断出来的。它里面没有任何声明，也没有任何日期——这正是留着它的理由：这是一批不由我们整理的第三方数据。Freebase 演示用的就是它。
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **真实数据**：来自 Freebase 知识图谱的约 600 条事实（CC BY，从 WebQSP 基准的子图中抽取），围绕 Tupac Shakur、阿加莎·克里斯蒂、尼古拉·特斯拉等。节点类型是从谓词的 domain 推断出来的。它里面没有任何声明，也没有任何日期——这正是留着它的理由：这是一批不由我们整理的第三方数据。它是工作区演示所用数据的扁平单文件版本。
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — 同一批事实拆成 6 个领域图谱（电影 / 音乐 / 书籍 / 人物 / 地点 / 其他），再作为**工作区**并回来：每个成员渲染成自己的一座岛，带一个筛选标签。工作区演示用的就是它。
 - [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 一个虚构的数据平台，展示那些运维惯例：本体、废弃标记、变更事件。
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式的谓词，没有本体。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — 可运行的 notebook 快速上手，图谱内联在里面。
 
-**在线演示：** https://ryutoyoda.github.io/trikedb/（写入时强制执行的声明 —— `domain`、`range`、`requires`、`by`） · **流水线演示：** https://ryutoyoda.github.io/trikedb/pipeline.html（动作层 —— 带日期、执行者和状态的事件） · **Freebase 演示：** https://ryutoyoda.github.io/trikedb/freebase.html · **工作区演示：** https://ryutoyoda.github.io/trikedb/workspace.html
+**在线演示：** https://ryutoyoda.github.io/trikedb/（写入时强制执行的声明 —— `domain`、`range`、`requires`、`by`） · **流水线演示：** https://ryutoyoda.github.io/trikedb/pipeline.html（动作层 —— 带日期、执行者和状态的事件） · **工作区演示：** https://ryutoyoda.github.io/trikedb/workspace.html
 
 导出的 HTML 是一个小工作台，不只是一张图：点一个节点会打开右侧面板列出它的全部属性（URL 会变成链接），右上角可以搜索节点，打开 **SPARQL 控制台**就能在浏览器里跑真正的 SPARQL 1.1 — 由编译成 WASM 的 [Oxigraph](https://github.com/oxigraph/oxigraph) 驱动，首次使用时从 CDN 加载。有历史的节点会把当前状态写在标签上，并在详情面板里按时间倒序列出事件（何时、谁、做了什么）；**事件画在它所发生的那两个对象之间的连线上**，标签就是日期和它留下的状态，点任意一条线都会打开这条线所属的节点；`events` 按钮按时间顺序读完整条日志；本身不是实体的事件正文渲染成红色菱形；初始布局会随图谱形状自适应（`--layout flow|free|auto`）。用节点类型的复选框筛选视图（带**全选 / 全不选**快捷方式）— 类型多起来时图例会横向滚动 — 在工作区里也可以用同样的方式切换成员图谱。
 

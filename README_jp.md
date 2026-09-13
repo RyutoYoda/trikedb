@@ -24,8 +24,7 @@
 <p align="center">
   <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 ライブデモ</a></b> — 会社まるごとを5つのグラフで。すべてのアクションが「何が先に起きていなければならないか」を宣言し、日付と実行者を持っていて、その宣言がページ上で読めます
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">パイプラインのデモ</a> — アクションログ付きのデータ基盤。どのテーブルも今の状態を自分に書いています
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/freebase.html">Freebaseのデモ</a> — 第三者の実データ600件。クリックして回れて、ブラウザ上でSPARQLも実行できます
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">ワークスペースのデモ</a> — 同じFreebaseの事実を6つのドメイングラフに分けて、タイル表示＋絞り込み
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">ワークスペースのデモ</a> — 第三者の実データ600件を6つのドメイングラフに分けて、タイル表示＋絞り込み。ブラウザ上でSPARQLも実行できます
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -52,10 +51,10 @@ triples:
 
 このファイル**が**データベースです。サーバもデーモンもクラウドへのデプロイもありません。git で綺麗に diff が取れ、コードの隣のリポジトリで生き続け、そして — trikedb が本当に狙って設計されている点ですが — **LLMエージェントが直接 `Read` して、明示されたエンティティ名を参照してドメインを推論できます。**
 
-しかもインタラクティブなワークベンチとして描画されます（[Freebaseのデモ](https://ryutoyoda.github.io/trikedb/freebase.html) — 実際のFreebaseの事実600件）:
+しかもインタラクティブなワークベンチとして描画されます（[ワークスペースのデモ](https://ryutoyoda.github.io/trikedb/workspace.html) — 実際のFreebaseの事実600件）:
 
 <p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/freebase.html">
+  <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb の HTML ワークベンチ — Freebaseの事実600件を力学配置のクラスタとして表示、ノード詳細パネルを開いた状態">
   </a>
 </p>
@@ -641,13 +640,13 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 
 - [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — 架空の日用品・食品小売を5つのメンバーグラフ（カタログ / 受注 / 出荷 / 組織 / インシデント）に分け、**ワークスペース**として統合したもの: 567トリプル。36個の述語すべてが `domain` と `range` を宣言し、9個が `requires`（何が先に起きていなければならないか）を、11個が `by:`（誰が実行してよいか）を宣言しています。うち240件は日付を持つアクションなので、`state('ORD-25101')` はステータス列を読んだ値ではなく、2つの別々のメンバーグラフに書かれたイベントから組み立てられた答えです。ライブデモの中身です。
 - [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上の6ファイルを書き出している生成器。決定的で、実行すればコミット済みの YAML がバイト単位でそのまま再現されます（そのことをテストで見張っています）。デモを育てるときは YAML ではなく生成器を編集します。
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。宣言も日付も一切ありません — それがこれを残している理由で、こちらでキュレーションしていない第三者のデータだからです。Freebaseのデモの中身です。
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。宣言も日付も一切ありません — それがこれを残している理由で、こちらでキュレーションしていない第三者のデータだからです。ワークスペースのデモで使っているデータを、1ファイルに平たく収めたものです。
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — 同じ事実を6つのドメイングラフ（映画 / 音楽 / 書籍 / 人物 / 場所 / その他）に分け、**ワークスペース**として統合し直したもの: 各メンバーがフィルタチップ付きの島として描画されます。ワークスペースのデモの中身です。
 - [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 架空のデータ基盤で運用上の慣習を示したもの: オントロジー、廃止、変更イベント。
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式の述語、オントロジーなし。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — インラインのグラフで動く、実行可能なノートブック版クイックスタート。
 
-**ライブデモ:** https://ryutoyoda.github.io/trikedb/ （書き込み時に強制される宣言 — `domain`・`range`・`requires`・`by`） · **パイプラインのデモ:** https://ryutoyoda.github.io/trikedb/pipeline.html （アクションレイヤー — 日付・実行者・状態が付いたイベント） · **Freebaseのデモ:** https://ryutoyoda.github.io/trikedb/freebase.html · **ワークスペースのデモ:** https://ryutoyoda.github.io/trikedb/workspace.html
+**ライブデモ:** https://ryutoyoda.github.io/trikedb/ （書き込み時に強制される宣言 — `domain`・`range`・`requires`・`by`） · **パイプラインのデモ:** https://ryutoyoda.github.io/trikedb/pipeline.html （アクションレイヤー — 日付・実行者・状態が付いたイベント） · **ワークスペースのデモ:** https://ryutoyoda.github.io/trikedb/workspace.html
 
 エクスポートされる HTML は単なる絵ではなく小さなワークベンチです: ノードをクリックすると全プロパティを載せた右パネルが出て（URL はリンクになります）、右上でノードを検索でき、**SPARQL コンソール**を開けばブラウザ内で本物の SPARQL 1.1 を実行できます — WASM にコンパイルされた [Oxigraph](https://github.com/oxigraph/oxigraph) が、初回利用時に CDN から読み込まれます。履歴を持つノードは現在の状態をラベルに表示し、詳細パネルにイベント（いつ・誰が・何を）を新しい順で並べます。**イベントは、それが起きた2つのオブジェクトの間の線の上に描かれ**、ラベルは日付とそれが残した状態です。どの線をクリックしてもその線がぶら下がっているノードが開き、`events` ボタンでグラフ全体のログを時系列で読めます。それ自体が実体ではないイベント本文は赤い菱形として描画されます。初期レイアウトはグラフの形に適応します（`--layout flow|free|auto`）。ノード型のチェックボックスで表示を絞り込めます（**全選択 / 全解除**のショートカット付き）— 型が増えると凡例は横スクロールします — ワークスペースならメンバーグラフも同じように切り替えられます。
 

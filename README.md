@@ -24,8 +24,7 @@
 <p align="center">
   <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 Live demo</a></b> — a company as five graphs: every action declares what must have happened before it, carries a date and an actor, and the page shows the declarations
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">pipeline demo</a> — a data platform with an action log: every table wears its current state
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/freebase.html">Freebase demo</a> — 600 real third-party facts, click around, run SPARQL in the browser
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">workspace demo</a> — the same Freebase facts as 6 domain graphs, tiled and filterable
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">workspace demo</a> — 600 real third-party facts as 6 domain graphs, tiled and filterable; run SPARQL in the browser
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -52,10 +51,10 @@ triples:
 
 That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and ground its domain reasoning in explicit entity names.**
 
-And it renders as an interactive workbench ([Freebase demo](https://ryutoyoda.github.io/trikedb/freebase.html) — 600 real Freebase facts):
+And it renders as an interactive workbench ([workspace demo](https://ryutoyoda.github.io/trikedb/workspace.html) — 600 real Freebase facts):
 
 <p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/freebase.html">
+  <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
   </a>
 </p>
@@ -791,13 +790,13 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 - [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — a fictional homeware and pantry retailer as five member graphs (catalog / commerce / fulfilment / org / incidents) unioned into one **workspace**: 567 triples in which all 36 predicates declare a `domain` and a `range`, nine declare `requires` — what must already have happened — and eleven declare `by:`, who is allowed to sign them. 240 of those triples are dated actions, so `state('ORD-25101')` is assembled from events in two different member graphs rather than read off a status column. This powers the live demo.
 - [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — the generator those six files come out of. Deterministic: run it and the committed YAML comes back byte for byte, and a test checks that it still does — so the demo grows by editing the generator, not the data.
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. Nothing in it is declared and nothing in it is dated — which is the point of keeping it: it is third-party data nobody here curated. This powers the Freebase demo.
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. Nothing in it is declared and nothing in it is dated — which is the point of keeping it: it is third-party data nobody here curated. Kept as the flat, single-file form of the workspace demo’s data.
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — the same facts split into 6 domain graphs (film / music / books / people / places / misc) and unioned back as a **workspace**: each member renders as its own island with a filter chip. This powers the workspace demo.
 - [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — free-form predicates, no ontology.
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
-**Live demo:** https://ryutoyoda.github.io/trikedb/ (declarations enforced at write time — `domain`, `range`, `requires`, `by`) · **Pipeline demo:** https://ryutoyoda.github.io/trikedb/pipeline.html (the action layer — dated events, actors, states) · **Freebase demo:** https://ryutoyoda.github.io/trikedb/freebase.html · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
+**Live demo:** https://ryutoyoda.github.io/trikedb/ (declarations enforced at write time — `domain`, `range`, `requires`, `by`) · **Pipeline demo:** https://ryutoyoda.github.io/trikedb/pipeline.html (the action layer — dated events, actors, states) · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
 
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. A node with a history wears its current state on its label and lists its events — when, who, what — newest first in the detail panel; **an event is drawn on the line between the two objects it happened between**, labelled with its date and the state it left behind, and clicking any line opens the node it hangs off; the `events` button reads the whole log in time order, and event payloads that are not entities in their own right render as red diamonds; the initial layout adapts to graph shape (`--layout flow|free|auto`). Filter the view by toggling node-type checkboxes (with **all / none** shortcuts) — the legend slides horizontally when types get numerous — and, in a workspace, toggle member graphs the same way.
 
