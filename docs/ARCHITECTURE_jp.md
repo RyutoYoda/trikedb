@@ -128,3 +128,44 @@ API更新後はクエリキャッシュを再構築します。意味検索は�
 配布物はHTML1個ですがvis-networkとOxigraph WASMをCDNから取得するため、完全オフラインではありません。グラフはscript-safe JSONと文脈別DOMエスケープで出力します。描画内部は数値ID、表示は元の名前を使い、特殊名との衝突を避けます。非有限数は文字列として表示します。
 
 tests/test_review_regressions.pyは監査での不具合とRDF・保存境界、tests/browser_smoke.pyは通常・悪意ある入力を新規ブラウザで検証します。公開前の検証はsdistと依存下限も対象にします。fake storageテストはプロトコルの検証で、実クラウド耐久性の証明ではありません。[API](REFERENCE_jp.md)と[測定条件](../benchmarks/README_jp.md)も参照してください。
+
+### 書き込みガードが通すもの・弾くもの
+
+ガードは自然文をLLMが読んで「もっともらしいか」を推測するものではなく、宣言に
+基づく書き込み検証です。宣言は説明だけ（許可する語彙）にも、`domain`・`range`・
+`requires`・`by`を持つルール（強制する制約）にもできます。事実と宣言は同じ文書と
+diffに入ります。
+
+```yaml
+ontology:
+  SHIPPED_FROM: {domain: order, range: warehouse}
+  DELIVERED_TO:
+    domain: order
+    range: region
+    requires: SHIPPED_FROM
+    by: courier
+```
+
+```python
+db.add("ORD-1", "SHIPPED_FROM", "WH-1")       # 型が合えば通る
+db.add("ORD-1", "DELIVERED_TO", "Tokyo",       # byがなく弾く
+       at="2026-09-14")
+db.act("ORD-1", "DELIVERED_TO", "Tokyo",        # shipping後なら通る
+       by="Courier-7", at="2026-09-14")
+db.add("ORD-1", "DELIVER_TO", "Tokyo")          # 未宣言なので弾く
+```
+
+未宣言の述語は保存前に拒否します。端点の型が分かっていれば、逆向き・不適合な
+edgeも拒否します。`by`は実行者を必須にし、分かっている型も検査します。`requires`
+は時刻と、actionのどちらかの端点に必要な過去の事実を要求します。
+`?order PLACED_BY ?s` と `?order CONTAINS ?o` のような複数段の前提も厳密に照合します。
+形式が壊れた`requires`は、実行時ではなく宣言時に弾きます。
+
+importも同じ`add()`経路を通ります。`batch()`や一括import中に後から証拠が届き得る
+前提は保留し、batch終了時に再検査します。それでも失敗すれば全体をrollbackします。
+`set_node()`で後から型を付けた場合も既存edgeを再検査します。まだ型が不明なら推測で
+拒否せず、`audit()`が未解決として報告します。
+
+境界も意図的です。APIの`add`・`act`、import、対応するSPARQL insertは該当する検証を
+強制します。一方、手編集YAMLとrawな`load()` / `save()`は形と構文だけを検証し、
+述語ホワイトリストは実行しません。

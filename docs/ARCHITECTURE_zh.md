@@ -127,3 +127,41 @@ API更新使查询缓存失效。语义搜索按句缓存embedding，只重新�
 工作台可作为一个HTML文件分发，但依赖CDN的vis-network和Oxigraph WASM，并非完全离线。图数据使用script-safe JSON及按上下文转义的DOM输出。内部绘图ID为数值，显示保留原名称，避免特殊名冲突。非有限数值显示为文字。
 
 tests/test_review_regressions.py覆盖审计问题及RDF/存储边界；tests/browser_smoke.py在新浏览器中测试正常和恶意数据。发布前验证也测试sdist及依赖下限。fake storage测试说明协议行为，不证明云服务耐久性。参见[API](REFERENCE.md)与[测量限制](../benchmarks/README_zh.md)。
+
+### 写入守卫接受和拒绝什么
+
+守卫不是让LLM阅读自然语言、猜测事实是否“听起来合理”，而是基于声明的写入检查。
+声明可以只是描述（允许的词汇），也可以带有`domain`、`range`、`requires`和`by`
+（强制约束）。事实与声明位于同一份文档和diff中。
+
+```yaml
+ontology:
+  SHIPPED_FROM: {domain: order, range: warehouse}
+  DELIVERED_TO:
+    domain: order
+    range: region
+    requires: SHIPPED_FROM
+    by: courier
+```
+
+```python
+db.add("ORD-1", "SHIPPED_FROM", "WH-1")       # 类型匹配则接受
+db.add("ORD-1", "DELIVERED_TO", "Tokyo",       # 没有by：拒绝
+       at="2026-09-14")
+db.act("ORD-1", "DELIVERED_TO", "Tokyo",        # 已发货后接受
+       by="Courier-7", at="2026-09-14")
+db.add("ORD-1", "DELIVER_TO", "Tokyo")          # 未声明名称：拒绝
+```
+
+未声明的谓词在落地前拒绝。端点类型已知时，方向错误或不兼容的边也拒绝：声明为
+`order -> warehouse`的关系不能反写为`warehouse -> order`。`by`要求执行者并检查其
+已知类型；`requires`要求时间，并要求action任一端点上存在更早的前置事实。像
+`?order PLACED_BY ?s`与`?order CONTAINS ?o`这样的多步条件会进行精确匹配。格式错误
+的`requires`在声明时拒绝，不会拖到运行时变成无法满足的规则。
+
+import使用同一个`add()`路径。在`batch()`或批量导入期间，可能稍后到达证据的前置条件
+会暂存，并在batch结束时重新检查；仍失败时整个batch回滚。`set_node()`稍后添加类型时
+也会重新检查已有的边。类型未知时不靠猜测判为无效，而由`audit()`报告未解决的情况。
+
+边界是有意设计的：API的`add`、`act`、import及受支持的SPARQL insert执行适用的检查。
+手工编辑的YAML以及原始`load()` / `save()`只检查形状和语法，不执行谓词白名单。

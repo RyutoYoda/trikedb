@@ -133,3 +133,47 @@ Query caches rebuild after API mutations. Semantic embeddings are cached per sen
 The workbench is distributed as one HTML file but loads vis-network and Oxigraph WASM from external CDNs; it is not fully offline. Graph data is encoded as script-safe JSON and escaped according to DOM context. Internal numeric visualization IDs avoid special-name collisions; original names remain visible. Nonfinite numeric properties display as text.
 
 `tests/test_review_regressions.py` covers audit failures and RDF/storage edge cases; `tests/browser_smoke.py` exercises a fresh browser against ordinary and hostile graph data. Release verification also tests packaged sdists and the declared dependency floor. Fake storage tests establish protocol behavior, not live cloud durability. See [the API reference](REFERENCE.md) and [benchmarks](../benchmarks/README.md) for contracts and measurement limits.
+
+### What the write guard accepts and rejects
+
+The guard is declaration-driven; it does not ask an LLM whether a fact sounds
+reasonable. A declaration can be only a description (allowed vocabulary), or a
+rule with `domain`, `range`, `requires` and `by` (enforced constraints). Both
+facts and declarations live in the same document and diff.
+
+```yaml
+ontology:
+  SHIPPED_FROM: {domain: order, range: warehouse}
+  DELIVERED_TO:
+    domain: order
+    range: region
+    requires: SHIPPED_FROM
+    by: courier
+```
+
+```python
+db.add("ORD-1", "SHIPPED_FROM", "WH-1")       # accepted if types fit
+db.add("ORD-1", "DELIVERED_TO", "Tokyo",       # rejected: no `by`
+       at="2026-09-14")
+db.act("ORD-1", "DELIVERED_TO", "Tokyo",        # accepted after shipping
+       by="Courier-7", at="2026-09-14")
+db.add("ORD-1", "DELIVER_TO", "Tokyo")          # rejected: undeclared name
+```
+
+Unknown predicates are refused before they land. Known endpoint types make a
+reversed or incompatible edge fail (`order -> warehouse` cannot become
+`warehouse -> order`). `by` requires an actor and checks its known type;
+`requires` requires a time and an earlier fact on either end, including exact
+multi-step patterns such as `?order PLACED_BY ?s` joined to
+`?order CONTAINS ?o`. Malformed requirements fail when declared, not later as
+an impossible rule.
+
+Imports use the same `add()` path. In a `batch()` or bulk import, a prerequisite
+whose evidence may arrive later is held and checked again at batch exit; if it
+still fails, the whole batch rolls back. `set_node()` rechecks existing edges
+when a type is added later. Unknown types are not guessed invalid; `audit()`
+reports the unresolved case.
+
+The boundary is deliberate: API `add`, `act`, imports and supported SPARQL
+insertions enforce applicable checks. Hand-edited YAML and raw `load()` /
+`save()` check shape and syntax, but do not run the predicate whitelist.
