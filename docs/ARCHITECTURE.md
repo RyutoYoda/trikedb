@@ -31,7 +31,12 @@ flowchart TB
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
     PD("no engine at all<br/>JSON-LD · the document inside the page")
-    Q("<b>query & retrieval</b><br/>user API: sparql · query/match · find · search<br/>inside: Oxigraph / rdflib · lazy embeddings<br/>derived, never stored; vectors are a cache")
+    subgraph query["<b>query & retrieval</b> — derived, never stored"]
+        direction TB
+        QAPI["user API<br/>sparql · query/match · find · search"]
+        QENG["internal engines<br/>Oxigraph: SPARQL SELECT / ASK<br/>rdflib: updates · CONSTRUCT · OWL / SHACL<br/>lazy embeddings: query-time · per-sentence cache"]
+        QAPI --> QENG
+    end
     RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -53,8 +58,8 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    C -.-> Q
-    Q --> RQ
+    C -.-> QAPI
+    QENG --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -62,6 +67,7 @@ flowchart TB
     PD --> RQ
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    style query fill:#f5f0ff,stroke:#8055e6,stroke-width:2px,color:#3a2568
     classDef lbl fill:none,stroke:none,color:#4b5563
     classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
     classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
@@ -71,7 +77,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q proj
+    class PO,PR,PN,PV,PD,QAPI,QENG proj
 ```
 
 Read the diagram top to bottom: the core is one document, storage is one

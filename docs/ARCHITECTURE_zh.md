@@ -31,7 +31,12 @@ flowchart TB
     PN("networkx<br/>图算法")
     PV("SQL views<br/>warehouse row之上")
     PD("没有引擎<br/>JSON-LD · 页面内的文档")
-    Q("<b>查询与检索</b><br/>用户API: sparql · query/match · find · search<br/>内部: Oxigraph / rdflib · 延迟embedding<br/>派生视图 · 从不存储（向量是缓存）")
+    subgraph query["<b>查询与检索</b> — 派生视图 · 从不存储"]
+        direction TB
+        QAPI["用户API<br/>sparql · query/match · find · search"]
+        QENG["内部引擎<br/>Oxigraph: SPARQL SELECT / ASK<br/>rdflib: 更新 · CONSTRUCT · OWL / SHACL<br/>延迟embedding: 查询时 · 按句缓存"]
+        QAPI --> QENG
+    end
     RQ("agent MCP · CLI · REST · Python · HTML<br/>所有读取图的入口")
     RG("程序<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -53,8 +58,8 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    C -.-> Q
-    Q --> RQ
+    C -.-> QAPI
+    QENG --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -62,6 +67,7 @@ flowchart TB
     PD --> RQ
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    style query fill:#f5f0ff,stroke:#8055e6,stroke-width:2px,color:#3a2568
     classDef lbl fill:none,stroke:none,color:#4b5563
     classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
     classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
@@ -71,7 +77,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q proj
+    class PO,PR,PN,PV,PD,QAPI,QENG proj
 ```
 
 按从上到下阅读：核心是一份文档，存储是选定的一个目的地，投影是按需生成的

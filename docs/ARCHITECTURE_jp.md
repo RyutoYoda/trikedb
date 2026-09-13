@@ -31,7 +31,12 @@ flowchart TB
     PN("networkx<br/>グラフアルゴリズム")
     PV("SQL view<br/>warehouse rowの上")
     PD("エンジンなし<br/>JSON-LD · ページ内の文書")
-    Q("<b>クエリ・検索</b><br/>ユーザーAPI: sparql · query/match · find · search<br/>内部: Oxigraph / rdflib · 遅延embedding<br/>導出されるview · 保存しない（vectorはcache）")
+    subgraph query["<b>クエリ・検索</b> — 導出されるview・保存しない"]
+        direction TB
+        QAPI["ユーザーAPI<br/>sparql · query/match · find · search"]
+        QENG["内部エンジン<br/>Oxigraph: SPARQL SELECT / ASK<br/>rdflib: 更新 · CONSTRUCT · OWL / SHACL<br/>遅延embedding: クエリ時 · 文単位cache"]
+        QAPI --> QENG
+    end
     RQ("agent MCP · CLI · REST · Python · HTML<br/>グラフを読むすべての入口")
     RG("プログラム<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -53,8 +58,8 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
-    C -.-> Q
-    Q --> RQ
+    C -.-> QAPI
+    QENG --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -62,6 +67,7 @@ flowchart TB
     PD --> RQ
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    style query fill:#f5f0ff,stroke:#8055e6,stroke-width:2px,color:#3a2568
     classDef lbl fill:none,stroke:none,color:#4b5563
     classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
     classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
@@ -71,7 +77,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q proj
+    class PO,PR,PN,PV,PD,QAPI,QENG proj
 ```
 
 図は上から下へ読みます。コアは1つの文書、ストレージは選んだ保存先1つ、
