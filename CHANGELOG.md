@@ -3,6 +3,15 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.6
+
+- **The workbench now calls the inventory what it is.** The `ontology · N`
+  button and panel were showing the number of predicate types, not the
+  ontology as a whole. They now say `predicates · N` and `N predicate types`,
+  with the separate enforced-rule count still visible. The distinction is
+  important: triples are facts, predicates are the kinds of relationships,
+  and ontology declarations are the rules that may constrain them.
+
 ## 0.39.5
 
 The README told you to edit a file the sdist does not carry, and the test

@@ -271,7 +271,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
   <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
-  <button class="btn" id="btn-onto" title="every predicate and what it declares: domain, range, requires, by">ontology</button>
+  <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
 </div>
@@ -1001,7 +1001,7 @@ function showOntology(only) {
   const names = only && RULES[only] ? [only] : ruleNames;
   const head = only && RULES[only]
     ? `<h2>${esc(only)}</h2><h3>what this predicate declares</h3>`
-    : `<h2>ontology</h2><h3>${ruleNames.length} predicate${ruleNames.length === 1 ? "" : "s"}`
+    : `<h2>predicates</h2><h3>${ruleNames.length} predicate type${ruleNames.length === 1 ? "" : "s"}`
       + ` &middot; ${enforced.length} enforced</h3>`;
   document.getElementById("detail-body").innerHTML = head + names.map(ruleHTML).join("");
   document.getElementById("detail").classList.add("open");
@@ -1010,7 +1010,7 @@ function showOntology(only) {
 const btnOnto = document.getElementById("btn-onto");
 if (!ruleNames.length) btnOnto.style.display = "none";
 else {
-  btnOnto.textContent = "ontology \\u00b7 " + ruleNames.length;
+  btnOnto.textContent = "predicates \\u00b7 " + ruleNames.length;
   btnOnto.onclick = () => showOntology();
 }
 
