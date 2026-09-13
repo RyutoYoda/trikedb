@@ -3,6 +3,21 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.5
+
+The README told you to edit a file the sdist does not carry, and the test
+that guards it shipped anyway.
+
+- **`examples/generate_trike_demo.py` is in the sdist now.**
+  `MANIFEST.in` listed `*.yaml *.csv *.md *.ipynb` under `examples`, and
+  the generator is the one `.py` in there, so it was the single file in
+  that directory that did not ship. All three READMEs point at it and say
+  the demo grows by editing the generator rather than the data — advice
+  that cannot be followed from a tarball. Worse, `tests/` ships whole:
+  `test_the_demo_still_comes_out_of_its_own_generator` runs the generator
+  by path with no skip guard, so `pytest` on an unpacked sdist failed on
+  a missing file rather than on anything about the code. It passes now.
+
 ## 0.39.4
 
 0.39.3 caught one spelling of an event written onto the node. There were
