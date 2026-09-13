@@ -175,3 +175,30 @@ reports the unresolved case.
 The boundary is deliberate: API `add`, `act`, imports and supported SPARQL
 insertions enforce applicable checks. Hand-edited YAML and raw `load()` /
 `save()` check shape and syntax, but do not run the predicate whitelist.
+
+### What the guard actually does in code
+
+The critical path is ordinary Python code. Every supported API write enters
+the checks in this order:
+
+```python
+self._check_predicate(p)          # is the relationship name declared?
+self._check_link(s, p, o)         # do the endpoint types and direction fit?
+self._check_action(triple)        # are time, prerequisites and actor valid?
+```
+
+The first check is a membership test. The second reads the declared
+`domain`/`range` and the types attached to the two endpoints. The third checks
+`by`, checks that `requires` has a time, then searches the existing graph for
+the required earlier facts. A failed check raises `OntologyError`, before the
+new fact is stored.
+
+The search for a prerequisite is not an LLM call. TrikeDB keeps indexes by
+predicate and by `(predicate, endpoint)`, compares timestamps, and joins
+fixed-length `(subject, predicate, object)` patterns when a requirement has
+multiple steps. During a batch, an answer that may change as later input
+arrives is held and asked again at the end; an unresolved failure aborts the
+batch and restores its previous state.
+
+`rdflib` and `Oxigraph` are not secretly making this decision. They execute
+RDF/SPARQL queries and related projections; `rules.py` is the write guard.
