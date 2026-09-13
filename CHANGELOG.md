@@ -16,7 +16,12 @@ other did not.
   stays: a flat file of undeclared, undated third-party data is worth
   keeping next to the declared graph, whether or not it is also a page.
   The READMEs, in all three languages, point their demo links and the
-  screenshot at `/workspace.html` now.
+  screenshot at `/workspace.html` now, and `/freebase.html` itself keeps
+  answering: it is a redirect to `/workspace.html`. The README shipped
+  inside trikedb 0.39.0 links that URL four times and a released PyPI
+  description cannot be edited, so deleting the page outright would have
+  left four dead links on a page nobody can ever fix. A URL that has been
+  published is a promise; the page behind it is not.
 - **CI checks the pipeline demo now.** `docs-are-current` regenerated and
   compared three of the four pages. `docs/pipeline.html` — the one that
   shows the action layer — was not among them, so an edit to the renderer
