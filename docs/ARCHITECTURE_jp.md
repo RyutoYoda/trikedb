@@ -130,40 +130,44 @@ tests/test_review_regressions.pyは監査での不具合とRDF・保存境界、
 ### 書き込みガードが通すもの・弾くもの
 
 ガードは自然文をLLMが読んで「もっともらしいか」を推測するものではなく、宣言に
-基づく書き込み検証です。宣言は説明だけ（許可する語彙）にも、`domain`・`range`・
-`requires`・`by`を持つルール（強制する制約）にもできます。事実と宣言は同じ文書と
-diffに入ります。
+基づく書き込み検証です。ここでいう述語は、`SHIPPED_FROM`（どこから出荷したか）や
+`DELIVERED_TO`（どこへ配送したか）のような「関係の名前」です。宣言は説明だけ
+（許可する関係の一覧）にも、`domain`・`range`・`requires`・`by`を持つルール
+（強制する制約）にもできます。事実と宣言は同じ文書とdiffに入ります。
 
 ```yaml
 ontology:
-  SHIPPED_FROM: {domain: order, range: warehouse}
+  SHIPPED_FROM: {domain: 注文, range: 倉庫}
   DELIVERED_TO:
-    domain: order
-    range: region
+    domain: 注文
+    range: 地域
     requires: SHIPPED_FROM
     by: courier
 ```
 
 ```python
-db.add("ORD-1", "SHIPPED_FROM", "WH-1")       # 型が合えば通る
-db.add("ORD-1", "DELIVERED_TO", "Tokyo",       # byがなく弾く
+db.add("ORD-1", "SHIPPED_FROM", "WH-1")       # 注文から倉庫への関係なので通る
+db.add("ORD-1", "DELIVERED_TO", "Tokyo",       # 担当者が指定されていないので弾く
        at="2026-09-14")
-db.act("ORD-1", "DELIVERED_TO", "Tokyo",        # shipping後なら通る
+db.act("ORD-1", "DELIVERED_TO", "Tokyo",        # 先に出荷済みなら通る
        by="Courier-7", at="2026-09-14")
-db.add("ORD-1", "DELIVER_TO", "Tokyo")          # 未宣言なので弾く
+db.add("ORD-1", "DELIVER_TO", "Tokyo")          # 関係名の書き間違いなので弾く
 ```
 
-未宣言の述語は保存前に拒否します。端点の型が分かっていれば、逆向き・不適合な
-edgeも拒否します。`by`は実行者を必須にし、分かっている型も検査します。`requires`
-は時刻と、actionのどちらかの端点に必要な過去の事実を要求します。
-`?order PLACED_BY ?s` と `?order CONTAINS ?o` のような複数段の前提も厳密に照合します。
-形式が壊れた`requires`は、実行時ではなく宣言時に弾きます。
+未宣言の関係名は保存前に拒否します。端点（関係の両端）の種類が分かっていれば、
+逆向き・不適合なedgeも拒否します。`by`は「誰が担当したか」を必須にし、担当者の
+種類も検査します。`requires`は「先に何が起きていなければならないか」という前提で、
+時刻と、actionのどちらかの端点に必要な過去の事実を要求します。
+たとえば「その注文が先に出荷され、同じ商品を含んでいること」のような複数段の前提も、
+関係をたどって厳密に照合します。形式が壊れた`requires`は、実行時ではなく宣言時に
+弾きます。
 
-importも同じ`add()`経路を通ります。`batch()`や一括import中に後から証拠が届き得る
-前提は保留し、batch終了時に再検査します。それでも失敗すれば全体をrollbackします。
-`set_node()`で後から型を付けた場合も既存edgeを再検査します。まだ型が不明なら推測で
-拒否せず、`audit()`が未解決として報告します。
+ファイル取り込み（import）も同じ`add()`経路を通ります。`batch()`や一括import中に
+後から証拠が届き得る前提は保留し、処理の最後に再検査します。それでも失敗すれば
+取り込み全体をrollback（なかったことに戻す）します。`set_node()`で後から種類を
+付けた場合も既存edgeを再検査します。まだ種類が不明なら推測で拒否せず、`audit()`が
+未解決として報告します。
 
-境界も意図的です。APIの`add`・`act`、import、対応するSPARQL insertは該当する検証を
-強制します。一方、手編集YAMLとrawな`load()` / `save()`は形と構文だけを検証し、
-述語ホワイトリストは実行しません。
+境界も意図的です。APIの`add`・`act`、ファイル取り込み、対応するSPARQL insertは
+該当する検証を強制します。一方、手編集YAMLとrawな`load()` / `save()`は文書の形と
+構文だけを検証し、関係名の一覧までは検査しません。
