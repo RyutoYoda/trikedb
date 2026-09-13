@@ -1017,7 +1017,8 @@ flowchart LR
 
 `audit` findings: `duplicate-triple` and `link-contradicts-declaration`
 are errors (exit 1); `name-collision`, `similar-facts`, `orphan-node`,
-`unused-predicate` and `unchecked-link` are warnings. An event is
+`unused-predicate`, `unchecked-link` and `event-written-on-node` are
+warnings. An event is
 compared whole: two of them are duplicates only when every attribute
 matches — same time, same actor, same state. Two actions that read alike
 on two days, or two that landed in the same instant and did different

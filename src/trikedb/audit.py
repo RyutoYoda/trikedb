@@ -4,8 +4,9 @@ Ontologies accumulate facts from many hands (and agents). These
 heuristics catch the decay modes that the ontology guard cannot:
 duplicated facts across workspace members, same-entity-different-
 spelling node names, near-duplicate free-text facts, orphaned node
-properties, declared-but-unused predicates, and links that do not
-hold up against the shape their predicate declares.
+properties, declared-but-unused predicates, links that do not hold
+up against the shape their predicate declares, and events written onto
+the node instead of onto the triple that carries them.
 
 Severity: "error" findings (duplicate-triple, link-contradicts-
 declaration) fail `trikedb audit`;
@@ -18,6 +19,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
+from .model import TIME_ATTRS
 from .rules import unmet as _unmet
 
 ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration",
@@ -183,6 +185,33 @@ def audit(db) -> list:
                          else "precondition-unmet"),
                 "severity": "error", "detail": detail,
             })
+
+    # 8. an event written onto the node instead of onto the triple.
+    #    Promotion gives an event an id so it can hold the properties that
+    #    made it worth promoting — a before, an after, a reason. It does
+    #    not move `at:` and `state:`: those are read off the triple, by
+    #    when() and by state(), and a node carrying both of them is an
+    #    event record sitting where nothing reads it. The failure is
+    #    silent — history() simply returns fewer rows than the file looks
+    #    like it holds — so it is reported here rather than left to be
+    #    noticed. Both keys are required to call it: a date alone is an
+    #    ordinary property (a release has one), and a state alone is what
+    #    act() writes onto every node it touches.
+    for name, props in db.nodes_meta.items():
+        stamp = next((k for k in TIME_ATTRS if k in props), None)
+        mark = next((k for k in ("state", "status") if k in props), None)
+        if not (stamp and mark):
+            continue
+        undated = [t for t in db if t.o == name and not t.when()]
+        where = (f"({undated[0].s} {undated[0].p} {name}) carries no time, so "
+                 f"history() does not see it" if undated else
+                 f"the triples pointing at {name!r} carry their own time, so "
+                 f"{stamp!r} here is a second copy and {mark!r} is read by nothing")
+        findings.append({
+            "kind": "event-written-on-node", "severity": "warning",
+            "detail": f"node {name!r} has both {stamp!r} and {mark!r} — an event's "
+                      f"time and state belong on the triple, not the node; {where}",
+        })
 
     return findings
 

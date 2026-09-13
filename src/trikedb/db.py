@@ -521,9 +521,17 @@ class TrikeDB:
         """What state this node is in now, or None if nothing ever said.
 
         The property act() wrote, if there is one; otherwise the state
-        carried by the node's latest event, so a graph hand-written in
-        YAML answers the question the same way one built through act()
-        does.
+        carried by the latest event this node is the *subject* of, so a
+        graph hand-written in YAML answers the question the same way one
+        built through act() does.
+
+        Subject-only, and on the triple: an event pointing at a node did
+        not leave the node in the event's state, and a promoted event
+        keeps its ``at:`` and ``state:`` on the triple while the node
+        holds the properties it was promoted for. Writing those two keys
+        onto the node instead reads as nothing here; ``audit()`` reports
+        it as ``event-written-on-node``. See "When an event grows
+        properties of its own, promote it to an object" in the README.
         """
         stored = (self.nodes_meta.get(str(name)) or {}).get("state")
         if stored is not None:

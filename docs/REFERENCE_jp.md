@@ -841,7 +841,7 @@ flowchart LR
 
 `audit` の所見: `duplicate-triple` と `link-contradicts-declaration` は
 エラー(終了コード1)、`name-collision`・`similar-facts`・`orphan-node`・
-`unused-predicate`・`unchecked-link` は警告。イベントは丸ごと比較される:
+`unused-predicate`・`unchecked-link`・`event-written-on-node` は警告。イベントは丸ごと比較される:
 時刻・実行者・残した状態まで全部一致して初めて重複。別の日に同じ文面で
 書かれた2つも、同じ瞬間に入って別のことをした2つも、二度書かれた1つの
 事実ではなく「起きた2つのこと」 — それはログが仕事をしているだけだから。

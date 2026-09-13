@@ -4567,3 +4567,50 @@ def test_an_action_does_not_copy_the_graph_it_is_not_touching():
     assert per_act < 0.02, (
         "%.1f ms per act() on a 20k-triple graph — batch() is copying the "
         "whole store again" % (per_act * 1e3))
+
+
+def test_audit_reports_an_event_written_onto_the_node():
+    """An event's time and state live on the triple; on the node nothing reads them.
+
+    Promotion gives an event an id so it can carry a before, an after, a
+    reason — it does not move `at:` and `state:`. Put those on the node and
+    the graph still loads, `history()` just quietly returns fewer rows than
+    the file looks like it holds. A user lost 16 of 18 events to that
+    silence, so audit says it out loud.
+    """
+    db = TrikeDB(autosave=False)
+    db.set_node("evt-1", type="event", date="2026-09-10", state="SHIPPED")
+    db.add("order1", "AFFECTED_BY", "evt-1")            # no time on the triple
+    found = [f for f in db.audit() if f["kind"] == "event-written-on-node"]
+    assert len(found) == 1
+    assert found[0]["severity"] == "warning"
+    assert "history() does not see it" in found[0]["detail"]
+    assert db.state("order1") is None and db.history("order1") == []
+
+    # Dating the triple revives the history; the node's copy is still dead.
+    db2 = TrikeDB(autosave=False)
+    db2.set_node("evt-1", type="event", date="2026-09-10", state="SHIPPED")
+    db2.add("order1", "AFFECTED_BY", "evt-1", at="2026-09-10")
+    found = [f for f in db2.audit() if f["kind"] == "event-written-on-node"]
+    assert len(found) == 1 and "read by nothing" in found[0]["detail"]
+    assert len(db2.history("order1")) == 1
+
+
+def test_audit_does_not_flag_a_date_or_a_state_on_its_own():
+    """Both keys together are the signal; either alone is ordinary.
+
+    A release has a date and is not an event. act() writes `state` onto
+    every node it touches, so a state alone would flag half the graph.
+    """
+    db = TrikeDB(autosave=False)
+    db.set_node("v1.0", type="release", date="2026-01-01")
+    db.add("trikedb", "INCLUDES", "v1.0")
+    db.set_node("ORD-1", type="order", state="SHIPPED")
+    db.add("alice", "OWNS", "ORD-1")
+    assert [f for f in db.audit() if f["kind"] == "event-written-on-node"] == []
+
+    # The documented promoted form keeps at:/state: on the triple, so it is clean.
+    db.set_node("PC-7", type="price-change", price_before=8400, price_after=7560)
+    db.add("PC-7", "CHANGED", "Copper Kettle", at="2025-07-16", state="applied")
+    assert [f for f in db.audit() if f["kind"] == "event-written-on-node"] == []
+    assert db.state("PC-7") == "applied" and db.state("Copper Kettle") is None

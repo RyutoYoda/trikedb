@@ -3,6 +3,31 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.3
+
+An event written onto the node instead of onto the triple loaded fine and
+then disappeared. Now `audit` says so.
+
+- **New `audit` finding: `event-written-on-node`** (warning). Promotion
+  gives an event an id so it can hold what made it worth promoting — a
+  before, an after, a reason. It does not move `at:` and `state:`, which
+  `when()` and `state()` read off the triple. Put those two on the node
+  and nothing raises: the graph loads, `state()` returns `None`, and
+  `history()` returns fewer rows than the file looks like it holds. A
+  user lost 16 of 18 events to that silence and spent a day finding it.
+  Both keys together are the signal — a date alone is an ordinary
+  property (a release has one) and a state alone is what `act()` writes
+  onto every node it touches — so the check fires only when a node
+  carries a time *and* a state, and it names the triple to move `at:`
+  onto. Zero findings on every shipped example.
+- **`state()` says what it reads.** The docstring promised a hand-written
+  graph the same answer as one built through `act()` without saying that
+  it looks only at the triples the node is the *subject* of, and only at
+  the triple's own attributes. Both are deliberate — an event pointing at
+  a node did not leave the node in the event's state — and both are now
+  written down, next to a pointer to the README section that shows the
+  promoted form in YAML.
+
 ## 0.39.2
 
 The Examples list advertised three demos at the bottom and told you which
