@@ -639,10 +639,10 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 ## 例
 
 - [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — 架空の日用品・食品小売を5つのメンバーグラフ（カタログ / 受注 / 出荷 / 組織 / インシデント）に分け、**ワークスペース**として統合したもの: 567トリプル。36個の述語すべてが `domain` と `range` を宣言し、9個が `requires`（何が先に起きていなければならないか）を、11個が `by:`（誰が実行してよいか）を宣言しています。うち240件は日付を持つアクションなので、`state('ORD-25101')` はステータス列を読んだ値ではなく、2つの別々のメンバーグラフに書かれたイベントから組み立てられた答えです。ライブデモの中身です。
-- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上の6ファイルを書き出している生成器。決定的で、実行すればコミット済みの YAML がバイト単位でそのまま再現されます（そのことをテストで見張っています）。デモを育てるときは YAML ではなく生成器を編集します。
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。宣言も日付も一切ありません — それがこれを残している理由で、こちらでキュレーションしていない第三者のデータだからです。ワークスペースのデモで使っているデータを、1ファイルに平たく収めたものです。
+- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上のワークスペースと、その5つのメンバーグラフを書き出している生成器。決定的で、実行すればコミット済みの YAML がバイト単位でそのまま再現されます（そのことをテストで見張っています）。デモを育てるときは YAML ではなく生成器を編集します。
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。宣言も日付も一切ありません — それがこれを残している理由で、こちらでキュレーションしていない第三者のデータだからです。ワークスペースのデモが描いているのは同じ事実で、こちらはそれを6つに割らず1つのグラフのまま持っているものです。
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — 同じ事実を6つのドメイングラフ（映画 / 音楽 / 書籍 / 人物 / 場所 / その他）に分け、**ワークスペース**として統合し直したもの: 各メンバーがフィルタチップ付きの島として描画されます。ワークスペースのデモの中身です。
-- [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 架空のデータ基盤で運用上の慣習を示したもの: オントロジー、廃止、変更イベント。
+- [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 架空のデータ基盤で運用上の慣習を示したもの: オントロジー、廃止、変更イベント。パイプラインのデモの中身です。
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式の述語、オントロジーなし。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — インラインのグラフで動く、実行可能なノートブック版クイックスタート。
 

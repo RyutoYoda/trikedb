@@ -3,6 +3,22 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.2
+
+The Examples list advertised three demos at the bottom and told you which
+file was behind only one of them.
+
+- **Every example that powers a page now says which page.**
+  `examples/acme_pipeline.yaml` is what `/pipeline.html` draws, and the
+  bullet never said so, while `examples/freebase_sample.yaml` — which
+  powers no page at all since 0.39.1 — still carried a sentence explaining
+  its absence from one. A reader counting three demo links against the
+  bullets came up one short and one unexplained. `generate_trike_demo.py`
+  said it wrote "the six files above", a count left over from when the
+  workspace and its five members were listed separately. Fixed in all
+  three READMEs. A published PyPI description cannot be edited, so the
+  correction needs a version to ride on.
+
 ## 0.39.1
 
 Two demos of the same 614 facts, and only one of them showed anything the

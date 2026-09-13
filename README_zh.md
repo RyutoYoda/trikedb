@@ -637,10 +637,10 @@ trikedb 是嵌入式的，不是托管式的。对智能体来说，「嵌入式
 ## 示例
 
 - [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — 一家虚构的家居与食品杂货零售商，拆成 5 个成员图谱（商品 / 交易 / 履约 / 组织 / 故障）并成一个**工作区**：567 条三元组，36 个谓词全部声明了 `domain` 和 `range`，9 个声明了 `requires`——什么必须已经发生过，11 个声明了 `by:`——谁有资格签下它。其中 240 条是带日期的动作，所以 `state('ORD-25101')` 不是读某个状态字段，而是从两个不同成员图谱里的事件拼出来的答案。在线演示用的就是它。
-- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上面这 6 个文件就是它写出来的生成器。确定性的：跑一遍，已提交的 YAML 会逐字节复现，并且有一个测试守着这一点——所以要扩充这个演示，改的是生成器，不是数据。
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **真实数据**：来自 Freebase 知识图谱的约 600 条事实（CC BY，从 WebQSP 基准的子图中抽取），围绕 Tupac Shakur、阿加莎·克里斯蒂、尼古拉·特斯拉等。节点类型是从谓词的 domain 推断出来的。它里面没有任何声明，也没有任何日期——这正是留着它的理由：这是一批不由我们整理的第三方数据。它是工作区演示所用数据的扁平单文件版本。
+- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上面那个工作区和它的 5 个成员图谱就是它写出来的生成器。确定性的：跑一遍，已提交的 YAML 会逐字节复现，并且有一个测试守着这一点——所以要扩充这个演示，改的是生成器，不是数据。
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **真实数据**：来自 Freebase 知识图谱的约 600 条事实（CC BY，从 WebQSP 基准的子图中抽取），围绕 Tupac Shakur、阿加莎·克里斯蒂、尼古拉·特斯拉等。节点类型是从谓词的 domain 推断出来的。它里面没有任何声明，也没有任何日期——这正是留着它的理由：这是一批不由我们整理的第三方数据。工作区演示画的就是同一批事实；这个文件是没有拆开的版本：一个图谱，而不是六个。
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — 同一批事实拆成 6 个领域图谱（电影 / 音乐 / 书籍 / 人物 / 地点 / 其他），再作为**工作区**并回来：每个成员渲染成自己的一座岛，带一个筛选标签。工作区演示用的就是它。
-- [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 一个虚构的数据平台，展示那些运维惯例：本体、废弃标记、变更事件。
+- [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 一个虚构的数据平台，展示那些运维惯例：本体、废弃标记、变更事件。流水线演示用的就是它。
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式的谓词，没有本体。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — 可运行的 notebook 快速上手，图谱内联在里面。
 
