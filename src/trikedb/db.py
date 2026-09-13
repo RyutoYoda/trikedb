@@ -2,251 +2,58 @@
 
 from __future__ import annotations
 
-import datetime
-import re
-import fnmatch
 import json
 import shlex
 from copy import deepcopy
 from threading import RLock
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence, Union
 
 import yaml
 
+# What a triple is, and the helpers that answer questions about one, live in
+# model.py — the bottom of the package, which imports nothing from trikedb.
+# They are re-exported here because `from trikedb.db import Triple` (and
+# `_shorten`, and `_oxigraph_available`) is what callers have always written.
+from .model import (  # noqa: F401
+    RULE_KEYS,
+    TIME_ATTRS,
+    OntologyError,
+    Triple,
+    _YamlDumper,
+    _YamlLoader,
+    _iri,
+    _iri_node,
+    _is_pattern,
+    _now,
+    _oxigraph_available,
+    _parse_document,
+    _plain,
+    _shorten,
+    _term,
+    _term_match,
+    _time_key,
+    _unify,
+    _unique,
+    _validate_rdf_terms,
+)
+
 __all__ = ["Triple", "TrikeDB", "OntologyError"]
 
-
-class OntologyError(ValueError):
-    """Raised when a triple uses a predicate not declared in the ontology."""
-
-
-from .storage import check_scheme as _check_scheme
-from .storage import exists as _exists
-from .storage import is_remote as _is_remote
-from .storage import read_text as _read_text
-from .storage import serialization as _serialization
-from .storage import version as _version_of
-from .storage import write_text as _write_text
+# What the store is made of, and what it is allowed to know about.
+#
+# `model` is the data; `rules`, `rdf`, `reasoning`, `persistence` and
+# `audit` are what the store means, and they take the store as their first
+# argument rather than importing it back. `html`, `embeddings` and
+# `importers` are the other direction — a page, a model, a file format —
+# and are imported inside the three methods that use them, so the core
+# never depends on its own presentation or on an adapter it may not need.
+from . import audit as _audit
+from . import persistence, rdf, reasoning, rules
 
 
-def _term(value, field: str, whole=None) -> str:
-    """A triple's three terms are names, and a name has to be something.
 
-    ``None`` is the one that matters: left alone it becomes the string
-    ``"None"``, and the graph grows a node called None that joins to every
-    other missing value in it.
-    """
-    if value is None or (isinstance(value, str) and not value.strip()):
-        shown = f": {whole!r}" if whole is not None else ""
-        raise ValueError(f"triple {field} is empty{shown}")
-    return str(value)
-
-
-def _plain(value):
-    """YAML scalars json can hold.
-
-    An unquoted ``at: 2025-04-01`` — the natural way to date an event —
-    comes back from PyYAML as a ``datetime.date``, which json refuses.
-    That put a TypeError between a perfectly ordinary graph and
-    ``content_hash()``, ``to_html()`` and every JSON surface downstream.
-    Dates are kept, as the ISO text they were written as.
-    """
-    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {k: _plain(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_plain(v) for v in value]
-    return value
-
-
-_DIGIT_RUN = re.compile(r"\d+")
-
-
-def _time_key(text: str) -> str:
-    """Sort key for a time somebody typed, not the string anyone sees.
-
-    Pad every number so 2025/4/1 lands where 2025-04-01 does, and drop the
-    separators so two spellings of the same day compare equal instead of
-    comparing their punctuation. Left as plain text compare otherwise, a
-    node wears the state of an event months out of date.
-    """
-    return "".join(m.group().zfill(4) for m in _DIGIT_RUN.finditer(text))
-
-
-def _now() -> str:
-    """Local time, with its offset — what an action stamps.
-
-    To the microsecond, because an agent acts faster than a second — a loop
-    of five actions stamped to the second claimed one instant between them,
-    and a log whose rows all say the same time is not telling you when
-    anything happened. Ties are still possible and still fine: history()
-    settles them by the order they were written.
-    """
-    return datetime.datetime.now().astimezone().isoformat(timespec="microseconds")
-
-
-# One of these attributes is what makes a triple a change event rather than
-# a plain relation: it happened, and here is when. Shared with html.py,
-# which draws events, and with identity(), which keeps two of them apart.
-TIME_ATTRS = ("at", "when", "date", "time", "timestamp", "occurred", "recorded")
-
-
-@dataclass
-class Triple:
-    """A single subject-predicate-object statement, with optional attributes."""
-
-    s: str
-    p: str
-    o: str
-    attrs: dict = field(default_factory=dict)
-    rdf_terms: dict = field(default_factory=dict)
-
-    def spo(self) -> tuple:
-        return (self.s, self.p, self.o)
-
-    def to_dict(self) -> dict:
-        result = {"s": self.s, "p": self.p, "o": self.o, **deepcopy(self.attrs)}
-        if self.rdf_terms:
-            result["rdf_terms"] = deepcopy(self.rdf_terms)
-        return result
-
-    def when(self) -> str:
-        """When this says it happened, or "" if it is not an event."""
-        for key in TIME_ATTRS:
-            if key in self.attrs:
-                return str(self.attrs[key])
-        return ""
-
-    def identity(self):
-        # The time is part of what an event *is*. Without it, "restarted
-        # after failure" in April and the same line in September are one
-        # triple, and add() — an upsert on (s, p, o) — quietly overwrites
-        # the April record with the September one. A log you can delete
-        # from by appending to it is not a log.
-        return self.spo() + (self.when(),
-                             json.dumps(self.rdf_terms, sort_keys=True))
-
-    def as_rdf(self, base="urn:trikedb:"):
-        from rdflib import BNode, Literal, URIRef
-        result = []
-        for key, text in zip(("s", "p", "o"), self.spo()):
-            spec = self.rdf_terms.get(key)
-            if spec:
-                value = spec.get("value", text)
-                kind = spec["kind"]
-                if kind == "literal":
-                    term = Literal(value, lang=spec.get("language"),
-                                   datatype=spec.get("datatype"), normalize=False)
-                elif kind == "bnode":
-                    term = BNode(value)
-                else:
-                    term = URIRef(value if "value" in spec else _iri_node(text, base))
-            elif key == "o" and any(c.isspace() for c in text):
-                term = Literal(text)
-            else:
-                term = URIRef(_iri_node(text, base))
-            result.append(term)
-        return tuple(result)
-
-    @classmethod
-    def from_rdf(cls, s, p, o, base="urn:trikedb:"):
-        from rdflib import BNode, Literal, URIRef
-        values = tuple(_shorten(t, base) if isinstance(t, URIRef) else str(t)
-                       for t in (s, p, o))
-        row = cls(*values)
-        defaults = row.as_rdf(base)
-        for key, term, default in zip(("s", "p", "o"), (s, p, o), defaults):
-            if term == default:
-                continue
-            spec = {"kind": "literal" if isinstance(term, Literal) else
-                    "bnode" if isinstance(term, BNode) else "iri", "value": str(term)}
-            if isinstance(term, Literal):
-                if term.datatype:
-                    spec["datatype"] = str(term.datatype)
-                if term.language:
-                    spec["language"] = term.language
-            row.rdf_terms[key] = spec
-        return row
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "Triple":
-        d = dict(data)
-        try:
-            s, p, o = d.pop("s"), d.pop("p"), d.pop("o")
-        except KeyError as exc:
-            raise ValueError(f"triple is missing required key {exc}: {data!r}") from None
-        terms = d.pop("rdf_terms", {})
-        _validate_rdf_terms(terms)
-        s, p = _term(s, "s", data), _term(p, "p", data)
-        o = str(o) if terms.get("o", {}).get("kind") == "literal" and o is not None else _term(o, "o", data)
-        return cls(s, p, o, _plain(d), deepcopy(terms))
-
-
-#: libyaml if PyYAML was built with it, which is the usual case. Four to five
-#: times faster than the pure-Python parser on the same bytes, and — verified
-#: byte-for-byte on graphs up to a megabyte — the dumper emits exactly the
-#: same text, so switching cannot churn anyone's diffs.
-try:
-    _YamlLoader = yaml.CSafeLoader
-    _YamlDumper = yaml.CSafeDumper
-except AttributeError:  # pragma: no cover - PyYAML built without libyaml
-    _YamlLoader = yaml.SafeLoader
-    _YamlDumper = yaml.SafeDumper
-
-
-def _oxigraph_available() -> bool:
-    """Is the faster SPARQL engine installed?
-
-    A core dependency, so normally yes — it was faster at every graph size
-    measured, down to a few hundred triples. This is still a question rather
-    than an assumption because trikedb reaches places pip does not: hosts
-    that allow only a curated package channel (pyoxigraph is absent from
-    Snowflake's, for one), and hosts where trikedb is vendored as a subset of
-    its files. There, reads fall back to rdflib and everything keeps working,
-    slower.
-    """
-    try:
-        import pyoxigraph  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _parse_document(text: str) -> dict:
-    """Parse a stored graph, whichever of the two forms it is in.
-
-    JSON first, because a warehouse row holds JSON and ``json.loads`` reads
-    it about 400x faster than a YAML parser does — 12ms against 5s on 50k
-    triples. Feeding JSON to the YAML parser is *correct*, which is why it
-    went unnoticed; it is just enormously slower.
-
-    The fallback is free: JSON parsing of a YAML document fails on the first
-    key, in 8 microseconds. So the order costs nothing for files and saves
-    almost everything for rows. Both parsers agree on any JSON document —
-    JSON is a subset of YAML — so which one ran is not observable.
-    """
-    if not text or not text.strip():
-        return {}
-    stripped = text.lstrip()
-    if stripped[0] in "{[":
-        try:
-            return json.loads(text)
-        except ValueError:
-            pass                      # a YAML flow-style document, then
-    return yaml.load(text, Loader=_YamlLoader) or {}
-
-
-def _term_match(pattern: Optional[str], value: str) -> bool:
-    """None is a wildcard; '*'/'?' in a pattern enables glob matching."""
-    if pattern is None:
-        return True
-    if any(ch in pattern for ch in "*?[") :
-        return fnmatch.fnmatchcase(value, pattern)
-    return pattern == value
 
 
 class TrikeDB:
@@ -268,12 +75,9 @@ class TrikeDB:
         connection=None,
         sparql_engine: Optional[str] = None,
     ):
-        _check_scheme(path)
         self._lock = RLock()  # shared by server adapters, never serialized
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
-        self.path: Union[Path, str, None] = (
-            path if _is_remote(path) else (Path(path) if path else None)
-        )
+        self.path: Union[Path, str, None] = persistence.locate(path)
         #: when True (the default), every mutation writes straight back to
         #: the file — what you add is what's on disk, same as the CLI.
         #: Pass autosave=False to batch mutations and call save() yourself.
@@ -306,6 +110,9 @@ class TrikeDB:
         self._triples: list = []
         #: open batch() blocks; while any is open, autosave holds its write
         self._batch_depth = 0
+        #: One list per open batch, holding (triple, attrs-before) for
+        #: the one mutation that happens in place — see add()'s upsert.
+        self._batch_undo: list = []
         #: storage token the in-memory graph was built from; see storage.version
         self._version = None
         #: (base, engine) -> a built query graph. sparql() used to rebuild one
@@ -314,6 +121,14 @@ class TrikeDB:
         #: (s, p, o) -> Triple, so add() does not scan; see _spo_index
         self._index: Optional[dict] = None
         self._index_len = -1
+        #: predicate -> its triples, and (predicate, node) -> the triples
+        #: with that node at either end, so a declared condition does not
+        #: scan; see _p_index
+        self._pidx: Optional[dict] = None
+        self._eidx: Optional[dict] = None
+        self._pidx_len = -1
+        #: conditions a half-built graph cannot answer yet; see _settle
+        self._pending: list = []
         #: which engine answers read queries: "oxigraph" when the extra is
         #: installed, else "rdflib". Pass sparql_engine="rdflib" to pin it —
         #: worth doing if you ever need to compare the two on a real query,
@@ -333,351 +148,65 @@ class TrikeDB:
                     self._declare_predicate(str(key), value)
             else:
                 self.ontology = {str(p): "" for p in ontology}
-        if self.path is not None and _exists(self.path, self._connection):
-            self._load()
+        persistence.load_if_present(self)
 
-    # ------------------------------------------------------------------ io
+    # ------------------------------------------------------------------- io
+    #
+    # Reading and writing the document — and reading a workspace as one —
+    # live in persistence.py. `reload` and `save` are the public pair.
 
     def reload(self) -> "TrikeDB":
         """Throw away the in-memory graph and read it again from storage.
-
-        The way out of a ``ConcurrentWriteError``: someone else's version is
-        now the real one, so pick it up and re-apply whatever you were doing
-        on top of it.
-        """
-        self.nodes_meta = {}
-        self.ontology = {}
-        self.predicate_rules = {}
-        self._triples = []
-        self.workspace = None
-        self.read_only = self._read_only_requested   # a reload must not grant writes
-        self._version = None
-        self._rdf_cache = None
-        # Not just for tidiness: the length check in _spo_index cannot see a
-        # replacement that happens to be the same length, and a stale entry
-        # would make add() think a triple is already there and drop it.
-        self._index = None
-        if self.path is not None and _exists(self.path, self._connection):
-            self._load()
-        return self
-
-    def _load(self) -> None:
-        # Version first, content second — the other order can hand us a token
-        # that belongs to bytes we never saw. See storage.version.
-        self._version = _version_of(self.path, self._connection)
-        try:
-            data = _parse_document(_read_text(self.path, connection=self._connection))
-        except yaml.YAMLError as exc:
-            # PyYAML reports "<unicode string>", never the file it came from,
-            # which is no help at all in a workspace of five members.
-            raise ValueError(f"{self.path} is not valid YAML: {exc}") from exc
-        if not isinstance(data, dict):
-            # Valid YAML that isn't a mapping — a bare string or list. Reaching
-            # .get() on it blames whichever key we happened to ask for first,
-            # which sends the reader looking in the wrong place entirely. More
-            # than a theoretical worry once the graph lives somewhere other
-            # people can write to, like a shared warehouse table.
-            raise ValueError(
-                f"{self.path} does not hold a graph: expected a YAML mapping "
-                f"with triples/nodes/ontology keys, found {type(data).__name__}"
-            )
-        for key, want in (("triples", list), ("nodes", dict), ("graphs", dict)):
-            if key in data and data[key] is not None and not isinstance(data[key], want):
-                # Left to itself this surfaces as .items() on a list or a
-                # dict() on a string, several frames away from the file that
-                # actually needs fixing.
-                raise ValueError(
-                    f"{self.path}: '{key}:' must be a {want.__name__}, "
-                    f"found {type(data[key]).__name__}"
-                )
-        graphs = data.get("graphs")
-        if isinstance(graphs, dict) and not data.get("triples"):
-            self._load_workspace(graphs)
-            return
-        onto = data.get("ontology") or {}
-        preds = onto.get("predicates", onto) if isinstance(onto, dict) else onto
-        if not isinstance(preds, (dict, list, tuple)):
-            raise ValueError(
-                f"{self.path}: 'ontology:' must be a mapping of predicate to "
-                f"description (or a list of predicates), found "
-                f"{type(preds).__name__}"
-            )
-        if isinstance(preds, dict):
-            for k, v in preds.items():
-                self._declare_predicate(str(k), v, keep_existing=True)
-        elif isinstance(preds, (list, tuple)):
-            for p in preds:
-                self.ontology.setdefault(str(p), "")
-        for name, props in (data.get("nodes") or {}).items():
-            self.nodes_meta[str(name)] = _plain(dict(props or {}))
-        for item in data.get("triples") or []:
-            self._triples.append(Triple.from_dict(item))
-        self._rdf_cache = None
-        self._index = None
-
-    def _load_workspace(self, graphs: dict) -> None:
-        """Union view over member graphs. The union is read-only — write to a
-        member graph instead.
-
-        Three details decide what the union contains, and all three are easy
-        to get wrong when reimplementing this by hand:
-
-        - **Node properties merge per key, not per node.** A node declared in
-          two members keeps the first value of each *key*, so a description
-          only the second member carries still survives. Taking the whole
-          dict from the first member instead drops it silently.
-        - **Ontologies merge per predicate**, first member wins the
-          description.
-        - **A triple's `graph` attribute is the workspace key**, not the
-          member's path or filename.
-        """
-        if not graphs:
-            raise ValueError(
-                f"{self.path}: 'graphs:' is empty — a workspace needs at least "
-                "one member ({name: path})"
-            )
-        self.workspace = {str(k): str(v) for k, v in graphs.items()}
-        self.read_only = True
-        base_dir = None if _is_remote(self.path) else Path(self.path).parent
-        for name, gpath in self.workspace.items():
-            if not _is_remote(gpath) and base_dir is not None and not Path(gpath).is_absolute():
-                gpath = str(base_dir / gpath)
-            # Members inherit the connection: a union whose members live in a
-            # warehouse has to reach it the same way this graph did, and a
-            # host that cannot open its own connection cannot open one here
-            # either.
-            if not _exists(gpath, self._connection):
-                # Not the same as an empty member: the workspace named this
-                # file, so a typo here silently drops a whole graph out of
-                # the union and every query just returns less.
-                raise FileNotFoundError(
-                    f"{self.path}: workspace member '{name}' points at "
-                    f"{gpath}, which does not exist"
-                )
-            sub = TrikeDB(gpath, connection=self._connection)
-            for k, v in sub.ontology.items():
-                self.ontology.setdefault(k, v)
-            for k, rule in sub.predicate_rules.items():
-                self.predicate_rules.setdefault(k, rule)
-            for n, props in sub.nodes_meta.items():
-                merged = self.nodes_meta.setdefault(n, {})
-                for k, v in props.items():
-                    merged.setdefault(k, v)
-            for t in sub:
-                self._triples.append(Triple(t.s, t.p, t.o, {**t.attrs, "graph": name}, t.rdf_terms))
-        self._index = None
+        See persistence.reload."""
+        return persistence.reload(self)
 
     def _guard_writable(self) -> None:
-        # Every method that can change the graph calls this first, which makes
-        # it the one place a cache of the built RDF graph can be dropped
-        # without hunting for mutation sites. Over-invalidating (save() also
-        # passes through here) costs a rebuild; under-invalidating would
-        # answer queries from a graph that no longer exists, so the
-        # conservative side is the only safe one.
-        self._rdf_cache = None
-        if not self.read_only:
-            return
-        if self.workspace is not None:
-            raise ValueError(
-                "this is a read-only workspace union — write to one of its "
-                f"member graphs instead: {self.workspace}"
-            )
-        # Naming the reason matters: "read-only" on its own reads like a
-        # filesystem permission problem to go and fix, when in fact the caller
-        # asked for this and the fix is to stop writing here.
-        raise ValueError(
-            f"{self.path} was opened read_only=True — mutations are refused. "
-            "Open it without read_only to write, or write through whichever "
-            "path owns this graph"
-        )
+        return persistence.guard_writable(self)
 
     def save(self, path: Union[str, Path, None] = None):
-        """Write the graph back out. Plain triples stay on one line.
-
-        Works for local paths, remote URLs (s3://, ...) and warehouse rows
-        (snowflake://) alike. On S3 and in a warehouse the write is
-        conditional on the stored graph still being the one this copy was
-        read from: if another writer got there first, nothing is written and
-        ``ConcurrentWriteError`` is raised — call ``reload()`` and re-apply.
-        Backends without conditional writes stay last-write-wins.
-
-        Files get YAML, because a person reads those. A warehouse row gets
-        JSON, so SQL can see inside it; see ``storage.serialization``.
-        """
-        self._guard_writable()
-        if path is None:
-            target = self.path
-        else:
-            target = path if _is_remote(path) else Path(path)
-        if target is None:
-            raise ValueError("no path given and TrikeDB was created without one")
-        doc: dict = {}
-        if self.ontology:
-            doc["ontology"] = {
-                "predicates": {p: self._declaration(p) for p in self.ontology}
-            }
-        if self.nodes_meta:
-            doc["nodes"] = {k: dict(v) for k, v in self.nodes_meta.items()}
-        doc["triples"] = [t.to_dict() for t in self._triples]
-        if _serialization(target) == "json":
-            text = json.dumps(doc, ensure_ascii=False, indent=2)
-        else:
-            text = yaml.dump(
-                doc,
-                Dumper=_YamlDumper,
-                sort_keys=False,
-                allow_unicode=True,
-                default_flow_style=None,
-                width=120,
-            )
-        if target == self.path:
-            # Same file we read: refuse to overwrite someone else's save.
-            self._version = _write_text(target, text, expect=self._version, connection=self._connection)
-        else:  # save-as: nothing to compare against
-            self._version = _write_text(target, text, connection=self._connection)
-        self.path = target
-        return target
+        """Write the graph back out. See persistence.save."""
+        return persistence.save(self, path)
 
     # -------------------------------------------------------------- writing
 
+    # ---------------------------------------------- declarations and rules
+    #
+    # What these mean lives in rules.py, as free functions taking the store.
+    # What is left here is what something outside db.py actually calls —
+    # `audit` asks `db._unmet`, the tests ask for the rest by name. A
+    # forward that nobody follows is not an interface, so it is gone.
+
     def _declare_predicate(self, name: str, value: Any, *,
                            keep_existing: bool = False) -> None:
-        """Record one predicate declaration: a description, or a shape.
-
-        ``INGESTS_TO: "job -> table"`` is a comment; nothing checks it. The
-        mapping form says the same thing to the machine::
-
-            INGESTS_TO: {description: ..., domain: job, range: table}
-        """
-        if keep_existing and name in self.ontology:
-            return
-        if not isinstance(value, dict):
-            self.ontology[name] = str(value or "")
-            return
-        self.ontology[name] = str(value.get("description") or "")
-        rule = {}
-        for key in ("domain", "range"):
-            want = value.get(key)
-            if want is None or want == "":
-                continue
-            if isinstance(want, (list, tuple)):
-                rule[key] = tuple(str(t) for t in want)
-            else:
-                rule[key] = (str(want),)
-        if rule:
-            self.predicate_rules[name] = rule
-        else:
-            self.predicate_rules.pop(name, None)
-
-    def _declaration(self, name: str) -> Any:
-        """What this predicate looks like in the file: a string, or a shape."""
-        rule = self.predicate_rules.get(name)
-        if not rule:
-            return self.ontology[name]
-        out: dict = {}
-        if self.ontology[name]:
-            out["description"] = self.ontology[name]
-        for key in ("domain", "range"):
-            want = rule.get(key)
-            if want:
-                out[key] = list(want) if len(want) > 1 else want[0]
-        return out
+        return rules.declare_predicate(self, name, value,
+                                       keep_existing=keep_existing)
 
     def declare_link(self, predicate: str, *, domain=None, range=None,
+                     requires=None, by=None,
                      description: Optional[str] = None) -> dict:
-        """Declare what a predicate connects, and have it enforced.
-
-        ``domain`` is the node type allowed as the subject, ``range`` the
-        one allowed as the object (either may be a list). Once declared,
-        an edge written the wrong way round is refused instead of stored —
-        which is the whole point of writing the declaration down.
-        """
-        predicate = _term(predicate, "p")
-        spec: dict = {"description": description
-                      if description is not None else self.ontology.get(predicate, "")}
-        if domain is not None:
-            spec["domain"] = domain
-        if range is not None:
-            spec["range"] = range
-        self._declare_predicate(predicate, spec)
-        for t in self._triples:
-            if t.p == predicate:
-                self._check_link(t.s, t.p, t.o)
-        self._autosave()
-        return {"description": self.ontology[predicate],
-                **{k: list(v) for k, v in self.predicate_rules.get(predicate, {}).items()}}
-
-    @staticmethod
-    def _rule_text(rule: dict, key: str) -> str:
-        want = rule.get(key)
-        return "|".join(want) if want else "any"
-
-    def _fits(self, rule: dict, s: str, o: str) -> bool:
-        for name, key in ((s, "domain"), (o, "range")):
-            want = rule.get(key)
-            if not want:
-                continue
-            have = (self.nodes_meta.get(name) or {}).get("type")
-            if have is None or str(have) not in want:
-                return False
-        return True
+        """Declare what a predicate connects and how it may run, and have
+        it enforced. See rules.declare_link."""
+        return rules.declare_link(self, predicate, domain=domain, range=range,
+                                  requires=requires, by=by,
+                                  description=description)
 
     def _check_link(self, s: str, p: str, o: str) -> None:
-        """Refuse a link that contradicts its own declaration.
+        return rules.check_link(self, s, p, o)
 
-        Only where the type is actually known. Types get written after the
-        edges that use them as often as before, and rejecting on a type
-        nobody has stated yet would make a correct import fail on the order
-        it happens to be in. What is still unknown, ``audit()`` reports.
-        """
-        rule = self.predicate_rules.get(p)
-        if not rule:
-            return
-        for role, name, key in (("subject", s, "domain"), ("object", o, "range")):
-            want = rule.get(key)
-            have = (self.nodes_meta.get(name) or {}).get("type")
-            if not want or have is None or str(have) in want:
-                continue
-            hint = (f" — the other way round ({o} {p} {s}) fits"
-                    if self._fits(rule, o, s) else "")
-            raise OntologyError(
-                f"{p} is declared {self._rule_text(rule, 'domain')} -> "
-                f"{self._rule_text(rule, 'range')}, so its {role} cannot be "
-                f"{name!r}, which is a {have!r}{hint}"
-            )
+    def _unmet(self, t: Triple, rule: dict) -> list:
+        return rules.unmet(self, t, rule)
+
+    def _check_action(self, t: Triple) -> None:
+        return rules.check_action(self, t)
+
+    def _settle(self) -> None:
+        return rules.settle(self)
 
     def _check_node_type(self, name: str, new_type: str) -> None:
-        """Would typing this node this way break an edge already written?
-
-        The other half of _check_link, read from the node's side, so that
-        which of the two was written first cannot decide whether the graph
-        obeys its own ontology.
-        """
-        for t in self._triples:
-            rule = self.predicate_rules.get(t.p)
-            if not rule:
-                continue
-            for role, key, end in (("subject", "domain", t.s),
-                                   ("object", "range", t.o)):
-                want = rule.get(key)
-                if end != name or not want or new_type in want:
-                    continue
-                raise OntologyError(
-                    f"{name!r} is the {role} of ({t.s} {t.p} {t.o}), which is "
-                    f"declared {self._rule_text(rule, key)} there — typing it "
-                    f"{new_type!r} would contradict a link already in the graph"
-                )
+        return rules.check_node_type(self, name, new_type)
 
     def _check_predicate(self, p: str) -> None:
-        if (
-            self.ontology
-            and p not in self.ontology
-            and not p.startswith(("http://", "https://"))
-        ):
-            raise OntologyError(
-                f"predicate {p!r} is not in the ontology "
-                f"(allowed: {sorted(self.ontology)})"
-            )
+        return rules.check_predicate(self, p)
 
     def add(self, s: str, p: str, o: str, *, rdf_terms=None, **attrs: Any) -> Triple:
         """Add (or upsert) a triple. Same (s, p, o) merges attributes.
@@ -696,16 +225,22 @@ class TrikeDB:
             if self.ontology and actual_p not in self.ontology and not actual_p.startswith(("http://", "https://")):
                 raise OntologyError(f"predicate {actual_p!r} is not in the ontology")
         self._check_link(triple.s, triple.p, triple.o)
+        self._check_action(triple)
         key = triple.identity()
         index = self._spo_index()
         existing = index.get(key)
         if existing is not None:
+            # The only edit to a triple already in the store, so it is the
+            # only thing a shallow snapshot cannot undo on its own. Every
+            # open batch gets the pre-image, because each rolls back to
+            # the state it began in, not to the innermost one.
+            for undo in self._batch_undo:
+                undo.append((existing, dict(existing.attrs)))
             existing.attrs.update(deepcopy(attrs))
             self._autosave()
             return deepcopy(existing)
         self._triples.append(triple)
-        index.setdefault(key, triple)
-        self._index_len = len(self._triples)
+        self._index_append(triple)
         self._autosave()
         return deepcopy(triple)
 
@@ -720,7 +255,7 @@ class TrikeDB:
         keep = [t for t in self._triples if not self._matches(t, s, p, o)]
         removed = len(self._triples) - len(keep)
         self._triples = keep
-        self._index = None
+        self._index = self._pidx = self._eidx = None
         if removed:
             self._autosave()
         return removed
@@ -748,6 +283,62 @@ class TrikeDB:
             self._index_len = len(self._triples)
         return self._index
 
+    def _index_append(self, t: Triple) -> None:
+        """Keep the indexes current rather than dropping them.
+
+        They rebuild when the triple count stops matching what was indexed,
+        which is the right answer for a list edited from outside and the
+        wrong one for the common case: appending a triple makes the count
+        differ, so a graph built one write at a time rebuilt every index on
+        every write, and a declared condition cost the size of the graph
+        after all — indexed, and still linear. Extending them instead costs
+        nothing and keeps the count in step. Call after the append.
+        """
+        if self._index is not None:
+            self._index.setdefault(t.identity(), t)
+            self._index_len = len(self._triples)
+        if self._pidx is not None:
+            self._pidx.setdefault(t.p, []).append(t)
+            self._eidx.setdefault((t.p, t.s), []).append(t)
+            if t.o != t.s:
+                self._eidx.setdefault((t.p, t.o), []).append(t)
+            self._pidx_len = len(self._triples)
+
+    def _p_index(self) -> tuple:
+        """predicate -> its triples, and (predicate, node) -> the triples
+        with that node at either end. Built together, on demand, reused.
+
+        A declared condition asks the same question of every write — has
+        this happened yet — and answering it by walking the whole graph
+        makes the condition cost O(n) per triple, once per step of it. At
+        16k triples that was eight minutes to build a graph, which is a
+        guarantee nobody would leave switched on.
+
+        By predicate alone is not enough: ``PLACED_BY`` narrows a shipping
+        graph to a third of itself and no further, so a step that already
+        knows one of its ends still walked every order in the book. Keyed
+        by the end as well it goes straight to the handful that touch this
+        order, and the check stops growing with the graph — which is what
+        makes a condition spanning several steps affordable to enforce on
+        every write rather than only in audit().
+
+        Either end, not the subject, for the same reason _happened reads
+        both: an event promoted to an object sits on the far side of its
+        own edge. Same refresh rule as _spo_index, and the same explicit
+        clearing when triples are removed rather than appended.
+        """
+        if self._pidx is None or self._pidx_len != len(self._triples):
+            by_p: dict = {}
+            by_end: dict = {}
+            for t in self._triples:
+                by_p.setdefault(t.p, []).append(t)
+                by_end.setdefault((t.p, t.s), []).append(t)
+                if t.o != t.s:
+                    by_end.setdefault((t.p, t.o), []).append(t)
+            self._pidx, self._eidx = by_p, by_end
+            self._pidx_len = len(self._triples)
+        return self._pidx, self._eidx
+
     def _autosave(self) -> None:
         if self.autosave and self.path and not self._batch_depth:
             self.save()
@@ -763,27 +354,53 @@ class TrikeDB:
         finished import stays out of the file it would have to be undone from.
         """
         with self._lock:
-            snapshot = deepcopy((self._triples, self.nodes_meta,
-                                 self.ontology, self.predicate_rules))
+            # Structural copies, not deepcopy. What rollback has to undo is
+            # *which* objects the store holds, not what is inside them:
+            # triples are appended and dropped, never edited, except for
+            # add()'s attribute merge, which records its own pre-image
+            # below. A node's properties are replaced rather than edited
+            # for the same reason, so one level down is the whole store.
+            #
+            # deepcopy walked the entire graph on the way into every batch,
+            # and act() opens one per action — an action on a 200k-triple
+            # graph spent 1.5 seconds copying the 199,999 triples it was
+            # not going to touch. Copying pointers instead is the same
+            # guarantee at a thousandth of the cost.
+            snapshot = (list(self._triples), dict(self.nodes_meta),
+                        dict(self.ontology), dict(self.predicate_rules))
+            undo: list = []
+            self._batch_undo.append(undo)
             self._batch_depth += 1
             try:
                 yield self
-                if self._batch_depth == 1 and self.autosave and self.path:
-                    self.save()
+                if self._batch_depth == 1:
+                    self._settle()
+                    if self.autosave and self.path:
+                        self.save()
             except BaseException:
+                self._pending = []
+                for triple, before in reversed(undo):
+                    triple.attrs = before
                 (self._triples, self.nodes_meta, self.ontology,
                  self.predicate_rules) = snapshot
-                self._index = self._rdf_cache = None
+                self._index = self._pidx = self._eidx = self._rdf_cache = None
                 raise
             finally:
                 self._batch_depth -= 1
+                self._batch_undo.pop()
 
-    def set_node(self, name: str, *, replace: bool = False, **props: Any) -> dict:
+    def set_node(self, name: str, /, *, replace: bool = False, **props: Any) -> dict:
         """Attach (or merge) free-form properties onto a node.
 
         Conventional keys the HTML export understands: `type` (color
-        grouping + legend), `label` (display name), `level` (column in
-        the flow layout). Everything else shows up in the detail panel.
+        grouping + legend), `label` / `name` / `title` / `summary` (what
+        the node is called, in that order of preference), `level` (column
+        in the flow layout). Everything else shows up in the detail panel.
+
+        The node is positional-only, because `name` is one of the keys a
+        caller most wants to set and a parameter of the same name would
+        eat it: `set_node("SVC-1", name="checkout-api")` has to mean the
+        property, not a second spelling of the node.
 
         `type` is the one property not merged blindly. Two different things
         that share a name — a tool and a topic both called "Codex" — would
@@ -792,7 +409,10 @@ class TrikeDB:
         adds up. Pass `replace=True` to change a type on purpose.
         """
         self._guard_writable()
-        merged = self.nodes_meta.setdefault(str(name), {})
+        # A node's properties are replaced, never edited in place. That is
+        # what lets batch() snapshot the store by copying pointers instead
+        # of walking it — see the note there.
+        merged = dict(self.nodes_meta.get(str(name)) or {})
         old = merged.get("type")
         if not replace and "type" in props and old is not None and props["type"] != old:
             raise ValueError(
@@ -804,6 +424,7 @@ class TrikeDB:
             # Before mutating: a refused type must leave the node as it was.
             self._check_node_type(str(name), str(props["type"]))
         merged.update(deepcopy(props))
+        self.nodes_meta[str(name)] = merged
         self._autosave()
         return deepcopy(merged)
 
@@ -847,26 +468,50 @@ class TrikeDB:
         payload.update(attrs)
         triple = Triple.from_dict({"s": s, "p": p, "o": o, **payload})
         self._check_link(triple.s, triple.p, triple.o)
+        self._check_action(triple)
         with self.batch():
             # One write, and nothing half-applied: an event whose state
             # never reached the node would be a log of something that
             # did not happen.
             self._triples.append(triple)
-            self._index = None
+            self._index_append(triple)
             if state is not None:
-                self.nodes_meta.setdefault(s, {})["state"] = str(state)
+                self.nodes_meta[s] = {**(self.nodes_meta.get(s) or {}),
+                                      "state": str(state)}
         return deepcopy(triple)
 
-    def history(self, name: str, p: Optional[str] = None) -> list:
+    def _own_events(self, name: str, p: Optional[str] = None) -> list:
+        """Dated triples this node is the subject of — what it did or became.
+
+        The state a node wears comes from here and only here. An event
+        pointing *at* a node says something happened to it, not that it
+        took the event's state: a price change that leaves the change
+        record 'applied' does not leave the approver applied.
+        """
+        return [(i, t) for i, t in enumerate(self._triples)
+                if t.s == name and t.when() and (p is None or t.p == p)]
+
+    def history(self, name: str, p: Optional[str] = None,
+                *, incoming: bool = True) -> list:
         """Everything that happened to this node, newest first.
 
-        The fold the HTML export draws, available to whatever is reading
-        the graph — an agent asking "what has been done to this table"
-        should not have to open a browser to find out.
+        Both directions, because an event is not always written from the
+        node's side. Once an event is big enough to carry its own
+        properties it becomes an object in its own right — a price change
+        with a before and an after, a shipment with a carrier and a wave —
+        and then the product is the *object* of ``CHANGED``, not the
+        subject. Folding the incoming side in is what keeps that promotion
+        from cutting the product off from its own history.
+
+        ``incoming=False`` narrows it back to what this node is the
+        subject of, which is the view :meth:`state` reads.
         """
         name = str(name)
-        rows = [(i, t) for i, t in enumerate(self._triples)
-                if t.s == name and t.when() and (p is None or t.p == p)]
+        rows = self._own_events(name, p)
+        if incoming:
+            rows += [(i, t) for i, t in enumerate(self._triples)
+                     if t.o == name and t.s != name and t.when()
+                     and (p is None or t.p == p)]
         # Newest first, and a tie on the day goes to whichever was appended
         # later: written later, happened later.
         rows.sort(key=lambda row: (_time_key(row[1].when()), row[0]), reverse=True)
@@ -883,7 +528,9 @@ class TrikeDB:
         stored = (self.nodes_meta.get(str(name)) or {}).get("state")
         if stored is not None:
             return str(stored)
-        for event in self.history(name):
+        for _, event in sorted(self._own_events(str(name)),
+                               key=lambda row: (_time_key(row[1].when()), row[0]),
+                               reverse=True):
             for key in ("state", "status"):
                 if key in event.attrs:
                     return str(event.attrs[key])
@@ -1034,228 +681,36 @@ class TrikeDB:
 
     # -------------------------------------------------------------- sparql
 
+    # ------------------------------------------------------------------ rdf
+    #
+    # The projection into RDF, and the two engines that read it, live in
+    # rdf.py. Only the three public names keep methods here.
+
     def to_rdflib(self, base: str = "urn:trikedb:", node_props: bool = True,
                   edge_attrs: bool = True):
-        """Convert to an rdflib.Graph.
-
-        Subjects and predicates become URIRefs under `base`. Objects become
-        URIRefs too, unless they contain whitespace (e.g. change-event
-        descriptions), in which case they become Literals. Node properties
-        are included as literal-valued statements (so SPARQL can filter on
-        them, e.g. `?x t:type "table"`) unless node_props=False.
-
-        Edge attributes (note, prov, ...) are exported as standard RDF
-        reification unless edge_attrs=False: each attributed triple gains a
-        statement resource so the attributes are SPARQL-queryable::
-
-            SELECT ?s ?o ?note WHERE {
-              ?st rdf:subject ?s ; rdf:predicate t:AFFECTED_BY ;
-                  rdf:object ?o ; t:note ?note }
-        """
-        from rdflib import Graph
-        g = Graph()
-        g.bind("t", base)
-        for triple in self._statements(base, node_props, edge_attrs):
-            g.add(triple)
-        return g
+        """This graph as an rdflib Graph. See rdf.to_rdflib."""
+        return rdf.to_rdflib(self, base, node_props, edge_attrs)
 
     def _statements(self, base: str, node_props: bool = True,
                     edge_attrs: bool = True):
-        """One typed RDF projection shared by every exporter and engine."""
-        from rdflib import BNode, Literal, RDF, URIRef
-        # User blank nodes and synthetic statement nodes must not collide.
-        used = {str(term) for t in self._triples for term in t.as_rdf(base)
-                if isinstance(term, BNode)}
-        for i, t in enumerate(self._triples):
-            s, p, o = t.as_rdf(base)
-            yield s, p, o
-            if edge_attrs and t.attrs:
-                name = f"trikedb-statement-{i}"
-                while name in used:
-                    name += "-"
-                used.add(name)
-                st = BNode(name)
-                yield st, RDF.type, RDF.Statement
-                yield st, RDF.subject, s
-                yield st, RDF.predicate, p
-                yield st, RDF.object, o
-                for key, value in t.attrs.items():
-                    yield st, URIRef(_iri_node(str(key), base)), Literal(value)
-        if node_props:
-            for name, props in self.nodes_meta.items():
-                for key, value in props.items():
-                    yield URIRef(_iri_node(name, base)), URIRef(_iri_node(str(key), base)), Literal(value)
+        return rdf.statements(self, base, node_props, edge_attrs)
 
     def _oxigraph_store(self, base: str):
-        """Load the shared, typed RDF projection into Oxigraph."""
-        from pyoxigraph import Store, RdfFormat
-        store = Store()
-        data = self.to_rdflib(base).serialize(format="nt")
-        store.load(input=data, format=RdfFormat.N_TRIPLES)
-        return store
+        return rdf.oxigraph_store(self, base)
 
     def _query_graph(self, base: str, engine: str = "rdflib"):
-        """The built RDF graph for read queries, reused between them.
-
-        Building it was two thirds of what a query cost — 769ms of 1200ms on
-        50k triples — because every call started from scratch. Reads dominate
-        in the shape that matters (a served graph answering agents), so the
-        second query onward now pays only for the query itself.
-
-        Any attempted mutation drops this; see ``_guard_writable``. Updates
-        deliberately do not come here: ``update()`` needs a graph without node
-        properties or reification so it can diff the result back, and it
-        builds its own.
-        """
-        key = (base, engine)
-        if self._rdf_cache is not None and self._rdf_cache[0] == key:
-            return self._rdf_cache[1]
-        graph = (self._oxigraph_store(base) if engine == "oxigraph"
-                 else self.to_rdflib(base))
-        self._rdf_cache = (key, graph)
-        return graph
+        return rdf.query_graph(self, base, engine)
 
     def sparql(self, query: str, base: str = "urn:trikedb:"):
-        """Run real SPARQL 1.1 (via rdflib) against the graph — reads and writes.
-
-        The prefix `t:` is bound to `base`, so predicates are written
-        `t:PROVIDES`. SELECT returns a list of {var: value} dicts with URIs
-        shortened back to plain names; ASK returns a bool. Update forms
-        (INSERT DATA, DELETE WHERE, ...) mutate the store and return the
-        change in triple count.
-
-        >>> db.sparql("SELECT ?v ?t WHERE { ?v t:PROVIDES ?j . ?j t:INGESTS_TO ?t }")
-        >>> db.sparql("INSERT DATA { t:figly t:PROVIDES t:figly-export-job }")
-        """
-        if not isinstance(query, str):
-            raise TypeError("SPARQL query must be a string")
-        # Parse only ambiguous forms. Common read queries keep their fast path.
-        import re
-        leading = re.sub(r"(?m)^\s*#[^\n]*(?:\n|$)", "", query).lstrip()
-        word = re.match(r"[A-Za-z]+", leading)
-        first = word.group().upper() if word else ""
-        if first not in {"SELECT", "ASK", "CONSTRUCT", "DESCRIBE"}:
-            from rdflib.plugins.sparql.parser import parseQuery, parseUpdate
-            try:
-                parseUpdate(query)
-            except Exception:
-                parseQuery(query)  # report the read parser's actual syntax error
-            else:
-                return self.update(query, base=base)
-
-        prefixed = (
-            f"PREFIX t: <{base}>\n"
-            "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query
-        )
-        if self.sparql_engine == "oxigraph":
-            rows = self._query_oxigraph(prefixed, base)
-            if rows is not NotImplemented:
-                return rows
-            # a CONSTRUCT or DESCRIBE: rdflib owns those, unchanged
-
-        result = self._query_graph(base).query(prefixed)
-        if result.type == "ASK":
-            return result.askAnswer
-        if result.type in ("CONSTRUCT", "DESCRIBE"):
-            # These answer with triples, not bindings, so `result.vars` is
-            # None and the binding loop below raised TypeError on it. Give
-            # them the same shape a triple has everywhere else in the API.
-            return [{"s": _shorten(s, base), "p": _shorten(p, base),
-                     "o": _shorten(o, base)} for s, p, o in result.graph]
-
-        rows = []
-        for binding in result:
-            row = {}
-            for var, value in zip(result.vars, binding):
-                if value is not None:
-                    row[str(var)] = _shorten(value, base)
-            rows.append(row)
-        return rows
+        """Run a SPARQL 1.1 query. See rdf.sparql."""
+        return rdf.sparql(self, query, base)
 
     def _query_oxigraph(self, prefixed: str, base: str):
-        """Answer a SELECT or ASK through oxigraph, in the same shape.
-
-        Returns ``NotImplemented`` for query forms this path does not cover
-        (CONSTRUCT, DESCRIBE) so the caller can fall back rather than this
-        having to parse the query to find out which form it is.
-        """
-        result = self._query_graph(base, "oxigraph").query(prefixed)
-        if hasattr(result, "variables"):                   # SELECT
-            pass
-        elif hasattr(result, "__bool__") and not hasattr(result, "__iter__"):
-            # ASK. pyoxigraph answers with QueryBoolean, not bool, so an
-            # isinstance(result, bool) test silently missed every ASK and sent
-            # it to rdflib — which also evicted the oxigraph store from the
-            # one-entry graph cache, so the next read rebuilt it. An ASK cost
-            # ~100ms instead of ~0.1ms and the engine reported for it was a
-            # lie.
-            return bool(result)
-        else:                                              # CONSTRUCT/DESCRIBE
-            return NotImplemented
-
-        # oxigraph terms stringify to N-Triples (`<urn:trikedb:a>`), so the
-        # raw value has to come off the term before _shorten sees it.
-        names = [str(v)[1:] if str(v).startswith("?") else str(v)
-                 for v in result.variables]
-        rows = []
-        for solution in result:
-            row = {}
-            for name, value in zip(names, solution):
-                if value is not None:
-                    row[name] = _shorten(value.value, base)
-            rows.append(row)
-        return rows
+        return rdf.query_oxigraph(self, prefixed, base)
 
     def update(self, query: str, base: str = "urn:trikedb:") -> int:
-        """Apply a SPARQL 1.1 Update and sync the result back to the store.
-
-        Attributes of surviving triples are preserved; triples inserted via
-        SPARQL start with no attributes. The ontology (if any) is enforced
-        on inserted predicates. Returns the net change in triple count.
-        """
-        self._guard_writable()
-        from rdflib.plugins.sparql.parser import parseUpdate
-        from rdflib.plugins.sparql.algebra import translateUpdate
-        prefixed = (f"PREFIX t: <{base}>\n"
-                    "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query)
-        parsed = translateUpdate(parseUpdate(prefixed))
-        # This is a single default graph, not an RDF dataset. Reject dataset
-        # operations explicitly instead of accepting and silently losing them.
-        for operation in parsed.algebra:
-            if operation.name not in {"InsertData", "DeleteData", "DeleteWhere", "Modify", "Clear", "Drop"}:
-                raise ValueError("only default-graph INSERT/DELETE/CLEAR/DROP updates are supported")
-            if operation.get("withClause") is not None and "withClause" in operation:
-                raise ValueError("named graphs and WITH are not supported")
-            if "using" in operation:
-                raise ValueError("USING datasets are not supported")
-            if operation.name in {"Clear", "Drop"} and operation.get("graphiri") != "DEFAULT":
-                raise ValueError("only the DEFAULT graph can be cleared")
-            for clause in (operation, operation.get("insert"), operation.get("delete")):
-                if isinstance(clause, dict) and clause.get("quads") and "quads" in clause:
-                    raise ValueError("named graphs are not supported")
-        g = self.to_rdflib(base)
-        before_full = set(g)
-        facts = {t.as_rdf(base) for t in self._triples}
-        g.update(parsed)
-        after_full = set(g)
-        # Synthetic metadata is readable in WHERE but not writable through RDF.
-        if (before_full - after_full) - facts:
-            raise ValueError("update deletes projected metadata; use set_node or edge attributes")
-        wanted = (facts - (before_full - after_full)) | (after_full - before_full)
-        kept = [t for t in self._triples if t.as_rdf(base) in wanted]
-        existing = {t.as_rdf(base) for t in kept}
-        for triple in sorted(wanted - existing, key=lambda row: tuple(t.n3() for t in row)):
-            row = Triple.from_rdf(*triple, base=base)
-            if self.ontology and row.p not in self.ontology and not row.p.startswith(("http://", "https://")):
-                raise OntologyError(f"update inserts predicate {row.p!r} not in the ontology")
-            self._check_link(row.s, row.p, row.o)
-            kept.append(row)
-        before = len(self._triples)
-        if wanted != facts:
-            self._triples = kept
-            self._index = None
-            self._autosave()
-        return len(self._triples) - before
+        """Run a SPARQL 1.1 update against the default graph. See rdf.update."""
+        return rdf.update(self, query, base)
 
     # ---------------------------------------------------- validation / owl
 
@@ -1266,19 +721,17 @@ class TrikeDB:
         'inverse_of:<OTHER_PREDICATE>'. Stored as an ordinary triple in
         the YAML (subject = the predicate itself), so it is reviewable.
         """
-        from . import semantics
-
-        return semantics.declare(self, predicate, characteristic)
+        return reasoning.declare(self, predicate, characteristic)
 
     def search(self, query: str, k: int = 10, model: Optional[str] = None) -> list:
         """Semantic search: rank triples/nodes by meaning, not spelling
         (requires the [semantic] extra). "認証まわりの注意点" finds keypair
         and MFA facts without sharing a keyword. Returns scored dicts.
         """
-        from . import semantic
+        from . import embeddings
 
         kwargs = {"model": model} if model else {}
-        return semantic.search(self, query, k=k, **kwargs)
+        return embeddings.search(self, query, k=k, **kwargs)
 
     def find(self, question: str, where=None, k: int = 10,
              model: Optional[str] = None) -> list:
@@ -1301,7 +754,8 @@ class TrikeDB:
         source does not. `node(name)` returns the untouched value.
         Requires the [semantic] extra (for the recall stage).
         """
-        from .semantic import preview
+        from . import embeddings
+
         candidates = []
         for hit in self.search(question, k=k, model=model):   # stage 1: recall
             candidates += (
@@ -1322,7 +776,7 @@ class TrikeDB:
                 keep = True
             if keep:
                 facts = [[t.p, t.o] for t in self.triples(s=name)]
-                out.append({"node": name, "props": preview(props), "facts": facts})
+                out.append({"node": name, "props": embeddings.preview(props), "facts": facts})
         return out
 
     def infer(self, apply: bool = False, base: str = "urn:trikedb:") -> list:
@@ -1333,9 +787,7 @@ class TrikeDB:
         to the store with an `inferred: true` attribute, so the YAML diff
         shows exactly what the reasoner concluded.
         """
-        from . import semantics
-
-        return semantics.infer(self, apply=apply, base=base)
+        return reasoning.infer(self, apply=apply, base=base)
 
     def validate(self, shapes, base: str = "urn:trikedb:"):
         """Validate the graph against SHACL shapes (requires [shacl] extra).
@@ -1343,9 +795,7 @@ class TrikeDB:
         shapes: a Turtle string, or a path/URL to a .ttl file, using the
         urn:trikedb: namespace. Returns (conforms: bool, report: str).
         """
-        from . import semantics
-
-        return semantics.validate(self, shapes, base=base)
+        return reasoning.validate(self, shapes, base=base)
 
     # -------------------------------------------------------------- exports
 
@@ -1378,9 +828,7 @@ class TrikeDB:
 
     def audit(self) -> list:
         """Health findings for a growing graph; see trikedb.audit.audit()."""
-        from . import audit
-
-        return audit.audit(self)
+        return _audit.audit(self)
 
     def to_jsonld(self, base: str = "urn:trikedb:") -> dict:
         """Best-effort JSON-LD export for interop with real RDF tooling."""
@@ -1431,6 +879,12 @@ class TrikeDB:
         event_predicates=None,
         layout: str = "auto",
     ) -> str:
+        """Render the workbench. See html.to_html.
+
+        Imported here rather than at the top: a store that is never drawn
+        should not carry the page that would draw it, and the core owning
+        its own presentation is the one edge that would point backwards.
+        """
         from .html import to_html
 
         return to_html(self, path=path, title=title,
@@ -1452,79 +906,3 @@ class TrikeDB:
         return f"<TrikeDB {where}: {len(self)} triples, {len(self.predicates())} predicates>"
 
 
-#: What actually has to be escaped to sit inside an IRI: the delimiters
-#: RFC 3987 excludes, the characters that would end the term early in
-#: N-Triples or start a comment in Turtle, and `%` itself so the escaping
-#: round-trips. Everything else stays as it was written — most importantly
-#: every non-ASCII letter, which an IRI is explicitly allowed to carry.
-#:
-#: Percent-encoding all of it (`quote(name, safe="")`) made a Japanese node
-#: `urn:trikedb:%E6%8B%85%E5%BD%93A`, so `SELECT ?s WHERE { ?s t:OWNED_BY
-#: t:担当A }` matched nothing and reported it as zero rows rather than as an
-#: error — the graph looked empty instead of mis-encoded. Names with spaces
-#: still need `<urn:trikedb:Baltic%20states>`; a space cannot be in an IRI.
-_IRI_ESCAPES = {chr(c): f"%{c:02X}" for c in list(range(0x21)) + [0x7F]}
-_IRI_ESCAPES.update({c: f"%{ord(c):02X}" for c in '"<>{}|\\^`%#?'})
-
-
-def _iri(name: str, base: str) -> str:
-    """`name` as an IRI under `base`, escaped only where it has to be."""
-    return base + "".join(_IRI_ESCAPES.get(c, c) for c in name)
-
-
-def _shorten(value, base: str) -> str:
-    """Map a URI under `base` back to its plain name; literals pass through."""
-    from urllib.parse import unquote
-
-    text = str(value)
-    if text.startswith(base):
-        return unquote(text[len(base):])
-    return text
-
-
-def _unify(pattern: tuple, t: Triple, binding: dict) -> Optional[dict]:
-    """Extend binding so pattern matches triple, or return None."""
-    nb = dict(binding)
-    for term, value in zip(pattern, t.spo()):
-        if term.startswith("?"):
-            var = term[1:]
-            if var in nb:
-                if nb[var] != value:
-                    return None
-            else:
-                nb[var] = value
-        elif not _term_match(term, value):
-            return None
-    return nb
-
-
-def _unique(items) -> list:
-    seen, out = set(), []
-    for x in items:
-        if x not in seen:
-            seen.add(x)
-            out.append(x)
-    return out
-
-
-def _iri_node(name, base):
-    return name if name.startswith(("http://", "https://", "urn:")) else _iri(name, base)
-
-
-def _validate_rdf_terms(terms):
-    if not isinstance(terms, dict):
-        raise ValueError("rdf_terms must be a mapping")
-    for key, spec in terms.items():
-        if key not in {"s", "p", "o"} or not isinstance(spec, dict):
-            raise ValueError("rdf_terms keys must be s/p/o mappings")
-        if set(spec) - {"kind", "value", "datatype", "language"}:
-            raise ValueError("unknown RDF term metadata")
-        kind = spec.get("kind")
-        if kind not in {"iri", "literal", "bnode"} or (key == "p" and kind != "iri") or (key == "s" and kind == "literal"):
-            raise ValueError("invalid RDF term kind for " + key)
-        if any(not isinstance(v, str) for v in spec.values()):
-            raise ValueError("RDF term metadata values must be strings")
-        if ("datatype" in spec or "language" in spec) and kind != "literal":
-            raise ValueError("only literals can have datatype/language")
-        if "datatype" in spec and "language" in spec:
-            raise ValueError("a literal cannot have both datatype and language")

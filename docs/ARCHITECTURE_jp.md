@@ -36,6 +36,12 @@ S3は条件付き単一PUT（ETag/If-Matchまたは存在しない場合の作�
 
 1つのserve内のREST/MCPは同じTrikeDBを共有し、再入可能lockで操作を直列化します。MCPは条件付き保存の競合時にreloadして操作を再適用します。別プロセスはメモリを共有しません。Python呼出側は自分で同期し、外部編集はreloadしてください。read_onlyは公開APIを保護し、任意のPythonメモリ操作までは制限しません。
 
+## モジュールと層
+
+`model` は「事実とは何か」。`rules` / `rdf` / `reasoning` が文書の意味を、`storage` / `persistence` が入出力を、`audit` が出来上がった文書の読み取りを担当します。`db` はそれらを束ねたストア — メソッドは各モジュールへの委譲で、モジュール側はストアを第一引数で受け取り、`db` を import し返しません。`html` / `importers` / `embeddings` はコアの**上**に置いています: グラフが、それを描くページや、そこから組み立てられるファイル形式や、入っているとは限らない埋め込みモデルに依存してはいけないからです。`cli` / `mcp_server` / `serve` がその上の入口です。
+
+import は上の層から厳密に下の層へ、一方向だけ。関数内 import は任意アダプタを任意のままにする手段なので依存には数えません（`db.to_html()` は呼ばれたときに `html` を import します）。`tests/test_architecture.py` が層を宣言し、コードが合わなくなればビルドが落ちます — 層を決めずに新しいモジュールを足した場合も含めて。**宣言し、それを強制する**、このライブラリがオントロジーについて主張しているのと同じことを、リポジトリ自身にも適用しています。
+
 ## クエリと対応範囲
 
 SELECT/ASKは通常Oxigraph、CONSTRUCT/DESCRIBE・fallback・更新・OWL/SHACLはrdflibです。pattern queryは独自のマッチングです。SPARQLの曖昧な先頭はパーサーで判定し、PREFIXやコメントにも対応します。

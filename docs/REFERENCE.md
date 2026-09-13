@@ -108,6 +108,123 @@ ontology. What no write path could check yet, `audit` reports as
 `unchecked-link`; a contradiction that got in some other way (a
 hand-edited file, a declaration added afterwards) is an error finding.
 
+A shape says what an action may connect. Two further keys say **when it
+may run** and **who may run it**, which is the half a type check cannot
+reach — an order delivered before it shipped breaks no type, and a price
+change approved by nobody is type-correct:
+
+```yaml
+ontology:
+  predicates:
+    SHIPPED_FROM: {description: "order -> depot", domain: order, range: depot}
+    DELIVERED_TO:
+      description: "order -> where it was handed over"
+      domain: order
+      range: region
+      requires: SHIPPED_FROM     # this has to have happened first
+      by: courier                # and this is who may do it
+```
+
+`requires` names a predicate that must already have happened, no later
+than the action being written, to something the action touches; a list
+means all of them, because that is what the word says. **Touches**, and
+not "is the subject of", because promotion moves the thing an action is
+about from one end of the edge to the other, and it does so in both
+directions:
+
+- the *required* event gets promoted — a retirement with a reason and an
+  approver is written `RET-0007 RETIRED "Copper Kettle"`, leaving the
+  kettle with no `RETIRED` of its own;
+- the *action itself* gets promoted — `MIT-0007 MITIGATED INC-2025-01`
+  makes the mitigation its own subject, and a mitigation created this
+  moment has no history to ask about. The incident that had to have been
+  raised first is on the far side.
+
+So both ends of both edges are read, the way `history()` reads a node.
+Restricting either to subjects would make preconditions stop holding in
+exactly the case promotion exists for. An action carrying no time is
+refused outright: "before" is otherwise a question nothing can answer.
+
+Preconditions cross member graphs. In the demo `SHIPPED_FROM` is declared
+to require `PLACED_BY`, and the two live in different files — the union is
+where an order's story is whole, and it is the union that `audit` reads.
+
+`by` names the node type of whoever performed it, checked against the
+`by=` attribute. Declaring it makes an actor mandatory — an action nobody
+signed is a type-correct hole in the audit trail.
+
+### Conditions that span more than one step
+
+One edge is often not enough to say what makes an action legal. "A review
+may only be written by someone who bought the thing" is `PLACED_BY`
+joined to `CONTAINS`, and the order in the middle is named by neither end
+of the review, so no single-edge check can reach it. Write the steps as
+`(s p o)` patterns instead of a name, and they join on their shared
+variables — `?s` and `?o` stand for the two ends of the action itself:
+
+```yaml
+    REVIEWED:
+      description: "customer -> product they rated"
+      domain: customer
+      range: product
+      requires:
+        - "?order PLACED_BY ?s"
+        - "?order CONTAINS ?o"
+```
+
+Quote them: in YAML flow style a leading `?` is the explicit-key marker.
+A `requires` entry is one term or three; anything else is refused when
+the declaration is read, rather than kept as a predicate name nothing can
+ever match.
+
+The clock applies to every step, and a step carrying no date — `CONTAINS`
+here — is simply already true rather than something that happened that
+day. When a condition fails, the message names **which step** came up
+empty and whether it was empty by then or empty at all, because a
+three-step condition is only debuggable if it says where it broke:
+
+```
+REVIEWED is declared to require (?order PLACED_BY ?s; ?order CONTAINS ?o)
+first, but for (TC-1008 REVIEWED Cast Iron Skillet 26cm) nothing
+satisfies (?order CONTAINS ?o) at all
+```
+
+That customer is real, the product is real, both types are right, and the
+date is plausible. A type check passes it; the condition does not.
+
+### When the answer is not final yet
+
+`requires` is **monotone**: writing more triples can satisfy a condition,
+never break one. So a condition that fails on a half-built graph is
+evidence that has not been written yet, not a violation — and the only
+thing that can be wrong about refusing it is the timing of the refusal.
+
+That is what decides where each check lives. What the triple settles by
+itself — a missing `by=`, an action with no time — is refused where it is
+written, because nothing written later repairs it. What needs the rest of
+the graph is refused where it is written too, *unless a batch is open*, in
+which case the graph is still being assembled: the question is held and
+asked again on the way out, where the graph is whole and the answer is
+final. Nothing is skipped either way; only the moment the exception
+arrives moves. A bulk load therefore enforces its conditions without the
+order of its lines ever deciding the outcome, and a failure rolls the
+whole block back rather than leaving a half-applied import behind.
+
+Both follow the same two-stage discipline as `domain`/`range`: `add` and
+`act` refuse what the graph in front of them can settle, and `audit` reads
+the finished file for the rest — asking `_unmet`, the same call the write
+path makes, so the two cannot drift apart. `precondition-unmet`,
+`action-has-no-actor` and `actor-contradicts-declaration` are errors,
+`unchecked-actor` (an actor nobody has typed yet) a warning. Loading is
+never rejected on line order; the clock decides what came first.
+
+Conditions are indexed by predicate *and* by the node at either end, so a
+step that already knows one of its ends goes straight to the handful of
+triples that touch it. A two-step condition costs about 50µs to check
+whether the graph holds a thousand triples or two hundred thousand —
+which is what makes it affordable to enforce on every write rather than
+only in `audit`.
+
 Edge attributes are **SPARQL-queryable**: every attributed triple is
 also exported as a standard RDF reification (a statement resource with
 `rdf:subject/predicate/object` plus the attributes), so the operational
@@ -225,11 +342,11 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 
 | Method | What it does |
 |---|---|
-| `add(s, p, o, **attrs)` | Upsert a triple (same s,p,o merges attrs — an event also by its time, so two runs of one action stay two facts). Raises `OntologyError` for undeclared predicates and for links that contradict a declared `domain`/`range`; absolute-URI predicates are exempt (OWL meta-statements) |
+| `add(s, p, o, **attrs)` | Upsert a triple (same s,p,o merges attrs — an event also by its time, so two runs of one action stay two facts). Raises `OntologyError` for undeclared predicates, for links that contradict a declared `domain`/`range`, and for actions that contradict a declared `requires`/`by`; absolute-URI predicates are exempt (OWL meta-statements) |
 | `act(s, p, o, state=, by=, at=, **attrs)` | Run an action: stamp the time (`at=` overrides, else now), append the event, and move node `s` to `state` — one write, all of it or none. Appends rather than merges: the same action twice is two records |
-| `history(name, p=None)` | Everything that happened to a node, newest first (ties on the day broken by file order) |
-| `state(name)` | The state the node is in now: the property `act()` wrote, else the state its latest event left behind |
-| `declare_link(p, domain=, range=, description=)` | Declare what a predicate connects and have it enforced from then on. Measures the graph it is added to and raises if an existing link already contradicts it |
+| `history(name, p=None, *, incoming=True)` | Everything that happened to a node, newest first (ties on the day broken by file order). **Both directions**: an event that points *at* a node belongs to that node's record too, which is what lets an action be [promoted to an object](https://github.com/RyutoYoda/trikedb#when-an-event-becomes-an-object) without cutting the things it touched off from their own history. `incoming=False` narrows it to what the node is the subject of |
+| `state(name)` | The state the node is in now: the property `act()` wrote, else the state the node's **own** latest event left behind. Deliberately not the two-way view — an event pointing at a node says something happened to it, not that it took the event's state, so a price change left `applied` does not leave the approver applied |
+| `declare_link(p, domain=, range=, requires=, by=, description=)` | Declare what a predicate connects, when it may run and who may run it, and have it enforced from then on. `requires` takes predicate names, `(s p o)` patterns that join on shared variables (`?s`/`?o` are the action's own ends), or both. Measures the graph it is added to and raises if an existing link or action already contradicts it. A declaration is the whole shape restated, not a patch: what you leave out is withdrawn |
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
 | `triples(s=, p=, o=, **attrs)` | Pattern match. `None` = wildcard, `*`/`?` glob, attrs filter exactly |
 | `query([patterns])` | Multi-pattern joins with `?variables` (SPARQL-style BGP, zero deps) |
@@ -530,13 +647,17 @@ in [SCALING.md](SCALING.md).)
 - in-browser SPARQL console (Oxigraph WASM, loaded from CDN on demand)
 - the action layer: a triple carrying a time attribute (`at:`, `when:`,
   `date:`, ...) is a change event on its subject — the node's label shows
-  the latest `state:` and the detail panel the history newest first. The
-  event is drawn where it happened: **on the line between the two
-  objects**, in the action colour, labelled with its date and the state
-  it left behind. Clicking any line opens the node it hangs off, and the
-  `events` button in the header reads the whole log across the graph in
-  time order. Event payloads that are not entities render as red diamonds
-  (`--events AFFECTED_BY` to pin which predicates count)
+  the latest `state:` and the detail panel the history newest first,
+  incoming events included and marked `←`. The event is drawn where it
+  happened: **on the line between the two objects**, in the action
+  colour, labelled with its date and the state it left behind. Clicking
+  any line opens the node it hangs off. The same events also read as a
+  strip along the bottom in time order — the one reading the graph
+  cannot give — which the `events` button folds away and back, and whose
+  label opens the whole log in the panel. Event payloads that are not
+  entities render as red diamonds; that is a prompt to promote the event
+  rather than a finished shape (`--events AFFECTED_BY` to pin which
+  predicates count)
 - light/dark toggle (persisted), content hash embedded for `trikedb check`
 
 ## Where the graph lives

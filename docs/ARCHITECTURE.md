@@ -36,6 +36,12 @@ S3 uses conditional single PUT (ETag/If-Match or create-if-absent); SQL uses a v
 
 REST and MCP in one `serve` process share one TrikeDB and serialize operations under its reentrant lock. MCP retries conditional conflicts by reloading and reapplying its mutation. Separate processes do not share memory. Python callers must serialize access themselves; external edits require reload. Read-only flags guard public mutations, not arbitrary Python memory access.
 
+## Modules and layering
+
+`model` holds what a fact is. `rules`, `rdf` and `reasoning` say what a document means; `storage` and `persistence` move it; `audit` reads the finished thing. `db` is the store those add up to — a facade whose methods delegate to those modules, which take the store as their first argument rather than importing it back. `html`, `importers` and `embeddings` sit **above** the core, not inside it: a graph must not depend on the page that draws it, on the file formats it can be built from, or on an embedding model that may not be installed. `cli`, `mcp_server` and `serve` are entry points on top.
+
+Imports run one way only, from a higher layer to a strictly lower one. An import inside a function is how an optional adapter stays optional, so it does not count as a dependency — `db.to_html()` imports `html` when called. `tests/test_architecture.py` declares the layers and fails the build when the code stops matching them, including when a new module is added without being placed in one. The layering is a declaration that is enforced, which is the same argument the library makes about ontologies.
+
 ## Query execution and boundaries
 
 Oxigraph normally answers SELECT and ASK. rdflib handles CONSTRUCT/DESCRIBE and fallback reads, SPARQL updates, OWL and SHACL. Pattern queries use the core's own matching code. Prefixes and comments are parsed when dispatching ambiguous SPARQL text.

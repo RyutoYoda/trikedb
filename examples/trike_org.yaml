@@ -1,0 +1,206 @@
+# trike goods — org
+#
+# Who is accountable for what. Most of this is structure rather than
+# history, which is the point of keeping it next to the other graphs: a
+# question like "who do I page about pricing-engine" is answered by walking
+# from the system to the team to the person on call — three hops across two
+# member graphs, not a wiki page somebody forgot to update.
+#
+# MEMBER_OF carries `since` as a plain property, so it is a fact about how
+# things stand. ON_CALL_FOR and HANDED_OVER_TO carry `at`, so they are
+# events: the pager actually moved, on a day, from someone to someone.
+
+ontology:
+  predicates:
+    MEMBER_OF: {description: person -> team they belong to, domain: person, range: team}
+    LEADS: {description: person -> team they are accountable for, domain: person, range: team}
+    OPERATES: {description: team -> system it runs, domain: team, range: system}
+    RUNS: {description: team -> warehouse it staffs, domain: team, range: warehouse}
+    OWNS_CATEGORY: {description: team -> merchandising category it owns, domain: team, range: category}
+    SUPPORTS: {description: team -> region it covers, domain: team, range: region}
+    ON_CALL_FOR: {description: person -> system they took the pager for, domain: person, range: system}
+    HANDED_OVER_TO: {description: person -> person they passed the pager to, domain: person, range: person}
+
+nodes:
+  # teams
+  commerce-platform: {type: team, headcount: 4}
+  fulfilment-ops: {type: team, headcount: 5}
+  catalog-merch: {type: team, headcount: 3}
+  customer-care: {type: team, headcount: 2}
+  data-platform: {type: team, headcount: 2}
+  # people
+  Ada Marlowe: {type: person, team: commerce-platform, role: lead}
+  Nils Brandt: {type: person, team: fulfilment-ops, role: lead}
+  Rune Halvorsen: {type: person, team: catalog-merch, role: lead}
+  Petra Oyelaran: {type: person, team: customer-care, role: lead}
+  Ines Falk: {type: person, team: data-platform, role: lead}
+  Tomas Vidal: {type: person, team: commerce-platform, role: engineer}
+  Saoirse Quinn: {type: person, team: fulfilment-ops, role: operator}
+  Kofi Mensah: {type: person, team: catalog-merch, role: engineer}
+  Lena Ostrom: {type: person, team: customer-care, role: operator}
+  Hugo Peralta: {type: person, team: data-platform, role: engineer}
+  Mira Lindqvist: {type: person, team: commerce-platform, role: operator}
+  Osei Duah: {type: person, team: fulfilment-ops, role: engineer}
+  Freya Nakagawa: {type: person, team: catalog-merch, role: operator}
+  Dario Bellini: {type: person, team: customer-care, role: engineer}
+  Nadia Sorensen: {type: person, team: data-platform, role: operator}
+  Emil Vasquez: {type: person, team: commerce-platform, role: engineer}
+  # the systems those teams run
+  checkout-api: {type: system, language: python, owner: commerce-platform}
+  inventory-service: {type: system, language: go, owner: commerce-platform}
+  order-router: {type: system, language: go, owner: fulfilment-ops}
+  pricing-engine: {type: system, language: python, owner: catalog-merch}
+  wms-core: {type: system, language: java, owner: fulfilment-ops}
+  returns-portal: {type: system, language: typescript, owner: customer-care}
+  search-index: {type: system, language: rust, owner: catalog-merch}
+  # warehouses, categories and regions — shared with the other graphs
+  Riverside DC: {type: warehouse, region: Riverside}
+  Northfield DC: {type: warehouse, region: Northfield}
+  Harbour Micro-Hub: {type: warehouse, region: Harbour District}
+  Old Quarter Returns: {type: warehouse, region: Old Quarter}
+  Kitchen: {type: category, aisle: 1}
+  Tableware: {type: category, aisle: 2}
+  Pantry: {type: category, aisle: 3}
+  Linens: {type: category, aisle: 4}
+  Cleaning: {type: category, aisle: 5}
+  Stationery: {type: category, aisle: 6}
+  Riverside: {type: region, kind: delivery zone}
+  Northfield: {type: region, kind: delivery zone}
+  Harbour District: {type: region, kind: delivery zone}
+  Old Quarter: {type: region, kind: delivery zone}
+
+triples:
+
+  # the org chart
+  - {s: Ada Marlowe, p: MEMBER_OF, o: commerce-platform, since: "2022-01-01"}
+  - {s: Nils Brandt, p: MEMBER_OF, o: fulfilment-ops, since: "2023-04-01"}
+  - {s: Rune Halvorsen, p: MEMBER_OF, o: catalog-merch, since: "2024-07-01"}
+  - {s: Petra Oyelaran, p: MEMBER_OF, o: customer-care, since: "2025-10-01"}
+  - {s: Ines Falk, p: MEMBER_OF, o: data-platform, since: "2022-01-01"}
+  - {s: Tomas Vidal, p: MEMBER_OF, o: commerce-platform, since: "2023-04-01"}
+  - {s: Saoirse Quinn, p: MEMBER_OF, o: fulfilment-ops, since: "2024-07-01"}
+  - {s: Kofi Mensah, p: MEMBER_OF, o: catalog-merch, since: "2025-10-01"}
+  - {s: Lena Ostrom, p: MEMBER_OF, o: customer-care, since: "2022-01-01"}
+  - {s: Hugo Peralta, p: MEMBER_OF, o: data-platform, since: "2023-04-01"}
+  - {s: Mira Lindqvist, p: MEMBER_OF, o: commerce-platform, since: "2024-07-01"}
+  - {s: Osei Duah, p: MEMBER_OF, o: fulfilment-ops, since: "2025-10-01"}
+  - {s: Freya Nakagawa, p: MEMBER_OF, o: catalog-merch, since: "2022-01-01"}
+  - {s: Dario Bellini, p: MEMBER_OF, o: customer-care, since: "2023-04-01"}
+  - {s: Nadia Sorensen, p: MEMBER_OF, o: data-platform, since: "2024-07-01"}
+  - {s: Emil Vasquez, p: MEMBER_OF, o: commerce-platform, since: "2025-10-01"}
+  - {s: Ada Marlowe, p: LEADS, o: commerce-platform}
+  - {s: Nils Brandt, p: LEADS, o: fulfilment-ops}
+  - {s: Rune Halvorsen, p: LEADS, o: catalog-merch}
+  - {s: Petra Oyelaran, p: LEADS, o: customer-care}
+  - {s: Ines Falk, p: LEADS, o: data-platform}
+
+  # what each team is accountable for
+  - {s: commerce-platform, p: OPERATES, o: checkout-api}
+  - {s: commerce-platform, p: OPERATES, o: inventory-service}
+  - {s: fulfilment-ops, p: OPERATES, o: order-router}
+  - {s: catalog-merch, p: OPERATES, o: pricing-engine}
+  - {s: fulfilment-ops, p: OPERATES, o: wms-core}
+  - {s: customer-care, p: OPERATES, o: returns-portal}
+  - {s: catalog-merch, p: OPERATES, o: search-index}
+  - {s: fulfilment-ops, p: RUNS, o: Riverside DC}
+  - {s: fulfilment-ops, p: RUNS, o: Northfield DC}
+  - {s: fulfilment-ops, p: RUNS, o: Harbour Micro-Hub}
+  - {s: customer-care, p: RUNS, o: Old Quarter Returns}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Kitchen}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Tableware}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Pantry}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Linens}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Cleaning}
+  - {s: catalog-merch, p: OWNS_CATEGORY, o: Stationery}
+  - {s: commerce-platform, p: SUPPORTS, o: Riverside}
+  - {s: fulfilment-ops, p: SUPPORTS, o: Northfield}
+  - {s: catalog-merch, p: SUPPORTS, o: Harbour District}
+  - {s: customer-care, p: SUPPORTS, o: Old Quarter}
+  - {s: data-platform, p: SUPPORTS, o: Riverside}
+  - {s: commerce-platform, p: SUPPORTS, o: Northfield}
+
+  # the pager — an action between two people, dated like one
+  - s: Ada Marlowe
+    p: ON_CALL_FOR
+    o: checkout-api
+    at: 2025-01-06
+    state: on-call
+    rotation: week-02
+  - s: Petra Oyelaran
+    p: ON_CALL_FOR
+    o: inventory-service
+    at: 2025-01-27
+    state: on-call
+    rotation: week-05
+  - s: Saoirse Quinn
+    p: ON_CALL_FOR
+    o: order-router
+    at: 2025-02-20
+    state: on-call
+    rotation: week-08
+  - s: Hugo Peralta
+    p: ON_CALL_FOR
+    o: pricing-engine
+    at: 2025-03-13
+    state: on-call
+    rotation: week-11
+  - s: Freya Nakagawa
+    p: ON_CALL_FOR
+    o: wms-core
+    at: 2025-04-06
+    state: on-call
+    rotation: week-14
+  - s: Emil Vasquez
+    p: ON_CALL_FOR
+    o: returns-portal
+    at: 2025-04-27
+    state: on-call
+    rotation: week-17
+  - s: Rune Halvorsen
+    p: ON_CALL_FOR
+    o: search-index
+    at: 2025-05-20
+    state: on-call
+    rotation: week-20
+  - s: Tomas Vidal
+    p: ON_CALL_FOR
+    o: checkout-api
+    at: 2025-06-13
+    state: on-call
+    rotation: week-23
+  - s: Ada Marlowe
+    p: HANDED_OVER_TO
+    o: Petra Oyelaran
+    at: 2025-01-13
+    state: handed-over
+    note: pager for checkout-api
+  - s: Petra Oyelaran
+    p: HANDED_OVER_TO
+    o: Saoirse Quinn
+    at: 2025-02-06
+    state: handed-over
+    note: pager for inventory-service
+  - s: Saoirse Quinn
+    p: HANDED_OVER_TO
+    o: Hugo Peralta
+    at: 2025-02-27
+    state: handed-over
+    note: pager for order-router
+  - s: Hugo Peralta
+    p: HANDED_OVER_TO
+    o: Freya Nakagawa
+    at: 2025-03-20
+    state: handed-over
+    note: pager for pricing-engine
+  - s: Freya Nakagawa
+    p: HANDED_OVER_TO
+    o: Emil Vasquez
+    at: 2025-04-13
+    state: handed-over
+    note: pager for wms-core
+  - s: Emil Vasquez
+    p: HANDED_OVER_TO
+    o: Rune Halvorsen
+    at: 2025-05-06
+    state: handed-over
+    note: pager for returns-portal

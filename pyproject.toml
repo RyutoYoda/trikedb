@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.38.1"
+version = "0.39.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
@@ -72,3 +72,10 @@ trike = "trikedb.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Name the suites explicitly: a bare `pytest` at the repo root otherwise
+# collects whatever scratch directories happen to be lying around
+# untracked (output/, tmp/), and their stale copies of these tests fail
+# for reasons that have nothing to do with the code being changed.
+testpaths = ["tests", "benchmarks"]

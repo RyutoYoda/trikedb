@@ -1,0 +1,508 @@
+# trike goods — fulfilment
+#
+# What physically happens to an order after checkout. Almost every line in
+# here is an action with a date on it, because that is what fulfilment is:
+# SHIPPED_FROM, DELIVERED_TO and RETURNED_TO each run between two objects
+# and carry the state they left the order in.
+#
+# The two undated predicates are the ones that are not events: where a
+# product is kept, and which region a warehouse covers.
+
+ontology:
+  predicates:
+    STOCKED_AT: {description: product -> warehouse holding it, domain: product, range: warehouse}
+    SERVES: {description: warehouse -> region it delivers into, domain: warehouse, range: region}
+    SHIPPED_FROM: {description: order -> warehouse it went out of, domain: order, range: warehouse, requires: PLACED_BY, by: system}
+    CARRIED_BY: {description: order -> carrier assigned to it, domain: order, range: carrier}
+    DELIVERED_TO: {description: order -> customer who received it, domain: order, range: customer, requires: SHIPPED_FROM, by: carrier}
+    RETURNED_TO: {description: order -> warehouse that took it back, domain: order, range: warehouse, requires: DELIVERED_TO, by: team}
+
+nodes:
+  # warehouses and carriers
+  Riverside DC: {type: warehouse, region: Riverside, pallets: 11000}
+  Northfield DC: {type: warehouse, region: Northfield, pallets: 9000}
+  Harbour Micro-Hub: {type: warehouse, region: Harbour District, pallets: 2200}
+  Old Quarter Returns: {type: warehouse, region: Old Quarter, pallets: 1400}
+  Swiftline: {type: carrier, cutoff: "17:00"}
+  Harbour Post: {type: carrier, cutoff: "15:30"}
+  Northfield Freight: {type: carrier, cutoff: "19:00"}
+  # regions, shared with the commerce graph
+  Riverside: {type: region, kind: delivery zone}
+  Northfield: {type: region, kind: delivery zone}
+  Harbour District: {type: region, kind: delivery zone}
+  Old Quarter: {type: region, kind: delivery zone}
+  # products and the orders that move them — the same nodes the other two
+  # graphs use, which is what makes the workspace a union and not a pile
+  Copper Kettle 1.5L: {type: product, sku: TG-100}
+  Cast Iron Skillet 26cm: {type: product, sku: TG-101}
+  Bamboo Cutting Board: {type: product, sku: TG-102}
+  Enamel Stockpot 6L: {type: product, sku: TG-103}
+  Silicone Spatula Set: {type: product, sku: TG-104}
+  Pour-Over Dripper: {type: product, sku: TG-105}
+  Stoneware Dinner Plate: {type: product, sku: TG-106}
+  Matte Mug 350ml: {type: product, sku: TG-107}
+  Glass Tumbler 300ml: {type: product, sku: TG-108}
+  Walnut Serving Tray: {type: product, sku: TG-109}
+  Ceramic Bowl 18cm: {type: product, sku: TG-110}
+  Linen Napkin Set: {type: product, sku: TG-111}
+  Single-Origin Coffee 250g: {type: product, sku: TG-112}
+  Sencha Loose Leaf 100g: {type: product, sku: TG-113}
+  Cold-Pressed Olive Oil 500ml: {type: product, sku: TG-114}
+  Sea Salt Flakes 120g: {type: product, sku: TG-115}
+  Buckwheat Soba 300g: {type: product, sku: TG-116}
+  Wildflower Honey 340g: {type: product, sku: TG-117}
+  Waffle Bath Towel: {type: product, sku: TG-118}
+  Linen Duvet Cover: {type: product, sku: TG-119}
+  Cotton Throw Blanket: {type: product, sku: TG-120}
+  Percale Pillowcase Pair: {type: product, sku: TG-121}
+  Coconut Dish Soap 500ml: {type: product, sku: TG-122}
+  Wool Dryer Balls: {type: product, sku: TG-123}
+  Bamboo Dish Brush: {type: product, sku: TG-124}
+  Citrus Surface Spray: {type: product, sku: TG-125}
+  Recycled Notebook A5: {type: product, sku: TG-126}
+  Fineliner Pen Set: {type: product, sku: TG-127}
+  Kraft Gift Wrap Roll: {type: product, sku: TG-128}
+  Desk Blotter Pad: {type: product, sku: TG-129}
+  Nesting Mixing Bowls: {type: product, sku: TG-130}
+  Cedar Spice Rack: {type: product, sku: TG-131}
+  Ash Chopstick Pair: {type: product, sku: TG-132}
+  Speckled Side Plate: {type: product, sku: TG-133}
+  Miso Paste 400g: {type: product, sku: TG-134}
+  Smoked Paprika 60g: {type: product, sku: TG-135}
+  Linen Tea Towel Set: {type: product, sku: TG-136}
+  Quilted Bed Runner: {type: product, sku: TG-137}
+  Refill Hand Wash 1L: {type: product, sku: TG-138}
+  Linen-Bound Planner: {type: product, sku: TG-139}
+  ORD-25101: {type: order, placed: "2025-02-01"}
+  ORD-25102: {type: order, placed: "2025-02-04"}
+  ORD-25103: {type: order, placed: "2025-02-07"}
+  ORD-25104: {type: order, placed: "2025-02-10"}
+  ORD-25105: {type: order, placed: "2025-02-13"}
+  ORD-25106: {type: order, placed: "2025-02-16"}
+  ORD-25107: {type: order, placed: "2025-02-19"}
+  ORD-25108: {type: order, placed: "2025-02-22"}
+  ORD-25109: {type: order, placed: "2025-02-25"}
+  ORD-25110: {type: order, placed: "2025-02-01"}
+  ORD-25111: {type: order, placed: "2025-02-04"}
+  ORD-25112: {type: order, placed: "2025-02-07"}
+  ORD-25113: {type: order, placed: "2025-02-10"}
+  ORD-25114: {type: order, placed: "2025-02-13"}
+  ORD-25115: {type: order, placed: "2025-03-16"}
+  ORD-25116: {type: order, placed: "2025-03-19"}
+  ORD-25117: {type: order, placed: "2025-03-22"}
+  ORD-25118: {type: order, placed: "2025-03-25"}
+  ORD-25119: {type: order, placed: "2025-03-01"}
+  ORD-25120: {type: order, placed: "2025-03-04"}
+  ORD-25121: {type: order, placed: "2025-03-07"}
+  ORD-25122: {type: order, placed: "2025-03-10"}
+  ORD-25123: {type: order, placed: "2025-03-13"}
+  ORD-25124: {type: order, placed: "2025-03-16"}
+  ORD-25125: {type: order, placed: "2025-03-19"}
+  ORD-25126: {type: order, placed: "2025-03-22"}
+  ORD-25127: {type: order, placed: "2025-03-25"}
+  ORD-25128: {type: order, placed: "2025-03-01"}
+  TC-1001: {type: customer, region: Riverside}
+  TC-1002: {type: customer, region: Northfield}
+  TC-1003: {type: customer, region: Harbour District}
+  TC-1008: {type: customer, region: Old Quarter}
+  TC-1009: {type: customer, region: Riverside}
+  TC-1010: {type: customer, region: Northfield}
+  TC-1015: {type: customer, region: Harbour District}
+  TC-1016: {type: customer, region: Old Quarter}
+  TC-1017: {type: customer, region: Riverside}
+  TC-1022: {type: customer, region: Northfield}
+  TC-1023: {type: customer, region: Harbour District}
+  TC-1024: {type: customer, region: Old Quarter}
+  TC-1029: {type: customer, region: Riverside}
+  TC-1030: {type: customer, region: Northfield}
+  TC-1031: {type: customer, region: Harbour District}
+  TC-1036: {type: customer, region: Old Quarter}
+  TC-1037: {type: customer, region: Riverside}
+  TC-1038: {type: customer, region: Northfield}
+  TC-1043: {type: customer, region: Harbour District}
+  TC-1044: {type: customer, region: Old Quarter}
+
+triples:
+
+  # standing arrangements — no date, because nothing happened
+  - {s: Copper Kettle 1.5L, p: STOCKED_AT, o: Riverside DC, bin: A-01}
+  - {s: Pour-Over Dripper, p: STOCKED_AT, o: Northfield DC, bin: B-06}
+  - {s: Ceramic Bowl 18cm, p: STOCKED_AT, o: Harbour Micro-Hub, bin: C-11}
+  - {s: Sea Salt Flakes 120g, p: STOCKED_AT, o: Old Quarter Returns, bin: D-16}
+  - {s: Cotton Throw Blanket, p: STOCKED_AT, o: Riverside DC, bin: A-21}
+  - {s: Citrus Surface Spray, p: STOCKED_AT, o: Northfield DC, bin: B-26}
+  - {s: Nesting Mixing Bowls, p: STOCKED_AT, o: Harbour Micro-Hub, bin: C-31}
+  - {s: Smoked Paprika 60g, p: STOCKED_AT, o: Old Quarter Returns, bin: D-36}
+  - {s: Riverside DC, p: SERVES, o: Riverside}
+  - {s: Riverside DC, p: SERVES, o: Old Quarter}
+  - {s: Northfield DC, p: SERVES, o: Northfield}
+  - {s: Northfield DC, p: SERVES, o: Harbour District}
+  - {s: Harbour Micro-Hub, p: SERVES, o: Harbour District}
+  - {s: Old Quarter Returns, p: SERVES, o: Old Quarter}
+
+  # the order leaves the building
+  - s: ORD-25101
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-02-02
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25102
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-02-05
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25103
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-02-08
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25104
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-02-11
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25105
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-02-14
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25106
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-02-17
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25107
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-02-20
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25108
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-02-23
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25109
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-02-26
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25110
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-02-02
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25111
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-02-05
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25112
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-02-08
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25113
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-02-11
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25114
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-02-14
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25115
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-03-17
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25116
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-03-20
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25117
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-03-23
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25118
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-03-26
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25119
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-03-02
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25120
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-03-05
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25121
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-03-08
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25122
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-03-11
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25123
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-03-14
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25124
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-03-17
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+  - s: ORD-25125
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-03-20
+    by: wms-core
+    state: dispatched
+    wave: wave-1
+  - s: ORD-25126
+    p: SHIPPED_FROM
+    o: Northfield DC
+    at: 2025-03-23
+    by: wms-core
+    state: dispatched
+    wave: wave-2
+  - s: ORD-25127
+    p: SHIPPED_FROM
+    o: Harbour Micro-Hub
+    at: 2025-03-26
+    by: wms-core
+    state: dispatched
+    wave: wave-3
+  - s: ORD-25128
+    p: SHIPPED_FROM
+    o: Riverside DC
+    at: 2025-03-02
+    by: wms-core
+    state: dispatched
+    wave: wave-4
+
+  # who is carrying it (an assignment, not an event)
+  - {s: ORD-25101, p: CARRIED_BY, o: Swiftline, tracking: SL00072100}
+  - {s: ORD-25102, p: CARRIED_BY, o: Harbour Post, tracking: SL00072113}
+  - {s: ORD-25103, p: CARRIED_BY, o: Northfield Freight, tracking: SL00072126}
+  - {s: ORD-25104, p: CARRIED_BY, o: Swiftline, tracking: SL00072139}
+  - {s: ORD-25105, p: CARRIED_BY, o: Harbour Post, tracking: SL00072152}
+  - {s: ORD-25106, p: CARRIED_BY, o: Northfield Freight, tracking: SL00072165}
+  - {s: ORD-25107, p: CARRIED_BY, o: Swiftline, tracking: SL00072178}
+  - {s: ORD-25108, p: CARRIED_BY, o: Harbour Post, tracking: SL00072191}
+  - {s: ORD-25109, p: CARRIED_BY, o: Northfield Freight, tracking: SL00072204}
+  - {s: ORD-25110, p: CARRIED_BY, o: Swiftline, tracking: SL00072217}
+
+  # and what became of it
+  - s: ORD-25101
+    p: DELIVERED_TO
+    o: TC-1001
+    at: 2025-02-05
+    by: Swiftline
+    state: delivered
+  - s: ORD-25102
+    p: DELIVERED_TO
+    o: TC-1008
+    at: 2025-02-08
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25103
+    p: DELIVERED_TO
+    o: TC-1015
+    at: 2025-02-11
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25104
+    p: DELIVERED_TO
+    o: TC-1022
+    at: 2025-02-14
+    by: Swiftline
+    state: delivered
+  - s: ORD-25105
+    p: DELIVERED_TO
+    o: TC-1029
+    at: 2025-02-17
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25106
+    p: DELIVERED_TO
+    o: TC-1036
+    at: 2025-02-20
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25107
+    p: DELIVERED_TO
+    o: TC-1043
+    at: 2025-02-23
+    by: Swiftline
+    state: delivered
+  - s: ORD-25108
+    p: DELIVERED_TO
+    o: TC-1002
+    at: 2025-02-26
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25109
+    p: DELIVERED_TO
+    o: TC-1009
+    at: 2025-03-01
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25110
+    p: DELIVERED_TO
+    o: TC-1016
+    at: 2025-02-05
+    by: Swiftline
+    state: delivered
+  - s: ORD-25111
+    p: DELIVERED_TO
+    o: TC-1023
+    at: 2025-02-08
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25112
+    p: DELIVERED_TO
+    o: TC-1030
+    at: 2025-02-11
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25113
+    p: DELIVERED_TO
+    o: TC-1037
+    at: 2025-02-14
+    by: Swiftline
+    state: delivered
+  - s: ORD-25114
+    p: DELIVERED_TO
+    o: TC-1044
+    at: 2025-02-17
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25115
+    p: DELIVERED_TO
+    o: TC-1003
+    at: 2025-03-20
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25116
+    p: DELIVERED_TO
+    o: TC-1010
+    at: 2025-03-23
+    by: Swiftline
+    state: delivered
+  - s: ORD-25117
+    p: DELIVERED_TO
+    o: TC-1017
+    at: 2025-03-26
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25118
+    p: DELIVERED_TO
+    o: TC-1024
+    at: 2025-04-01
+    by: Northfield Freight
+    state: delivered
+  - s: ORD-25119
+    p: DELIVERED_TO
+    o: TC-1031
+    at: 2025-03-05
+    by: Swiftline
+    state: delivered
+  - s: ORD-25120
+    p: DELIVERED_TO
+    o: TC-1038
+    at: 2025-03-08
+    by: Harbour Post
+    state: delivered
+  - s: ORD-25103
+    p: RETURNED_TO
+    o: Old Quarter Returns
+    at: 2025-02-18
+    by: customer-care
+    state: refunded
+    reason: arrived chipped
+  - s: ORD-25106
+    p: RETURNED_TO
+    o: Old Quarter Returns
+    at: 2025-02-27
+    by: customer-care
+    state: refunded
+    reason: wrong colourway
+  - s: ORD-25110
+    p: RETURNED_TO
+    o: Old Quarter Returns
+    at: 2025-02-12
+    by: customer-care
+    state: refunded
+    reason: no longer needed
+  - s: ORD-25115
+    p: RETURNED_TO
+    o: Old Quarter Returns
+    at: 2025-03-27
+    by: customer-care
+    state: refunded
+    reason: duplicate of ORD-25112
+  - s: ORD-25118
+    p: RETURNED_TO
+    o: Old Quarter Returns
+    at: 2025-04-08
+    by: customer-care
+    state: refunded
+    reason: arrived after the window

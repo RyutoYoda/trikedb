@@ -36,5 +36,6 @@ jobs:
           python-version: "3.13"
       - run: pip install -e "."
       - run: |
-          python -m trikedb.cli check examples/freebase_sample.yaml --html docs/index.html
+          python -m trikedb.cli check examples/trike_workspace.yaml --html docs/index.html
+          python -m trikedb.cli check examples/freebase_sample.yaml --html docs/freebase.html
           python -m trikedb.cli check examples/freebase_workspace.yaml --html docs/workspace.html

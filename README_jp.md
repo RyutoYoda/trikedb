@@ -22,9 +22,10 @@
 </p>
 
 <p align="center">
-  <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 ライブデモ</a></b> — 実際のFreebaseの事実600件。クリックして回れて、ブラウザ上でSPARQLも実行できます
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">ワークスペースのデモ</a> — 同じ事実を6つのドメイングラフに分けて、タイル表示＋絞り込み
+  <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 ライブデモ</a></b> — 会社まるごとを5つのグラフで。すべてのアクションが「何が先に起きていなければならないか」を宣言し、日付と実行者を持っていて、その宣言がページ上で読めます
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">パイプラインのデモ</a> — アクションログ付きのデータ基盤。どのテーブルも今の状態を自分に書いています
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/freebase.html">Freebaseのデモ</a> — 第三者の実データ600件。クリックして回れて、ブラウザ上でSPARQLも実行できます
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">ワークスペースのデモ</a> — 同じFreebaseの事実を6つのドメイングラフに分けて、タイル表示＋絞り込み
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -51,10 +52,10 @@ triples:
 
 このファイル**が**データベースです。サーバもデーモンもクラウドへのデプロイもありません。git で綺麗に diff が取れ、コードの隣のリポジトリで生き続け、そして — trikedb が本当に狙って設計されている点ですが — **LLMエージェントが直接 `Read` して、明示されたエンティティ名を参照してドメインを推論できます。**
 
-しかもインタラクティブなワークベンチとして描画されます（[ライブデモ](https://ryutoyoda.github.io/trikedb/) — 実際のFreebaseの事実600件）:
+しかもインタラクティブなワークベンチとして描画されます（[Freebaseのデモ](https://ryutoyoda.github.io/trikedb/freebase.html) — 実際のFreebaseの事実600件）:
 
 <p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/">
+  <a href="https://ryutoyoda.github.io/trikedb/freebase.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb の HTML ワークベンチ — Freebaseの事実600件を力学配置のクラスタとして表示、ノード詳細パネルを開いた状態">
   </a>
 </p>
@@ -154,6 +155,30 @@ db.state("RAW_CRM_CONTACTS")     # 'applied' — ノード自体が変わって�
 db.history("RAW_CRM_CONTACTS")   # そのノードに起きたこと全部、新しい順
 # 同じアクションをもう一度実行すれば、上書きではなく2件目の記録が残る。
 
+# アクションは「いつ実行してよいか」「誰が実行してよいか」も宣言できる — 型検査が
+# 届かない半分。出荷される前に配達された注文は型としては正しい。誰も承認していない
+# 値下げも型としては正しい。どちらも今は拒否される。
+db.declare_link("DELIVERED_TO", domain="order", range="region",
+                requires="SHIPPED_FROM",   # これが先に起きている必要がある
+                by="courier")              # そしてこれが実行してよい者
+# db.act("ORD-25101", "DELIVERED_TO", "Riverside", by="Kai") は OntologyError:
+# ORD-25101 はどちら側にも SHIPPED_FROM を持っていない。書き込み時点ではまだ
+# 分からないこと — 手で編集されたファイル、後から型が付けられた実行者 — は
+# `trikedb audit` が完成したグラフを読み直して見る。何が先かを決めるのは
+# トリプルが並んでいる行番号ではなく、時計。
+
+# 条件は 1 ホップに限らない。共有変数で結合でき、?s と ?o にはそのアクション自身の
+# 両端があらかじめ束縛されている — ルールが本当に依存している相手は、たいてい
+# どちらの端でもないから。「買ったものにはレビューしてよい」がその例で、レビューは
+# 顧客 -> 商品、購入は *注文* という、どちらの端も名指していない第三のノード。
+db.declare_link("REVIEWED", domain="customer", range="product",
+                requires=["?order PLACED_BY ?s",    # この顧客が出した注文があり
+                          "?order CONTAINS ?o"])    # その注文にこの商品が入っている
+# 事後のレポートに格下げせず、トリプルを書いたその時に検査する。batch() の中で
+# まだ成立しない条件は保留され、最後にもう一度問われる — トリプルを足すことは
+# 条件を満たすことはあっても壊すことはないので、根拠は、それを必要とする書き込み
+# より後に来てもよい。
+
 # 質問する — 依存ゼロでパターンを結合するか …
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
@@ -221,6 +246,9 @@ trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 # 述語が何と何を繋ぐかを宣言する。以後それは強制される
 trikedb ontology pipeline.yaml --link INGESTS_TO=job>table
+
+# 実行条件と権限は形と並べて YAML に宣言し、ファイル全体に対して検査する
+trikedb audit pipeline.yaml     # 順序を守らないアクションがあれば exit 1
 
 # やったことを記録する: ノードは新しい状態に移り、ログには実行が残る
 trike act pipeline.yaml RAW_CRM_CONTACTS AFFECTED_BY "email column dropped" \
@@ -611,13 +639,15 @@ trikedb は組み込みで、ホスト型ではありません。エージェン
 
 ## 例
 
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。ライブデモの中身です。
+- [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — 架空の日用品・食品小売を5つのメンバーグラフ（カタログ / 受注 / 出荷 / 組織 / インシデント）に分け、**ワークスペース**として統合したもの: 567トリプル。36個の述語すべてが `domain` と `range` を宣言し、9個が `requires`（何が先に起きていなければならないか）を、11個が `by:`（誰が実行してよいか）を宣言しています。うち240件は日付を持つアクションなので、`state('ORD-25101')` はステータス列を読んだ値ではなく、2つの別々のメンバーグラフに書かれたイベントから組み立てられた答えです。ライブデモの中身です。
+- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — 上の6ファイルを書き出している生成器。決定的で、実行すればコミット済みの YAML がバイト単位でそのまま再現されます（そのことをテストで見張っています）。デモを育てるときは YAML ではなく生成器を編集します。
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **実データ**: Freebase 知識グラフからの約600件の事実（CC BY、WebQSP ベンチマークのサブグラフから抽出）。2Pac、アガサ・クリスティ、ニコラ・テスラなど。ノードの型は述語のドメインから推論されています。宣言も日付も一切ありません — それがこれを残している理由で、こちらでキュレーションしていない第三者のデータだからです。Freebaseのデモの中身です。
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — 同じ事実を6つのドメイングラフ（映画 / 音楽 / 書籍 / 人物 / 場所 / その他）に分け、**ワークスペース**として統合し直したもの: 各メンバーがフィルタチップ付きの島として描画されます。ワークスペースのデモの中身です。
 - [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — 架空のデータ基盤で運用上の慣習を示したもの: オントロジー、廃止、変更イベント。
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — 自由形式の述語、オントロジーなし。
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — インラインのグラフで動く、実行可能なノートブック版クイックスタート。
 
-**ライブデモ:** https://ryutoyoda.github.io/trikedb/ · **ワークスペースのデモ:** https://ryutoyoda.github.io/trikedb/workspace.html · **パイプラインのデモ:** https://ryutoyoda.github.io/trikedb/pipeline.html （アクションレイヤー — 日付・実行者・状態が付いたイベント）
+**ライブデモ:** https://ryutoyoda.github.io/trikedb/ （書き込み時に強制される宣言 — `domain`・`range`・`requires`・`by`） · **パイプラインのデモ:** https://ryutoyoda.github.io/trikedb/pipeline.html （アクションレイヤー — 日付・実行者・状態が付いたイベント） · **Freebaseのデモ:** https://ryutoyoda.github.io/trikedb/freebase.html · **ワークスペースのデモ:** https://ryutoyoda.github.io/trikedb/workspace.html
 
 エクスポートされる HTML は単なる絵ではなく小さなワークベンチです: ノードをクリックすると全プロパティを載せた右パネルが出て（URL はリンクになります）、右上でノードを検索でき、**SPARQL コンソール**を開けばブラウザ内で本物の SPARQL 1.1 を実行できます — WASM にコンパイルされた [Oxigraph](https://github.com/oxigraph/oxigraph) が、初回利用時に CDN から読み込まれます。履歴を持つノードは現在の状態をラベルに表示し、詳細パネルにイベント（いつ・誰が・何を）を新しい順で並べます。**イベントは、それが起きた2つのオブジェクトの間の線の上に描かれ**、ラベルは日付とそれが残した状態です。どの線をクリックしてもその線がぶら下がっているノードが開き、`events` ボタンでグラフ全体のログを時系列で読めます。それ自体が実体ではないイベント本文は赤い菱形として描画されます。初期レイアウトはグラフの形に適応します（`--layout flow|free|auto`）。ノード型のチェックボックスで表示を絞り込めます（**全選択 / 全解除**のショートカット付き）— 型が増えると凡例は横スクロールします — ワークスペースならメンバーグラフも同じように切り替えられます。
 

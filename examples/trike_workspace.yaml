@@ -1,0 +1,17 @@
+# trike goods demo workspace — a read-only union of the five member graphs.
+#
+# trike goods is a fictional homeware and pantry retailer. Each member graph
+# is owned by a different team and is a normal trikedb file on its own; the
+# workspace reads them together, so a question can cross from an order to
+# the warehouse it shipped from to the team that staffs that warehouse
+# without anybody merging the files.
+#
+# regenerate the page:
+#   trikedb ui generate examples/trike_workspace.yaml -o docs/index.html \
+#       --title "trike goods · operations ontology"
+graphs:
+  catalog: trike_catalog.yaml
+  commerce: trike_commerce.yaml
+  fulfilment: trike_fulfilment.yaml
+  org: trike_org.yaml
+  incidents: trike_incidents.yaml

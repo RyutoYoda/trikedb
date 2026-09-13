@@ -107,7 +107,7 @@ def test_export_does_not_inject_script():
 def test_successful_save_does_not_adopt_other_writers_version():
     # Deterministically schedule a competing commit between PUT and HEAD.
     # Mock only storage, retaining the real save/reload/mutation logic.
-    import trikedb.db as core
+    import trikedb.persistence as core
     from trikedb.storage import ConcurrentWriteError
     state = {'doc': 'triples: []', 'version': 0, 'inject': True}
     def write(path, text, expect, connection=None):

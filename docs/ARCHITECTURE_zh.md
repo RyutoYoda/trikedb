@@ -36,6 +36,12 @@ S3使用条件单次PUT（ETag/If-Match或不存在时创建），SQL使用versi
 
 同一serve进程中的REST/MCP共享TrikeDB并在可重入锁下串行操作。MCP遇到条件保存冲突后reload并重放操作。不同进程不共享内存；Python调用者须自行同步，外部编辑须reload。read_only保护公开API，不限制任意Python内存操作。
 
+## 模块与分层
+
+`model` 定义事实本身。`rules` / `rdf` / `reasoning` 说明文档的含义，`storage` / `persistence` 负责读写，`audit` 读取成品文档。`db` 是它们合起来的那个存储——它的方法都在向这些模块委派，而模块把存储当第一个参数收下，不会反过来 import `db`。`html` / `importers` / `embeddings` 放在核心**之上**：图谱不该依赖画它的那张页面，不该依赖它可以从哪些文件格式构建，也不该依赖一个未必装了的嵌入模型。`cli` / `mcp_server` / `serve` 是最上层的入口。
+
+import 只能从高层指向严格更低的层，单向。函数内部的 import 是让可选适配器保持可选的手段，因此不算依赖——`db.to_html()` 在被调用时才 import `html`。`tests/test_architecture.py` 声明了这些层，代码一旦对不上就让构建失败，包括新增模块却没有给它定层的情况。**声明出来，并且强制执行**——这正是这个库对本体所主张的那件事，用在了仓库自己身上。
+
 ## 查询与边界
 
 SELECT/ASK通常由Oxigraph执行；CONSTRUCT/DESCRIBE、fallback、更新、OWL/SHACL由rdflib执行。pattern query使用核心匹配代码。存在PREFIX或注释的模糊SPARQL开头通过解析器分派。

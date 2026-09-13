@@ -1,0 +1,412 @@
+# trike goods — catalog
+#
+# trike goods is a fictional homeware and pantry retailer. This graph is the
+# part of its ontology that answers "what do we sell, who makes it, and what
+# has happened to it" — one of five member graphs; the workspace
+# (trike_workspace.yaml) unions them.
+#
+# Every predicate below is *declared*, not described: `domain` is the node
+# type allowed as the subject and `range` the type allowed as the object, and
+# writing an edge between the wrong two types is refused rather than stored.
+#
+# A product carries properties (price_jpy, stock, sku). An action is what
+# moved them, and the node's property is the value the newest action left
+# behind — the number on the object and the event that produced it are the
+# same fact, not two.
+#
+# Some actions stay small: RESTOCKED_FROM is one dated line from a product to
+# the supplier the stock came in from, carrying stock_before/stock_after.
+# Others outgrow that. A price change has a before, an after, a reason and a
+# person who signed it off, and a thing with properties and relationships of
+# its own is an object — so PC-0001..PC-0012 are nodes here, with CHANGED
+# pointing at the product they moved and APPROVED_BY at the person. Same for
+# the retirements. Nothing in this file is a floating sentence.
+
+ontology:
+  predicates:
+    SUPPLIES: {description: supplier -> product it makes for us, domain: supplier, range: product}
+    IN_CATEGORY: {description: product -> category it is merchandised under, domain: product, range: category}
+    BUNDLED_WITH: {description: product -> product sold alongside it, domain: product, range: product}
+    SUBSTITUTE_FOR: {description: product -> product it can stand in for, domain: product, range: product}
+    CHANGED: {description: price change -> the product it repriced, domain: price-change, range: product, by: system}
+    APPROVED_BY: {description: price change -> the person who signed it off, domain: price-change, range: person}
+    RESTOCKED_FROM: {description: product -> supplier the stock came in from, domain: product, range: supplier, by: team}
+    RETIRED: {description: retirement -> the product taken off the shelf, domain: retirement, range: product, by: team}
+    DECIDED_BY: {description: retirement -> the person who called it, domain: retirement, range: person}
+    REPLACED_BY: {description: retired product -> the product that took over, domain: product, range: product, requires: RETIRED, by: team}
+
+nodes:
+  # suppliers — who we buy from
+  Kettleworks Ltd: {type: supplier, makes: kitchen, url: "https://kettleworks.example", terms: net-30}
+  Basalt Cookware: {type: supplier, makes: kitchen, url: "https://basalt.example", terms: net-30}
+  Nomi Ceramics: {type: supplier, makes: tableware, url: "https://nomi.example", terms: net-30}
+  Verdant Farms: {type: supplier, makes: pantry, url: "https://verdant.example", terms: net-30}
+  Arbor Textiles: {type: supplier, makes: linens, url: "https://arbor.example", terms: net-30}
+  Pinefield Paper: {type: supplier, makes: stationery, url: "https://pinefield.example", terms: net-30}
+  # categories — how the shop is merchandised
+  Kitchen: {type: category, aisle: 1}
+  Tableware: {type: category, aisle: 2}
+  Pantry: {type: category, aisle: 3}
+  Linens: {type: category, aisle: 4}
+  Cleaning: {type: category, aisle: 5}
+  Stationery: {type: category, aisle: 6}
+  # products — price and stock are properties, and the actions below are
+  # what moved them
+  Copper Kettle 1.5L: {type: product, sku: TG-100, price_jpy: 7560, stock: 62, category: Kitchen, listed: true}
+  Cast Iron Skillet 26cm: {type: product, sku: TG-101, price_jpy: 6900, stock: 48, category: Kitchen, listed: true}
+  Bamboo Cutting Board: {type: product, sku: TG-102, price_jpy: 3200, stock: 140, category: Kitchen, listed: true}
+  Enamel Stockpot 6L: {type: product, sku: TG-103, price_jpy: 12740, stock: 26, category: Kitchen, listed: true}
+  Silicone Spatula Set: {type: product, sku: TG-104, price_jpy: 1900, stock: 210, category: Kitchen, listed: false}
+  Pour-Over Dripper: {type: product, sku: TG-105, price_jpy: 2800, stock: 95, category: Kitchen, listed: true}
+  Stoneware Dinner Plate: {type: product, sku: TG-106, price_jpy: 2590, stock: 320, category: Tableware, listed: true}
+  Matte Mug 350ml: {type: product, sku: TG-107, price_jpy: 1600, stock: 410, category: Tableware, listed: true}
+  Glass Tumbler 300ml: {type: product, sku: TG-108, price_jpy: 1100, stock: 380, category: Tableware, listed: true}
+  Walnut Serving Tray: {type: product, sku: TG-109, price_jpy: 5040, stock: 44, category: Tableware, listed: true}
+  Ceramic Bowl 18cm: {type: product, sku: TG-110, price_jpy: 2100, stock: 260, category: Tableware, listed: true}
+  Linen Napkin Set: {type: product, sku: TG-111, price_jpy: 3400, stock: 130, category: Tableware, listed: true}
+  Single-Origin Coffee 250g: {type: product, sku: TG-112, price_jpy: 1940, stock: 540, category: Pantry, listed: true}
+  Sencha Loose Leaf 100g: {type: product, sku: TG-113, price_jpy: 1500, stock: 300, category: Pantry, listed: true}
+  Cold-Pressed Olive Oil 500ml: {type: product, sku: TG-114, price_jpy: 2600, stock: 180, category: Pantry, listed: true}
+  Sea Salt Flakes 120g: {type: product, sku: TG-115, price_jpy: 970, stock: 420, category: Pantry, listed: true}
+  Buckwheat Soba 300g: {type: product, sku: TG-116, price_jpy: 700, stock: 610, category: Pantry, listed: true}
+  Wildflower Honey 340g: {type: product, sku: TG-117, price_jpy: 2200, stock: 150, category: Pantry, listed: false}
+  Waffle Bath Towel: {type: product, sku: TG-118, price_jpy: 3510, stock: 170, category: Linens, listed: true}
+  Linen Duvet Cover: {type: product, sku: TG-119, price_jpy: 14800, stock: 34, category: Linens, listed: true}
+  Cotton Throw Blanket: {type: product, sku: TG-120, price_jpy: 7600, stock: 58, category: Linens, listed: true}
+  Percale Pillowcase Pair: {type: product, sku: TG-121, price_jpy: 4530, stock: 120, category: Linens, listed: true}
+  Coconut Dish Soap 500ml: {type: product, sku: TG-122, price_jpy: 850, stock: 480, category: Cleaning, listed: true}
+  Wool Dryer Balls: {type: product, sku: TG-123, price_jpy: 1400, stock: 220, category: Cleaning, listed: true}
+  Bamboo Dish Brush: {type: product, sku: TG-124, price_jpy: 640, stock: 350, category: Cleaning, listed: true}
+  Citrus Surface Spray: {type: product, sku: TG-125, price_jpy: 1000, stock: 290, category: Cleaning, listed: false}
+  Recycled Notebook A5: {type: product, sku: TG-126, price_jpy: 1200, stock: 400, category: Stationery, listed: true}
+  Fineliner Pen Set: {type: product, sku: TG-127, price_jpy: 1530, stock: 240, category: Stationery, listed: true}
+  Kraft Gift Wrap Roll: {type: product, sku: TG-128, price_jpy: 800, stock: 310, category: Stationery, listed: true}
+  Desk Blotter Pad: {type: product, sku: TG-129, price_jpy: 2900, stock: 88, category: Stationery, listed: true}
+  Nesting Mixing Bowls: {type: product, sku: TG-130, price_jpy: 4640, stock: 76, category: Kitchen, listed: true}
+  Cedar Spice Rack: {type: product, sku: TG-131, price_jpy: 5100, stock: 52, category: Kitchen, listed: true}
+  Ash Chopstick Pair: {type: product, sku: TG-132, price_jpy: 900, stock: 290, category: Tableware, listed: true}
+  Speckled Side Plate: {type: product, sku: TG-133, price_jpy: 1940, stock: 340, category: Tableware, listed: false}
+  Miso Paste 400g: {type: product, sku: TG-134, price_jpy: 1300, stock: 260, category: Pantry, listed: true}
+  Smoked Paprika 60g: {type: product, sku: TG-135, price_jpy: 750, stock: 330, category: Pantry, listed: true}
+  Linen Tea Towel Set: {type: product, sku: TG-136, price_jpy: 2700, stock: 190, category: Linens, listed: true}
+  Quilted Bed Runner: {type: product, sku: TG-137, price_jpy: 6800, stock: 41, category: Linens, listed: true}
+  Refill Hand Wash 1L: {type: product, sku: TG-138, price_jpy: 1100, stock: 275, category: Cleaning, listed: true}
+  Linen-Bound Planner: {type: product, sku: TG-139, price_jpy: 3600, stock: 112, category: Stationery, listed: true}
+  # price changes and retirements. These used to be a sentence dangling off
+  # the product. A price change has a before, an after, a reason and
+  # somebody who signed it off — that is an object, so it gets an id, its
+  # own properties, and links to the product it moved and the person who
+  # approved it. Ask the graph state('PC-0007') and it answers 'applied'.
+  PC-0001: {type: price-change, price_before: 8400, price_after: 7560, reason: supplier raised the unit cost}
+  PC-0002: {type: price-change, price_before: 11800, price_after: 12740, reason: clearing the last of the spring run}
+  PC-0003: {type: price-change, price_before: 2400, price_after: 2590, reason: "matched a competitor's shelf price"}
+  PC-0004: {type: price-change, price_before: 5600, price_after: 5040, reason: freight surcharge passed through}
+  PC-0005: {type: price-change, price_before: 1800, price_after: 1940, reason: category margin review}
+  PC-0006: {type: price-change, price_before: 900, price_after: 970, reason: promotional price for the pantry club}
+  PC-0007: {type: price-change, price_before: 3900, price_after: 3510, reason: packaging changed and the cost with it}
+  PC-0008: {type: price-change, price_before: 4200, price_after: 4530, reason: FX move on an imported line}
+  PC-0009: {type: price-change, price_before: 600, price_after: 640, reason: volume discount renegotiated}
+  PC-0010: {type: price-change, price_before: 1700, price_after: 1530, reason: end-of-season markdown}
+  PC-0011: {type: price-change, price_before: 4300, price_after: 4640, reason: corrected a mis-keyed launch price}
+  PC-0012: {type: price-change, price_before: 1800, price_after: 1940, reason: cost base moved with the new supply contract}
+  RET-0001: {type: retirement, reason: supplier stopped the line}
+  RET-0002: {type: retirement, reason: margin below the category floor}
+  RET-0003: {type: retirement, reason: replaced by a cheaper equivalent}
+  RET-0004: {type: retirement, reason: "moved to the supplier's own direct channel"}
+  # the people who sign those off — the same person nodes the org graph
+  # puts on a team, so the approval is not a free-text initial
+  Rune Halvorsen: {type: person, team: catalog-merch}
+  Kofi Mensah: {type: person, team: catalog-merch}
+  Freya Nakagawa: {type: person, team: catalog-merch}
+
+triples:
+
+  # who supplies what
+  - {s: Kettleworks Ltd, p: SUPPLIES, o: Copper Kettle 1.5L}
+  - {s: Basalt Cookware, p: SUPPLIES, o: Cast Iron Skillet 26cm}
+  - {s: Basalt Cookware, p: SUPPLIES, o: Bamboo Cutting Board}
+  - {s: Kettleworks Ltd, p: SUPPLIES, o: Enamel Stockpot 6L}
+  - {s: Basalt Cookware, p: SUPPLIES, o: Silicone Spatula Set}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Pour-Over Dripper}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Stoneware Dinner Plate}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Matte Mug 350ml}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Glass Tumbler 300ml}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Walnut Serving Tray}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Ceramic Bowl 18cm}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Linen Napkin Set}
+  - {s: Verdant Farms, p: SUPPLIES, o: Single-Origin Coffee 250g}
+  - {s: Verdant Farms, p: SUPPLIES, o: Sencha Loose Leaf 100g}
+  - {s: Verdant Farms, p: SUPPLIES, o: Cold-Pressed Olive Oil 500ml}
+  - {s: Verdant Farms, p: SUPPLIES, o: Sea Salt Flakes 120g}
+  - {s: Verdant Farms, p: SUPPLIES, o: Buckwheat Soba 300g}
+  - {s: Verdant Farms, p: SUPPLIES, o: Wildflower Honey 340g}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Waffle Bath Towel}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Linen Duvet Cover}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Cotton Throw Blanket}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Percale Pillowcase Pair}
+  - {s: Verdant Farms, p: SUPPLIES, o: Coconut Dish Soap 500ml}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Wool Dryer Balls}
+  - {s: Basalt Cookware, p: SUPPLIES, o: Bamboo Dish Brush}
+  - {s: Verdant Farms, p: SUPPLIES, o: Citrus Surface Spray}
+  - {s: Pinefield Paper, p: SUPPLIES, o: Recycled Notebook A5}
+  - {s: Pinefield Paper, p: SUPPLIES, o: Fineliner Pen Set}
+  - {s: Pinefield Paper, p: SUPPLIES, o: Kraft Gift Wrap Roll}
+  - {s: Pinefield Paper, p: SUPPLIES, o: Desk Blotter Pad}
+  - {s: Basalt Cookware, p: SUPPLIES, o: Nesting Mixing Bowls}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Cedar Spice Rack}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Ash Chopstick Pair}
+  - {s: Nomi Ceramics, p: SUPPLIES, o: Speckled Side Plate}
+  - {s: Verdant Farms, p: SUPPLIES, o: Miso Paste 400g}
+  - {s: Verdant Farms, p: SUPPLIES, o: Smoked Paprika 60g}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Linen Tea Towel Set}
+  - {s: Arbor Textiles, p: SUPPLIES, o: Quilted Bed Runner}
+  - {s: Verdant Farms, p: SUPPLIES, o: Refill Hand Wash 1L}
+  - {s: Pinefield Paper, p: SUPPLIES, o: Linen-Bound Planner}
+
+  # how it is merchandised
+  - {s: Copper Kettle 1.5L, p: IN_CATEGORY, o: Kitchen}
+  - {s: Cast Iron Skillet 26cm, p: IN_CATEGORY, o: Kitchen}
+  - {s: Bamboo Cutting Board, p: IN_CATEGORY, o: Kitchen}
+  - {s: Enamel Stockpot 6L, p: IN_CATEGORY, o: Kitchen}
+  - {s: Silicone Spatula Set, p: IN_CATEGORY, o: Kitchen}
+  - {s: Pour-Over Dripper, p: IN_CATEGORY, o: Kitchen}
+  - {s: Stoneware Dinner Plate, p: IN_CATEGORY, o: Tableware}
+  - {s: Matte Mug 350ml, p: IN_CATEGORY, o: Tableware}
+  - {s: Glass Tumbler 300ml, p: IN_CATEGORY, o: Tableware}
+  - {s: Walnut Serving Tray, p: IN_CATEGORY, o: Tableware}
+  - {s: Ceramic Bowl 18cm, p: IN_CATEGORY, o: Tableware}
+  - {s: Linen Napkin Set, p: IN_CATEGORY, o: Tableware}
+  - {s: Single-Origin Coffee 250g, p: IN_CATEGORY, o: Pantry}
+  - {s: Sencha Loose Leaf 100g, p: IN_CATEGORY, o: Pantry}
+  - {s: Cold-Pressed Olive Oil 500ml, p: IN_CATEGORY, o: Pantry}
+  - {s: Sea Salt Flakes 120g, p: IN_CATEGORY, o: Pantry}
+  - {s: Buckwheat Soba 300g, p: IN_CATEGORY, o: Pantry}
+  - {s: Wildflower Honey 340g, p: IN_CATEGORY, o: Pantry}
+  - {s: Waffle Bath Towel, p: IN_CATEGORY, o: Linens}
+  - {s: Linen Duvet Cover, p: IN_CATEGORY, o: Linens}
+  - {s: Cotton Throw Blanket, p: IN_CATEGORY, o: Linens}
+  - {s: Percale Pillowcase Pair, p: IN_CATEGORY, o: Linens}
+  - {s: Coconut Dish Soap 500ml, p: IN_CATEGORY, o: Cleaning}
+  - {s: Wool Dryer Balls, p: IN_CATEGORY, o: Cleaning}
+  - {s: Bamboo Dish Brush, p: IN_CATEGORY, o: Cleaning}
+  - {s: Citrus Surface Spray, p: IN_CATEGORY, o: Cleaning}
+  - {s: Recycled Notebook A5, p: IN_CATEGORY, o: Stationery}
+  - {s: Fineliner Pen Set, p: IN_CATEGORY, o: Stationery}
+  - {s: Kraft Gift Wrap Roll, p: IN_CATEGORY, o: Stationery}
+  - {s: Desk Blotter Pad, p: IN_CATEGORY, o: Stationery}
+  - {s: Nesting Mixing Bowls, p: IN_CATEGORY, o: Kitchen}
+  - {s: Cedar Spice Rack, p: IN_CATEGORY, o: Kitchen}
+  - {s: Ash Chopstick Pair, p: IN_CATEGORY, o: Tableware}
+  - {s: Speckled Side Plate, p: IN_CATEGORY, o: Tableware}
+  - {s: Miso Paste 400g, p: IN_CATEGORY, o: Pantry}
+  - {s: Smoked Paprika 60g, p: IN_CATEGORY, o: Pantry}
+  - {s: Linen Tea Towel Set, p: IN_CATEGORY, o: Linens}
+  - {s: Quilted Bed Runner, p: IN_CATEGORY, o: Linens}
+  - {s: Refill Hand Wash 1L, p: IN_CATEGORY, o: Cleaning}
+  - {s: Linen-Bound Planner, p: IN_CATEGORY, o: Stationery}
+
+  # merchandising relations — plain links, no date: nothing happened,
+  # this is just how the shelf is arranged
+  - {s: Copper Kettle 1.5L, p: BUNDLED_WITH, o: Glass Tumbler 300ml}
+  - {s: Cast Iron Skillet 26cm, p: BUNDLED_WITH, o: Walnut Serving Tray}
+  - {s: Ceramic Bowl 18cm, p: SUBSTITUTE_FOR, o: Wool Dryer Balls}
+  - {s: Linen Napkin Set, p: SUBSTITUTE_FOR, o: Bamboo Dish Brush}
+
+  # a price change, promoted to an object. The dated link moves the
+  # product; the undated one records who approved it. The before and after
+  # live on the PC node, where anything else can point at them too.
+  - s: PC-0001
+    p: CHANGED
+    o: Copper Kettle 1.5L
+    at: 2025-01-12
+    by: pricing-engine
+    state: applied
+  - s: PC-0002
+    p: CHANGED
+    o: Enamel Stockpot 6L
+    at: 2025-02-01
+    by: pricing-engine
+    state: applied
+  - s: PC-0003
+    p: CHANGED
+    o: Stoneware Dinner Plate
+    at: 2025-02-18
+    by: pricing-engine
+    state: applied
+  - s: PC-0004
+    p: CHANGED
+    o: Walnut Serving Tray
+    at: 2025-03-07
+    by: pricing-engine
+    state: applied
+  - s: PC-0005
+    p: CHANGED
+    o: Single-Origin Coffee 250g
+    at: 2025-03-24
+    by: pricing-engine
+    state: applied
+  - s: PC-0006
+    p: CHANGED
+    o: Sea Salt Flakes 120g
+    at: 2025-04-13
+    by: pricing-engine
+    state: applied
+  - s: PC-0007
+    p: CHANGED
+    o: Waffle Bath Towel
+    at: 2025-05-02
+    by: pricing-engine
+    state: applied
+  - s: PC-0008
+    p: CHANGED
+    o: Percale Pillowcase Pair
+    at: 2025-05-19
+    by: pricing-engine
+    state: applied
+  - s: PC-0009
+    p: CHANGED
+    o: Bamboo Dish Brush
+    at: 2025-06-08
+    by: pricing-engine
+    state: applied
+  - s: PC-0010
+    p: CHANGED
+    o: Fineliner Pen Set
+    at: 2025-06-25
+    by: pricing-engine
+    state: applied
+  - s: PC-0011
+    p: CHANGED
+    o: Nesting Mixing Bowls
+    at: 2025-07-14
+    by: pricing-engine
+    state: applied
+  - s: PC-0012
+    p: CHANGED
+    o: Speckled Side Plate
+    at: 2025-08-03
+    by: pricing-engine
+    state: applied
+  - {s: PC-0001, p: APPROVED_BY, o: Rune Halvorsen}
+  - {s: PC-0002, p: APPROVED_BY, o: Kofi Mensah}
+  - {s: PC-0003, p: APPROVED_BY, o: Freya Nakagawa}
+  - {s: PC-0004, p: APPROVED_BY, o: Rune Halvorsen}
+  - {s: PC-0005, p: APPROVED_BY, o: Kofi Mensah}
+  - {s: PC-0006, p: APPROVED_BY, o: Freya Nakagawa}
+  - {s: PC-0007, p: APPROVED_BY, o: Rune Halvorsen}
+  - {s: PC-0008, p: APPROVED_BY, o: Kofi Mensah}
+  - {s: PC-0009, p: APPROVED_BY, o: Freya Nakagawa}
+  - {s: PC-0010, p: APPROVED_BY, o: Rune Halvorsen}
+  - {s: PC-0011, p: APPROVED_BY, o: Kofi Mensah}
+  - {s: PC-0012, p: APPROVED_BY, o: Freya Nakagawa}
+
+  # stock arriving is still small enough to be one dated line
+  - s: Cast Iron Skillet 26cm
+    p: RESTOCKED_FROM
+    o: Basalt Cookware
+    at: 2025-02-03
+    by: fulfilment-ops
+    state: in-stock
+    qty: 40
+    stock_before: 8
+    stock_after: 48
+  - s: Pour-Over Dripper
+    p: RESTOCKED_FROM
+    o: Nomi Ceramics
+    at: 2025-02-22
+    by: fulfilment-ops
+    state: in-stock
+    qty: 55
+    stock_before: 40
+    stock_after: 95
+  - s: Walnut Serving Tray
+    p: RESTOCKED_FROM
+    o: Arbor Textiles
+    at: 2025-03-13
+    by: fulfilment-ops
+    state: in-stock
+    qty: 70
+    stock_before: -26
+    stock_after: 44
+  - s: Sencha Loose Leaf 100g
+    p: RESTOCKED_FROM
+    o: Verdant Farms
+    at: 2025-04-04
+    by: fulfilment-ops
+    state: in-stock
+    qty: 85
+    stock_before: 215
+    stock_after: 300
+  - s: Wildflower Honey 340g
+    p: RESTOCKED_FROM
+    o: Verdant Farms
+    at: 2025-04-23
+    by: fulfilment-ops
+    state: in-stock
+    qty: 100
+    stock_before: 50
+    stock_after: 150
+  - s: Percale Pillowcase Pair
+    p: RESTOCKED_FROM
+    o: Arbor Textiles
+    at: 2025-05-14
+    by: fulfilment-ops
+    state: in-stock
+    qty: 115
+    stock_before: 5
+    stock_after: 120
+
+  # end of life — the retirement object, who called it, and the line from
+  # the retired product to the one that took over
+  - s: RET-0001
+    p: RETIRED
+    o: Silicone Spatula Set
+    at: 2025-06-06
+    by: catalog-merch
+    state: executed
+  - s: RET-0002
+    p: RETIRED
+    o: Wildflower Honey 340g
+    at: 2025-07-03
+    by: catalog-merch
+    state: executed
+  - s: RET-0003
+    p: RETIRED
+    o: Citrus Surface Spray
+    at: 2025-08-09
+    by: catalog-merch
+    state: executed
+  - s: RET-0004
+    p: RETIRED
+    o: Speckled Side Plate
+    at: 2025-08-15
+    by: catalog-merch
+    state: executed
+  - {s: RET-0001, p: DECIDED_BY, o: Kofi Mensah}
+  - {s: RET-0002, p: DECIDED_BY, o: Freya Nakagawa}
+  - {s: RET-0003, p: DECIDED_BY, o: Rune Halvorsen}
+  - {s: RET-0004, p: DECIDED_BY, o: Kofi Mensah}
+  - s: Silicone Spatula Set
+    p: REPLACED_BY
+    o: Bamboo Cutting Board
+    at: 2025-06-20
+    by: catalog-merch
+    state: migrated
+  - s: Wildflower Honey 340g
+    p: REPLACED_BY
+    o: Single-Origin Coffee 250g
+    at: 2025-07-17
+    by: catalog-merch
+    state: migrated
+  - s: Citrus Surface Spray
+    p: REPLACED_BY
+    o: Coconut Dish Soap 500ml
+    at: 2025-08-23
+    by: catalog-merch
+    state: migrated
+  - s: Speckled Side Plate
+    p: REPLACED_BY
+    o: Stoneware Dinner Plate
+    at: 2025-09-01
+    by: catalog-merch
+    state: migrated

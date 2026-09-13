@@ -1,0 +1,322 @@
+# trike goods — incidents
+#
+# What went wrong, to which object, and who closed it. An incident is not a
+# ticket sitting in a separate tool here: it points at the same
+# `inventory-service` node the org graph says commerce-platform operates, and
+# the orders it stalled are the same `ORD-25131` nodes the commerce graph
+# says a customer placed.
+#
+# The lifecycle open -> resolved is two dated actions on the incident, so
+# `state('INC-2025-03')` is an answer rather than a field. AFFECTED and
+# DISRUPTED carry no date, because they say what the incident is *about* —
+# which is not something that happened at a time.
+#
+# The mitigation in between is its own object. It is a thing somebody did,
+# with an operator and a time of its own, so MIT-0001 points *at* the
+# incident rather than hanging off it. `history('INC-2025-01')` still reads
+# it — history folds both directions — while `state('INC-2025-01')` stays
+# the incident's own, which is what keeps 'applied' off the incident and off
+# the engineer who ran it.
+
+ontology:
+  predicates:
+    RAISED_BY: {description: incident -> person who opened it, domain: incident, range: person}
+    AFFECTED: {description: incident -> system it is about, domain: incident, range: system}
+    HELD_UP_BY: {description: order -> incident that stalled it, domain: order, range: incident, requires: PLACED_BY}
+    MITIGATED: {description: mitigation -> the incident it stopped, domain: mitigation, range: incident, requires: RAISED_BY, by: person}
+    RESOLVED_BY: {description: incident -> person who closed it, domain: incident, range: person, requires: RAISED_BY}
+    DISRUPTED: {description: incident -> warehouse it degraded, domain: incident, range: warehouse}
+
+nodes:
+  # the incidents themselves
+  INC-2025-01: {type: incident, severity: sev2, summary: checkout 5xx spike during the spring sale}
+  INC-2025-02: {type: incident, severity: sev3, summary: inventory counts drifted after a partial restock feed}
+  INC-2025-03: {type: incident, severity: sev1, summary: order-router dropped Harbour District dispatches}
+  INC-2025-04: {type: incident, severity: sev3, summary: pricing-engine applied a stale FX rate}
+  INC-2025-05: {type: incident, severity: sev2, summary: wms-core pick lists printed out of order}
+  INC-2025-06: {type: incident, severity: sev3, summary: returns-portal uploads timed out over 5MB}
+  INC-2025-07: {type: incident, severity: sev2, summary: search-index missed newly listed products for 9 hours}
+  INC-2025-08: {type: incident, severity: sev3, summary: duplicate confirmation emails on retried payments}
+  INC-2025-09: {type: incident, severity: sev1, summary: Riverside DC conveyor halt stopped outbound scans}
+  INC-2025-10: {type: incident, severity: sev2, summary: checkout-api rate limit tripped by a crawler}
+  INC-2025-11: {type: incident, severity: sev3, summary: inventory-service leaked connections under retry storms}
+  INC-2025-12: {type: incident, severity: sev2, summary: Northfield Freight label API changed without notice}
+  # what somebody actually did about them. A mitigation is an object, not
+  # a note on the incident: it has an id, the action it performed, the
+  # incident it stopped and the person who ran it
+  MIT-0001: {type: mitigation, action: rolled the checkout deploy back one revision, applied: "2025-01-21"}
+  MIT-0002: {type: mitigation, action: paused the partial restock feed and replayed it whole, applied: "2025-02-12"}
+  MIT-0003: {type: mitigation, action: failed Harbour District dispatches over to Northfield DC, applied: "2025-03-03"}
+  MIT-0004: {type: mitigation, action: pinned the FX rate to the previous close, applied: "2025-03-22"}
+  MIT-0005: {type: mitigation, action: reprinted the wave in pick-path order, applied: "2025-04-13"}
+  MIT-0006: {type: mitigation, action: raised the upload limit to 25MB, applied: "2025-05-04"}
+  # people, systems, warehouses and orders — every one of these names also
+  # exists in another member graph, so an incident is not a silo: it is
+  # attached to the same object the rest of the company is talking about
+  Ada Marlowe: {type: person, team: commerce-platform}
+  Nils Brandt: {type: person, team: fulfilment-ops}
+  Rune Halvorsen: {type: person, team: catalog-merch}
+  Petra Oyelaran: {type: person, team: customer-care}
+  Ines Falk: {type: person, team: data-platform}
+  Tomas Vidal: {type: person, team: commerce-platform}
+  Saoirse Quinn: {type: person, team: fulfilment-ops}
+  Kofi Mensah: {type: person, team: catalog-merch}
+  Lena Ostrom: {type: person, team: customer-care}
+  Hugo Peralta: {type: person, team: data-platform}
+  Mira Lindqvist: {type: person, team: commerce-platform}
+  Osei Duah: {type: person, team: fulfilment-ops}
+  Freya Nakagawa: {type: person, team: catalog-merch}
+  Dario Bellini: {type: person, team: customer-care}
+  Nadia Sorensen: {type: person, team: data-platform}
+  Emil Vasquez: {type: person, team: commerce-platform}
+  checkout-api: {type: system, language: python, owner: commerce-platform}
+  inventory-service: {type: system, language: go, owner: commerce-platform}
+  order-router: {type: system, language: go, owner: fulfilment-ops}
+  pricing-engine: {type: system, language: python, owner: catalog-merch}
+  wms-core: {type: system, language: java, owner: fulfilment-ops}
+  returns-portal: {type: system, language: typescript, owner: customer-care}
+  search-index: {type: system, language: rust, owner: catalog-merch}
+  Riverside DC: {type: warehouse, region: Riverside}
+  Northfield DC: {type: warehouse, region: Northfield}
+  Harbour Micro-Hub: {type: warehouse, region: Harbour District}
+  Old Quarter Returns: {type: warehouse, region: Old Quarter}
+  ORD-25180: {type: order, placed: "2025-07-22"}
+  ORD-25181: {type: order, placed: "2025-07-25"}
+  ORD-25182: {type: order, placed: "2025-07-01"}
+  ORD-25183: {type: order, placed: "2025-07-04"}
+  ORD-25184: {type: order, placed: "2025-07-07"}
+
+triples:
+
+  # someone noticed
+  - s: INC-2025-01
+    p: RAISED_BY
+    o: Ada Marlowe
+    at: 2025-01-20
+    state: open
+    severity: sev2
+  - s: INC-2025-02
+    p: RAISED_BY
+    o: Tomas Vidal
+    at: 2025-02-11
+    state: open
+    severity: sev3
+  - s: INC-2025-03
+    p: RAISED_BY
+    o: Mira Lindqvist
+    at: 2025-03-02
+    state: open
+    severity: sev1
+  - s: INC-2025-04
+    p: RAISED_BY
+    o: Emil Vasquez
+    at: 2025-03-21
+    state: open
+    severity: sev3
+  - s: INC-2025-05
+    p: RAISED_BY
+    o: Ines Falk
+    at: 2025-04-12
+    state: open
+    severity: sev2
+  - s: INC-2025-06
+    p: RAISED_BY
+    o: Hugo Peralta
+    at: 2025-05-03
+    state: open
+    severity: sev3
+  - s: INC-2025-07
+    p: RAISED_BY
+    o: Nadia Sorensen
+    at: 2025-05-22
+    state: open
+    severity: sev2
+  - s: INC-2025-08
+    p: RAISED_BY
+    o: Petra Oyelaran
+    at: 2025-06-13
+    state: open
+    severity: sev3
+  - s: INC-2025-09
+    p: RAISED_BY
+    o: Lena Ostrom
+    at: 2025-07-04
+    state: open
+    severity: sev1
+  - s: INC-2025-10
+    p: RAISED_BY
+    o: Dario Bellini
+    at: 2025-07-23
+    state: open
+    severity: sev2
+  - s: INC-2025-11
+    p: RAISED_BY
+    o: Rune Halvorsen
+    at: 2025-08-14
+    state: open
+    severity: sev3
+  - s: INC-2025-12
+    p: RAISED_BY
+    o: Kofi Mensah
+    at: 2025-09-05
+    state: open
+    severity: sev2
+
+  # what it was about
+  - {s: INC-2025-01, p: AFFECTED, o: checkout-api, blast_radius: checkout}
+  - {s: INC-2025-02, p: AFFECTED, o: inventory-service, blast_radius: stock}
+  - {s: INC-2025-03, p: AFFECTED, o: order-router, blast_radius: dispatch}
+  - {s: INC-2025-04, p: AFFECTED, o: pricing-engine, blast_radius: price}
+  - {s: INC-2025-05, p: AFFECTED, o: wms-core, blast_radius: picking}
+  - {s: INC-2025-06, p: AFFECTED, o: returns-portal, blast_radius: returns}
+  - {s: INC-2025-01, p: DISRUPTED, o: Riverside DC, shifts_lost: 1}
+  - {s: INC-2025-06, p: DISRUPTED, o: Northfield DC, shifts_lost: 2}
+  - {s: INC-2025-11, p: DISRUPTED, o: Harbour Micro-Hub, shifts_lost: 3}
+  - {s: INC-2025-04, p: DISRUPTED, o: Old Quarter Returns, shifts_lost: 1}
+
+  # the orders it stalled — the event hangs off the order, because the
+  # order is what stopped moving
+  - s: ORD-25184
+    p: HELD_UP_BY
+    o: INC-2025-01
+    at: 2025-07-08
+    state: held
+    hours: 4
+  - s: ORD-25183
+    p: HELD_UP_BY
+    o: INC-2025-02
+    at: 2025-07-05
+    state: held
+    hours: 6
+  - s: ORD-25182
+    p: HELD_UP_BY
+    o: INC-2025-03
+    at: 2025-07-02
+    state: held
+    hours: 8
+  - s: ORD-25181
+    p: HELD_UP_BY
+    o: INC-2025-04
+    at: 2025-07-26
+    state: held
+    hours: 10
+  - s: ORD-25180
+    p: HELD_UP_BY
+    o: INC-2025-05
+    at: 2025-07-23
+    state: held
+    hours: 12
+
+  # what stopped the bleeding — the mitigation object. Who ran it is the
+  # actor of the action itself (by=), which MITIGATED declares must be a
+  # person: a mitigation nobody signed is refused.
+  - s: MIT-0001
+    p: MITIGATED
+    o: INC-2025-01
+    at: 2025-01-21
+    by: Ines Falk
+    state: applied
+  - s: MIT-0002
+    p: MITIGATED
+    o: INC-2025-02
+    at: 2025-02-12
+    by: Hugo Peralta
+    state: applied
+  - s: MIT-0003
+    p: MITIGATED
+    o: INC-2025-03
+    at: 2025-03-03
+    by: Nadia Sorensen
+    state: applied
+  - s: MIT-0004
+    p: MITIGATED
+    o: INC-2025-04
+    at: 2025-03-22
+    by: Petra Oyelaran
+    state: applied
+  - s: MIT-0005
+    p: MITIGATED
+    o: INC-2025-05
+    at: 2025-04-13
+    by: Lena Ostrom
+    state: applied
+  - s: MIT-0006
+    p: MITIGATED
+    o: INC-2025-06
+    at: 2025-05-04
+    by: Dario Bellini
+    state: applied
+
+  # and who closed it
+  - s: INC-2025-01
+    p: RESOLVED_BY
+    o: Rune Halvorsen
+    at: 2025-01-23
+    state: resolved
+    postmortem: true
+  - s: INC-2025-02
+    p: RESOLVED_BY
+    o: Hugo Peralta
+    at: 2025-02-14
+    state: resolved
+    postmortem: false
+  - s: INC-2025-03
+    p: RESOLVED_BY
+    o: Ada Marlowe
+    at: 2025-03-05
+    state: resolved
+    postmortem: false
+  - s: INC-2025-04
+    p: RESOLVED_BY
+    o: Kofi Mensah
+    at: 2025-03-24
+    state: resolved
+    postmortem: true
+  - s: INC-2025-05
+    p: RESOLVED_BY
+    o: Nadia Sorensen
+    at: 2025-04-15
+    state: resolved
+    postmortem: false
+  - s: INC-2025-06
+    p: RESOLVED_BY
+    o: Tomas Vidal
+    at: 2025-05-06
+    state: resolved
+    postmortem: false
+  - s: INC-2025-07
+    p: RESOLVED_BY
+    o: Freya Nakagawa
+    at: 2025-05-25
+    state: resolved
+    postmortem: true
+  - s: INC-2025-08
+    p: RESOLVED_BY
+    o: Petra Oyelaran
+    at: 2025-06-16
+    state: resolved
+    postmortem: false
+  - s: INC-2025-09
+    p: RESOLVED_BY
+    o: Mira Lindqvist
+    at: 2025-07-07
+    state: resolved
+    postmortem: false
+  - s: INC-2025-10
+    p: RESOLVED_BY
+    o: Nils Brandt
+    at: 2025-07-26
+    state: resolved
+    postmortem: true
+  - s: INC-2025-11
+    p: RESOLVED_BY
+    o: Lena Ostrom
+    at: 2025-08-17
+    state: resolved
+    postmortem: false
+  - s: INC-2025-12
+    p: RESOLVED_BY
+    o: Emil Vasquez
+    at: 2025-09-08
+    state: resolved
+    postmortem: false

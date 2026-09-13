@@ -3,6 +3,246 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.0
+
+An event can be an object, and an action can say when it may run.
+
+- **`requires` and `by`: the other half of declaring an action.** A
+  predicate could already declare what it connects (`domain`, `range`).
+  It can now declare what must have happened first, and who is allowed to
+  do it — the half a type check cannot reach. An order delivered before
+  it ever shipped breaks no type. Neither does a price change approved by
+  nobody. Both are refused now:
+
+  ```yaml
+  DELIVERED_TO:
+    domain: order
+    range: region
+    requires: SHIPPED_FROM     # this has to have happened first
+    by: courier                # and this is who may do it
+  ```
+
+  This is the line the comparison tables draw between a semantic layer and
+  an ontology: one describes updates and leaves the rules to whatever code
+  performs them, the other defines execution conditions, permissions,
+  state change and history in the same place as the object. trikedb had
+  the last two. It has all four now.
+- **`requires` reads both ends, like `history()` reads a node.** A
+  precondition asks what an action *touches*, not what it is the subject
+  of, because promotion moves the thing an action is about across the
+  edge — and in both directions. `RET-0007 RETIRED "Copper Kettle"`
+  leaves the kettle with no `RETIRED` of its own; `MIT-0007 MITIGATED
+  INC-2025-01` makes the mitigation its own subject, and a mitigation
+  created this moment has no history to ask about at all. Matching
+  subjects only would fail in exactly the case promotion exists for. An
+  action with a precondition must carry a time, because "before" is
+  otherwise a question nothing can answer. Preconditions cross member
+  graphs: the demo requires `PLACED_BY` before `SHIPPED_FROM`, and the
+  two live in different files.
+- **A condition can span more than one step.** One predicate name is
+  enough for "it had to have shipped first", and not enough for most
+  real rules, because the thing they turn on is usually named by
+  neither end of the action. "You may review what you bought" is the
+  plain example: the review is customer → product, and the purchase is
+  an *order* — a third node neither end mentions. `requires` now takes
+  `(s p o)` patterns as well as predicate names, joined on shared
+  variables, with `?s` and `?o` already bound to the action's own two
+  ends:
+
+  ```yaml
+  REVIEWED:
+    domain: customer
+    range: product
+    requires:
+      - "?order PLACED_BY ?s"    # some order this customer placed
+      - "?order CONTAINS ?o"     # and that same order held this product
+  ```
+
+  The demo declares exactly this, and a review planted by hand — real
+  customer, real product, both types right, date plausible — is now
+  refused with `nothing satisfies (?order CONTAINS ?o) at all`. Every
+  type check in the file passes it. Fixed-length paths only: recursion
+  and transitive closure stay with `infer()`, which already owns them.
+- **Checked at write time, not downgraded to a report.** A multi-step
+  condition asked mid-build can fail for two different reasons, and only
+  one of them is a violation: the evidence may be wrong, or it may
+  simply not be written yet. Adding triples can *satisfy* a condition
+  and can never break one, so a failure while the graph is still being
+  assembled is a question with no answer yet — not a no. Conditions that
+  fail inside an open `batch()` are therefore **held and asked again at
+  batch exit**, and again in `save()`, so the evidence may legitimately
+  be written after the write that needs it. Nothing is skipped and
+  nothing is checked more loosely; only the moment the exception arrives
+  moves. Outside a batch, a single `act()` is refused where it is
+  written, as before.
+- **It costs the same at 200,000 triples as at 1,000.** Triples are
+  indexed by predicate *and* by `(predicate, endpoint)` — either end,
+  the same both-directions rule `history()` follows — and the index is
+  extended on each append instead of dropped, which is the difference
+  between a check that is indexed and a check that is indexed and still
+  linear. A two-step condition costs 42µs at 1k and 41µs at 200k —
+  `benchmarks/precondition_bench.py` measures it against a control
+  predicate that declares nothing, so the number is the check and not the
+  append it rides on.
+- **An action no longer copies the graph it is not touching.** `act()`
+  opens a `batch()` so that the event and the state it leaves on the node
+  cannot come apart, and `batch()` guaranteed rollback by deep-copying the
+  entire store on the way in. So every single action deep-copied every
+  triple, every node and the whole ontology: 5.8ms on a 1,200-triple graph
+  and **1.5 seconds** on a 200,000-triple one — the action layer got
+  slower the more history a graph had, which is exactly backwards. The
+  snapshot copies pointers now, which is the same guarantee as long as
+  nothing edits an object the store already holds, so the two places that
+  did — `add()`'s attribute merge and the state `act()` writes onto a node
+  — record their pre-image or replace instead. One action costs 69µs at
+  1.2k triples and 12ms at 200k: **84× and 123× faster**. Rollback is not
+  taken on trust: `test_a_failed_batch_puts_everything_back` asserts the
+  store is identical afterwards across nine different mutations, so a
+  mutation added later that edits in place fails the build.
+- **Typing a node no longer reads the whole graph.** `set_node(x,
+  type=...)` has to check that the type does not contradict an edge
+  already written, and it did that by walking every triple — which makes
+  a bulk load quadratic, because a bulk load types every node it writes.
+  It goes through the `(predicate, endpoint)` index now, bounded by how
+  many predicates the ontology declares rather than by how much data is
+  in it: loading 25,000 triples under a `domain`/`range` declaration was
+  98 seconds and is 0.4, and 200,000 — which was over an hour — is 3.4.
+- **A `requires` entry that is neither shape is refused at declaration.**
+  It used to be kept as a predicate name nothing could ever match, which
+  reads in audit as "this has never happened" — a rule that always fails
+  and a rule that is misspelled have to be distinguishable, or the
+  guarantee is worth nothing. One term or three, and anything else says
+  so at `declare_link` time. (This one bit the demo generator first.)
+- **Checked twice, the way shapes already are.** `add` and `act` refuse
+  what they can see; `audit` reads the finished file for the rest, so
+  the line a triple happens to sit on never decides whether the graph
+  obeys itself — the clock does. Audit asks the *same call the write
+  path makes* rather than re-deriving "had this happened yet": two
+  implementations of that would eventually disagree, and the one a
+  reader trusts is whichever they ran last. New findings:
+  `precondition-unmet`, `action-has-no-actor`,
+  `actor-contradicts-declaration` (errors) and `unchecked-actor`
+  (warning). Whoever performed an action now counts as attached to the
+  graph, so a courier named only in `by=` is no longer reported as an
+  orphan node.
+
+- **`history()` folds both directions.** An action that grows properties
+  of its own stops fitting on a line: a price change with a before, an
+  after and an approver is a *thing*, and the honest shape is
+  `PC-0007 CHANGED "Copper Kettle 1.5L"` with `PC-0007 APPROVED_BY
+  "Rune Halvorsen"` — the same move Palantir makes when an Action Type
+  earns its own Object Type, and what PROV-O calls an `Activity`. That
+  promotion used to orphan everything it touched, because `history()`
+  matched subjects only and the kettle is now the *object* of `CHANGED`.
+  It now reads incoming dated triples too, so the product still has its
+  own record. `history(name, incoming=False)` is the old view.
+- **`state()` deliberately did not follow.** Widening both at once is the
+  bug this release exists to avoid: the change's `applied` would have
+  landed on the product *and* on the person who signed it off. A node
+  wears only the state of events it is the subject of — an event pointing
+  at you says something happened to you, not that you took its state.
+- **The detail panel shows both.** Events a node is the object of are
+  listed with the rest of its history, marked `←` with the subject they
+  came from.
+- **The bottom strip is back.** 0.38.1 removed it on the argument that a
+  ticker attached to nothing is the one thing an action layer must not
+  look like. Both readings are real: the line says *where* something
+  happened, the strip says *when* — and time order is the one thing the
+  graph layout cannot show. Events are now drawn in both places, the
+  `events` button folds the strip away and back, and the strip's own
+  label opens the whole log in the panel.
+- **The page shows the rules, not just the facts.** A declaration that
+  only lives in the YAML is a declaration nobody reads. The header now
+  carries an `ontology · N` button listing every predicate with what it
+  declares — `domain`, `range`, `requires`, `by`, spelled out as
+  sentences — and clicking a predicate chip beside any fact opens that
+  one predicate's rule right where the question came up. Predicates with
+  nothing declared are listed too, saying so: a page that quietly omitted
+  them would look stricter than the graph is.
+- **A node reads as what it is, and keeps its id.** The drawing still
+  uses ids — short, stable, the thing you would paste into a query — but
+  the detail panel, every link and the action log now show `label`,
+  `name`, `title` or `summary` when the node has one, with the id kept
+  underneath the heading and in each link's tooltip. An incident stops
+  being `INC-2025-11` and becomes "inventory-service leaked connections
+  under retry storms"; `PC-0007`, which has no other name, stays
+  `PC-0007`. The property that supplied the heading is not then repeated
+  in the property list.
+- **`set_node("SVC-1", name="checkout-api")` works.** It used to raise
+  `TypeError`, and so did `trikedb node SVC-1 -a name=...`: the parameter
+  holding the node was itself called `name` and ate the property. The
+  node is positional-only now, which is the fix for the key a caller most
+  wants to set.
+- **The demo is a company, not a sample.** `examples/trike_*.yaml` —
+  trike goods, a fictional homeware retailer as five member graphs and a
+  workspace: catalog, commerce, fulfilment, org, incidents. 567 triples,
+  every predicate declared with an enforced `domain`/`range`, eleven of
+  them with an enforced actor (`by:`) as well, and
+  **not one dangling sentence**: the price changes, retirements and
+  mitigations are all promoted objects, so every object of every dated
+  triple is a node the graph knows something else about. The generator
+  ships with it — `examples/generate_trike_demo.py`, stdlib only,
+  deterministic — and a test diffs its output against the committed YAML
+  byte for byte, because a demo that has drifted from its own generator
+  is one nobody can safely change.
+- **And it is the front page now.** The live demo used to open on
+  `examples/freebase_sample.yaml`: 614 real facts, no `domain`, no
+  `range`, no `requires`, no `by`, and not one dated triple. A fine
+  picture of a graph, and a demonstration of nothing this project
+  argues. The root URL now serves the trike goods workspace — 36
+  predicates that all declare a domain and a range, nine that declare a
+  precondition, eleven that declare an actor, and 240 dated actions that
+  `state()` is assembled from. Freebase did not go away: it moved to
+  `/freebase.html`, because third-party data nobody curated is worth
+  showing next to data that was. `/workspace.html` keeps its URL
+  unchanged — it has been linked from released PyPI pages, and those
+  pages cannot be edited after the fact.
+- **A filter re-frames what it left standing.** In the exported page,
+  hiding a type or a member graph set `hidden` on the nodes and moved the
+  camera not at all, so the sixth of a workspace you asked to see stayed
+  a speck in whichever corner the layout had put it, at the zoom chosen
+  for the whole graph — the answer was off screen until you found `Fit`.
+  It re-frames now. Only when it must: a predicate toggle hides edges and
+  moves no node, and re-framing for that is the jarring kind of help, so
+  the visible node set is compared before the camera is touched. Both
+  halves are asserted in `tests/browser_smoke.py`, in a real browser,
+  because neither is visible to a test that only reads the HTML.
+- **`db.py` stopped being the whole library.** The repo had already
+  written its own rule down — a capability lives in its own module and
+  reaches users as a thin delegating method on `TrikeDB` — and every
+  module but the core one followed it. `db.py` is 1530 lines down to 877,
+  lighter by four: `model.py` (what a triple *is*, importing nothing from
+  trikedb), `rules.py` (`domain`/`range`/`requires`/`by`), `rdf.py` (the
+  RDF projection and SPARQL) and `persistence.py` (load, save,
+  workspaces). `semantic.py` and `semantics.py` — one letter apart and
+  meaning unrelated things — became `embeddings.py` and `reasoning.py`.
+  Behaviour is unchanged and every old import path still resolves, but
+  the import cycles are gone for real rather than deferred into function
+  bodies: `html` and `reasoning` needed one name and two names from the
+  store, and both now take them from `model`. Two things moved for anyone
+  reaching inside: `trikedb.db._read_text` / `_write_text` are
+  monkeypatch points on `trikedb.persistence` now, and the `semantic` /
+  `semantics` shims re-export values but cannot serve as `patch()`
+  targets — patch `trikedb.embeddings` / `trikedb.reasoning` instead.
+- **The core no longer depends on the page that draws it.** Splitting the
+  files left one edge pointing backwards: `db.py` imported `html` at the
+  top, so a graph could not be loaded without loading the workbench that
+  renders it, and the same held for `importers` and `embeddings` — an
+  adapter for a file format nobody is reading and a model that may not be
+  installed. All three are imported inside the three methods that use
+  them. `html`, `importers` and `embeddings` now sit *above* the core in
+  the layering rather than inside it, and seven private methods that
+  forwarded verbatim to a module function and were called by nothing at
+  all are gone: a forward nobody follows is not an interface.
+- **The layering is declared, and the build fails when code stops
+  matching it.** `tests/test_architecture.py` states which layer every
+  module belongs to and checks that imports only ever point strictly
+  downward, that there are no cycles, and that a newly added module has
+  been placed in a layer on purpose. A diagram in a document is a wish;
+  this is the same argument the library makes about ontologies, applied
+  to the repository. The layering is written up in
+  [ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE.md#modules-and-layering).
+
 ## 0.38.1
 
 Events are drawn where they happened.

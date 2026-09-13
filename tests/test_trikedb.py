@@ -434,6 +434,257 @@ def test_a_graph_without_declarations_keeps_its_fingerprint():
     assert db.content_hash() == before
 
 
+def test_an_action_declares_when_it_may_run_and_who_may_run_it():
+    """domain and range say what an action connects. They cannot reach the two
+    ways an action goes wrong while staying perfectly well-typed: running
+    before the thing that makes it possible, and running with nobody
+    accountable. An order delivered before it shipped breaks no type. Neither
+    does a price change approved by no one. Declaring those is the difference
+    between a layer that describes updates and one that defines them."""
+    db = TrikeDB()
+    # SHIPPED_FROM is left unshaped on purpose: with a domain it is the type
+    # check that refuses the back-to-front write below, and the thing under
+    # test here is that a precondition reads only one side of the edge
+    db.declare_link("SHIPPED_FROM", description="order -> depot")
+    db.declare_link("DELIVERED_TO", domain="order", range="region",
+                    requires="SHIPPED_FROM", by="courier")
+    for name, kind in (("ORD-1", "order"), ("D", "depot"), ("R", "region"),
+                       ("Kai", "courier"), ("Ada", "person")):
+        db.set_node(name, type=kind)
+
+    # arrived without ever leaving
+    with pytest.raises(OntologyError, match="has no SHIPPED_FROM"):
+        db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-02", by="Kai")
+
+    # a shipment that carries a carrier and a wave of its own is an object,
+    # and being one puts the order it happened to on the far side of the
+    # edge. Reading only the subject side would mean a precondition stops
+    # holding the moment an event is promoted — failing in exactly the case
+    # this library is proudest of, so it reads the reading history() gives
+    db.act("SHP-1", "SHIPPED_FROM", "ORD-1", at="2025-03-01", by="Kai")
+    db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-02", by="Kai")
+    assert db.history("ORD-1", "SHIPPED_FROM")        # only on the far side
+    assert not [t for t in db.history("ORD-1", "SHIPPED_FROM", incoming=False)]
+    db.remove("SHP-1", "SHIPPED_FROM", "ORD-1")
+    db.remove("ORD-1", "DELIVERED_TO", "R")
+
+    # and the plain, unpromoted spelling works the same way
+    db.act("ORD-1", "SHIPPED_FROM", "D", at="2025-03-01", by="Kai")
+    db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-02", by="Kai")
+
+    # promotion cuts the other way too. An action that carries an operator
+    # and an applied-at of its own becomes its own subject, and a mitigation
+    # created this moment has no history to ask about — the incident that had
+    # to have been raised is on the far side of the edge
+    db.declare_link("RAISED_BY", description="incident -> whoever found it")
+    db.declare_link("MITIGATED", description="mitigation -> the incident",
+                    requires="RAISED_BY")
+    with pytest.raises(OntologyError, match="has no RAISED_BY on either end"):
+        db.act("MIT-1", "MITIGATED", "INC-1", at="2025-04-02")
+    db.act("INC-1", "RAISED_BY", "Ada", at="2025-04-01")
+    db.act("MIT-1", "MITIGATED", "INC-1", at="2025-04-02")
+
+    # shipping it later does not make an earlier delivery legal
+    db.set_node("ORD-2", type="order")
+    db.act("ORD-2", "SHIPPED_FROM", "D", at="2025-06-01", by="Kai")
+    with pytest.raises(OntologyError, match="only has its SHIPPED_FROM after"):
+        db.act("ORD-2", "DELIVERED_TO", "R", at="2025-03-02", by="Kai")
+
+    # an action with a precondition has to say when it happened, or "before"
+    # is a question nothing can answer
+    with pytest.raises(OntologyError, match="say when it happened"):
+        db.add("ORD-1", "DELIVERED_TO", "R", by="Kai")
+
+    # nobody's name on it, and the wrong somebody
+    with pytest.raises(OntologyError, match="nobody's name on it"):
+        db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-03")
+    with pytest.raises(OntologyError, match="cannot be the one who did it"):
+        db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-03", by="Ada")
+
+    # a type can be written after the edge that uses it, as it always could,
+    # so an actor nobody has typed yet is let through and reported instead
+    db.act("ORD-1", "DELIVERED_TO", "R", at="2025-03-04", by="Rune")
+    kinds = {f["kind"] for f in db.audit()}
+    assert "unchecked-actor" in kinds
+    # and whoever performed an action counts as attached to the graph: an
+    # actor is named in by=, never as a subject or object
+    assert not [f for f in db.audit()
+                if f["kind"] == "orphan-node" and "Kai" in f["detail"]]
+    db.set_node("Rune", type="courier")
+    assert "unchecked-actor" not in {f["kind"] for f in db.audit()}
+
+
+def test_a_condition_can_span_more_than_one_step(tmp_path):
+    """One edge is not enough to say what makes an action legal. "a review may
+    only be written by someone who bought the thing" is PLACED_BY joined to
+    CONTAINS, and no single-edge check reaches it — the order in the middle is
+    named by neither end of the review. Written as patterns the steps join on
+    their shared variables, with ?s and ?o standing for the two ends of the
+    action being checked, and the clock applying to every step.
+
+    The thing worth protecting here is that this is enforced *where it is
+    written*, not demoted to something audit() alone notices. A condition that
+    only fails later is a condition people learn to run last."""
+    db = TrikeDB(autosave=False)
+    db.declare_link("PLACED_BY", domain="order", range="person")
+    db.declare_link("CONTAINS", domain="order", range="product")
+    db.declare_link("REVIEWED", domain="person", range="product", by="person",
+                    requires=["?order PLACED_BY ?s", "?order CONTAINS ?o"])
+    for name, kind in (("ORD-1", "order"), ("ORD-2", "order"),
+                       ("Ada", "person"), ("Bo", "person"),
+                       ("Kettle", "product"), ("Mug", "product")):
+        db.set_node(name, type=kind)
+    db.act("ORD-1", "PLACED_BY", "Ada", at="2025-01-05")
+    # structure, not an action: CONTAINS carries no clock, and a fact with no
+    # date is simply already true rather than something that happened that day
+    db.add("ORD-1", "CONTAINS", "Kettle")
+
+    db.act("Ada", "REVIEWED", "Kettle", at="2025-02-01", by="Ada")
+
+    # bought nothing at all — the first step is the one that comes up empty
+    with pytest.raises(OntologyError, match=r"nothing satisfies \(\?order PLACED_BY \?s\) at all"):
+        db.act("Bo", "REVIEWED", "Kettle", at="2025-02-01", by="Bo")
+    # bought *something*, but not this. Naming the step that failed is the
+    # whole difference between a message you can act on and "condition unmet":
+    # Ada's problem is CONTAINS, and Bo's is PLACED_BY, and a single-edge
+    # check could not have told them apart because neither review touches the
+    # order that decides it
+    with pytest.raises(OntologyError, match=r"nothing satisfies \(\?order CONTAINS \?o\) at all"):
+        db.act("Ada", "REVIEWED", "Mug", at="2025-02-01", by="Ada")
+    # bought it, but after writing the review
+    with pytest.raises(OntologyError, match="PLACED_BY .*?\\) by 2024-12-01"):
+        db.act("Ada", "REVIEWED", "Kettle", at="2024-12-01", by="Ada")
+
+    # A bulk load writes in whatever order its source had, and a condition is
+    # settled by the clock rather than the line number — so the evidence for a
+    # write routinely arrives after it. Refusing there would make line order
+    # decide correctness, which is the thing this library will not do. Nothing
+    # is skipped: the question is held and asked again where the graph is
+    # whole, and `requires` is monotone, so the answer there is final.
+    bulk = TrikeDB(autosave=False)
+    bulk.nodes_meta.update(db.nodes_meta)
+    for pred, rule in db.predicate_rules.items():
+        bulk.declare_link(pred, **{k: list(v) for k, v in rule.items()})
+    with bulk.batch():
+        bulk.add("Ada", "REVIEWED", "Mug", at="2025-02-01", by="Ada")
+        bulk.add("ORD-2", "PLACED_BY", "Ada", at="2025-01-06")   # evidence, after
+        bulk.add("ORD-2", "CONTAINS", "Mug")
+    assert len(list(bulk)) == 3
+
+    # and when the evidence never comes, the block is where it is refused —
+    # with the graph rolled back, so a half-applied import stays out of the
+    # file somebody would have to undo it from
+    with pytest.raises(OntologyError, match="nothing satisfies"):
+        with bulk.batch():
+            bulk.add("Bo", "REVIEWED", "Mug", at="2025-03-01", by="Bo")
+    assert len(list(bulk)) == 3
+    assert not bulk._pending
+
+    # nor can it be written out from inside the block, which is the same rule
+    # said at the other door: a file never leaves breaking its own ontology
+    with pytest.raises(OntologyError, match="nothing satisfies"):
+        with bulk.batch():
+            bulk.add("Bo", "REVIEWED", "Kettle", at="2025-03-01", by="Bo")
+            bulk.save(tmp_path / "never.yaml")
+    assert not (tmp_path / "never.yaml").exists()
+
+    # the patterns survive the round trip, or the condition holds only for as
+    # long as nobody saves the file
+    path = tmp_path / "shop.yaml"
+    db.save(path)
+    back = TrikeDB(path)
+    assert back.predicate_rules["REVIEWED"]["requires"] == (
+        "?order PLACED_BY ?s", "?order CONTAINS ?o")
+    with pytest.raises(OntologyError, match="nothing satisfies"):
+        back.act("Bo", "REVIEWED", "Kettle", at="2025-04-01", by="Bo")
+
+    # and a hand-edited file, where the write path never ran at all, is read
+    # back the same way — audit asks db._unmet the very same question
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("- {s: Bo, p: REVIEWED, o: Mug, at: '2025-05-01', by: Bo}\n")
+    unmet = [f for f in TrikeDB(path).audit() if f["kind"] == "precondition-unmet"]
+    assert len(unmet) == 1 and "Bo REVIEWED Mug" in unmet[0]["detail"]
+
+
+def test_a_declared_action_is_checked_over_the_whole_file(tmp_path):
+    """A file is hand-edited and loaded whole, and the line a triple happens to
+    sit on must not decide whether the graph obeys its own ontology — the same
+    reason a link is not rejected on a type that has not been read yet. So what
+    the write path could not see, audit() reads back off the finished file,
+    with the clock deciding what came first rather than the line number."""
+    path = tmp_path / "orders.yaml"
+    path.write_text("""
+ontology:
+  predicates:
+    SHIPPED_FROM: {description: order -> depot, domain: order, range: depot}
+    DELIVERED_TO: {description: order -> region, domain: order, range: region,
+                   requires: SHIPPED_FROM, by: courier}
+nodes:
+  ORD-1: {type: order}
+  ORD-2: {type: order}
+  D: {type: depot}
+  R: {type: region}
+  Kai: {type: courier}
+  Ada: {type: person}
+triples:
+  - {s: ORD-1, p: DELIVERED_TO, o: R, at: '2025-03-02', by: Kai}
+  - {s: ORD-1, p: SHIPPED_FROM, o: D, at: '2025-03-01', by: Kai}
+  - {s: ORD-2, p: DELIVERED_TO, o: R, at: '2025-03-02', by: Ada}
+""", encoding="utf-8")
+    db = TrikeDB(path)
+    findings = {f["kind"]: f["detail"] for f in db.audit()}
+
+    # ORD-1 is delivered on the line above the one it ships on, and is fine:
+    # it shipped the day before
+    assert "ORD-1" not in findings.get("precondition-unmet", "")
+    assert "ORD-2" in findings["precondition-unmet"]
+    # word for word what the write path says: audit asks db._unmet the same
+    # question rather than re-deriving it, so the two cannot drift apart
+    assert ("'Ada', which is a 'person', cannot be the one who did it"
+            in findings["actor-contradicts-declaration"])
+    from trikedb.audit import ERROR_KINDS
+    assert {"precondition-unmet", "actor-contradicts-declaration"} <= ERROR_KINDS
+
+    # the declaration survives the round trip, or the guard only holds for
+    # as long as nobody saves the file
+    db.save()
+    again = TrikeDB(path).predicate_rules["DELIVERED_TO"]
+    assert again["requires"] == ("SHIPPED_FROM",) and again["by"] == ("courier",)
+
+
+def test_an_event_can_be_promoted_to_an_object():
+    """The moment an event carries enough of its own to be a thing — a before,
+    an after, an approver — it stops fitting on one line and becomes an object
+    with links of its own. That is how every ontology worth the name models it,
+    and it must not cut the objects it touches off from their own history: the
+    product is the *object* of CHANGED, not the subject, and it still has to be
+    able to say it was repriced. What it must NOT do is take the change's
+    state — 'applied' belongs to the price change, and the approver who signed
+    it off is not himself applied."""
+    db = TrikeDB(autosave=False)
+    db.set_node("Copper Kettle 1.5L", type="product", price_jpy=7560)
+    db.set_node("PC-0007", type="price-change", price_before=8400,
+                price_after=7560, state="applied")
+    db.set_node("Rune Halvorsen", type="person")
+    db.add("PC-0007", "CHANGED", "Copper Kettle 1.5L", at="2025-07-16")
+    db.add("PC-0007", "APPROVED_BY", "Rune Halvorsen", at="2025-07-16")
+    db.add("Copper Kettle 1.5L", "IN_CATEGORY", "Kitchen")
+
+    # the product can still tell you what happened to it
+    assert [t.p for t in db.history("Copper Kettle 1.5L")] == ["CHANGED"]
+    assert db.history("Copper Kettle 1.5L")[0].attrs["at"] == "2025-07-16"
+    # so can the person who signed it off
+    assert [t.p for t in db.history("Rune Halvorsen")] == ["APPROVED_BY"]
+    # the change itself holds the state, and neither of the two it touched
+    # inherits it — this is the whole reason the fold is history-only
+    assert db.state("PC-0007") == "applied"
+    assert db.state("Copper Kettle 1.5L") is None
+    assert db.state("Rune Halvorsen") is None
+    # a plain link is not an event and stays out of the fold either way
+    assert db.history("Kitchen") == []
+    assert db.history("Copper Kettle 1.5L", incoming=False) == []
+
+
 def test_examples_load_and_query():
     from pathlib import Path
 
@@ -449,8 +700,15 @@ def test_examples_load_and_query():
     events = [t for t in acme if t.when()]
     assert len(events) >= 5
     assert all(t.attrs.get("by") and t.attrs.get("state") for t in events)
-    assert len(acme.history("RAW_CRM_CONTACTS")) == 2
+    # its own two events, plus the migration that pointed *at* it: an event
+    # written from the other node's side is still part of this one's history
+    assert len(acme.history("RAW_CRM_CONTACTS", incoming=False)) == 2
+    assert [t.p for t in acme.history("RAW_CRM_CONTACTS")] == [
+        "AFFECTED_BY", "AFFECTED_BY", "MIGRATED_TO"]
+    # but the state stays the one this node's own events left behind — the
+    # migration left LEGACY_CONTACTS_DUMP migrated, not this table
     assert acme.state("RAW_CRM_CONTACTS") == "pending-review"
+    assert acme.state("LEGACY_CONTACTS_DUMP") == "migrated"
     # and the declared shapes are enforced, which is what they are for
     with pytest.raises(OntologyError):
         acme.add("RAW_CRM_CONTACTS", "RESTARTED", "a table cannot be restarted")
@@ -458,6 +716,228 @@ def test_examples_load_and_query():
     eco = TrikeDB(examples / "python_ecosystem.yaml")
     assert eco.ontology == {}
     assert "numpy" in eco.objects(p="DEPENDS_ON")
+
+
+def test_trike_demo_describes_a_company_that_could_exist():
+    """Shapes can all be legal while the story is nonsense: a parcel sent back
+    that was never delivered, a five-star review of something the reviewer
+    never bought, an account that placed an order before it was opened. None
+    of that is caught by domain and range, and all of it is the first thing a
+    visitor notices, so the demo's timeline is checked the way a person would
+    read it — does each thing happen after the thing that makes it possible."""
+    from pathlib import Path
+
+    ws = TrikeDB(Path(__file__).resolve().parent.parent / "examples"
+                 / "trike_workspace.yaml")
+    triples = list(ws)
+    kind = {n: (ws.nodes_meta.get(n) or {}).get("type") for n in ws.nodes_meta}
+
+    def day(subject, pred):
+        for t in ws.history(subject, pred):
+            return t.when()
+        return None
+
+    for order in [n for n in kind if kind[n] == "order"]:
+        placed = day(order, "PLACED_BY")
+        shipped, delivered = day(order, "SHIPPED_FROM"), day(order, "DELIVERED_TO")
+        returned, cancelled = day(order, "RETURNED_TO"), day(order, "CANCELLED_BY")
+        assert placed, order
+        for earlier, later in [(placed, shipped), (shipped, delivered),
+                               (delivered, returned), (placed, cancelled),
+                               (placed, day(order, "HELD_UP_BY"))]:
+            assert not later or (earlier and earlier <= later), order
+        assert not delivered or shipped, order          # arrived without leaving
+        assert not returned or delivered, order         # sent back, never sent
+        assert not cancelled or not shipped, order      # called off, then shipped
+
+    bought = {}                                         # customer -> {product: day}
+    for t in triples:
+        if t.p == "CONTAINS":
+            when = day(t.s, "PLACED_BY")
+            who = next((x.o for x in triples if x.p == "PLACED_BY" and x.s == t.s), None)
+            if who and when:
+                bought.setdefault(who, {}).setdefault(t.o, when)
+    for t in triples:
+        if t.p == "REVIEWED":
+            assert t.o in bought.get(t.s, {}), (t.s, t.o)
+            assert t.when() >= bought[t.s][t.o], (t.s, t.o)
+        if t.p == "HELD_UP_BY":
+            assert t.when() >= day(t.o, "RAISED_BY"), t.s
+        if t.p == "MITIGATED":
+            assert day(t.o, "RAISED_BY") <= t.when() <= day(t.o, "RESOLVED_BY"), t.s
+
+    for incident in [n for n in kind if kind[n] == "incident"]:
+        assert day(incident, "RAISED_BY") <= day(incident, "RESOLVED_BY"), incident
+
+    for customer in [n for n in kind if kind[n] == "customer"]:
+        since = ws.nodes_meta[customer]["since"]
+        orders = [t.when() for t in triples if t.p == "PLACED_BY" and t.o == customer]
+        assert not orders or min(orders) >= since, customer
+        assert (day(customer, "SUBSCRIBED_TO") or since) >= since, customer
+
+    # and a product that is gone is gone: nothing is sold or restocked after
+    # the day it was retired, and the successor link comes after, not before
+    retired = {t.o: t.when() for t in triples if t.p == "RETIRED"}
+    for t in triples:
+        if t.p == "CONTAINS" and t.o in retired:
+            assert day(t.s, "PLACED_BY") <= retired[t.o], t.o
+        if t.s in retired and t.p in ("RESTOCKED_FROM", "REPLACED_BY"):
+            assert (t.when() >= retired[t.s]) == (t.p == "REPLACED_BY"), t.s
+
+
+def test_the_demo_still_comes_out_of_its_own_generator(tmp_path):
+    """The demo YAMLs are committed *and* generated, which is two sources for
+    one set of facts. Hand-editing one of them is the easy mistake: the file
+    is right, the generator is stale, and the next regeneration silently
+    reverts whatever was fixed. So the generator is run for real and its
+    output diffed against what is checked in — byte for byte, because it
+    promises determinism and a demo that drifts is worse than no demo."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    out = subprocess.run([sys.executable, str(examples / "generate_trike_demo.py"), str(tmp_path)],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    written = sorted(p.name for p in tmp_path.glob("trike_*.yaml"))
+    assert written == sorted(p.name for p in examples.glob("trike_*.yaml")), written
+    for name in written:
+        assert (tmp_path / name).read_bytes() == (examples / name).read_bytes(), (
+            f"{name} differs from what examples/generate_trike_demo.py emits — "
+            "edit the generator and regenerate, do not edit the YAML by hand")
+
+
+def test_trike_demo_is_an_ontology_actually_in_use():
+    """The trike goods workspace is the demo a visitor judges the whole idea
+    by, so it has to be the thing it claims: declared shapes that are really
+    enforced, every member graph carrying its own dated actions rather than a
+    ticker bolted on at the end, and a state on an object that was assembled
+    from events in two different member graphs instead of written down once."""
+    from pathlib import Path
+
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    members = ["catalog", "commerce", "fulfilment", "org", "incidents"]
+    ws = TrikeDB(examples / "trike_workspace.yaml")
+    assert sorted(ws.workspace) == sorted(members)
+    assert sum(1 for _ in ws.triples()) == 567
+
+    # a demo is easy to pad into a pretty picture: a few hundred customers
+    # whose only fact is the region they live in fan out beautifully and
+    # describe a shop where almost nobody ever bought anything. Every one of
+    # those triples is true while the file as a whole is a lie, so the demo
+    # is held to ratios a real shop could have — more orders than customers
+    # — and no node is allowed to exist purely to be drawn.
+    degree = {}
+    for t in ws:
+        degree[t.s] = degree.get(t.s, 0) + 1
+        degree[t.o] = degree.get(t.o, 0) + 1
+    kind = {n: (ws.nodes_meta.get(n) or {}).get("type") for n in degree}
+    customers = [n for n in degree if kind[n] == "customer"]
+    orders = [n for n in degree if kind[n] == "order"]
+    assert len(orders) > len(customers) >= 40
+    assert not [c for c in customers if degree[c] < 2]
+
+    # every predicate is declared with a shape, and every shipped triple
+    # satisfies the one it is written under — a demo that violated its own
+    # ontology would be arguing against the feature
+    for name in members:
+        src = TrikeDB(examples / ("trike_%s.yaml" % name))
+        declared = src.ontology
+        assert declared, name
+        assert {t.p for t in src} <= set(declared), name
+        assert src.predicate_rules, name             # descriptions are not shapes
+        replay = TrikeDB(autosave=False)
+        replay.nodes_meta.update(src.nodes_meta)
+        for pred in declared:
+            rule = src.predicate_rules.get(pred, {})
+            replay.declare_link(pred, description=declared[pred],
+                                domain=list(rule.get("domain", ())) or None,
+                                range=list(rule.get("range", ())) or None)
+        for t in src:
+            replay.add(t.s, t.p, t.o, **t.attrs)          # raises if it does not fit
+        # and the action layer is not concentrated in one corner of the union
+        assert any(t.when() for t in src), name
+
+    # A shape holds inside one file; an action does not. SHIPPED_FROM is
+    # declared to require PLACED_BY first, and the two live in different
+    # member graphs — which is the demo's whole claim, that an order's state
+    # is assembled across files rather than kept in a status column. So the
+    # conditions are replayed over the union, oldest first: a precondition is
+    # settled by the clock, and a file written out grouped by predicate would
+    # otherwise deliver an order before the shipment further down was read.
+    union = TrikeDB(autosave=False)
+    union.nodes_meta.update(ws.nodes_meta)
+    for pred, desc in ws.ontology.items():
+        rule = ws.predicate_rules.get(pred, {})
+        union.declare_link(pred, description=desc,
+                           **{k: list(v) for k, v in rule.items()})
+    assert union.predicate_rules == ws.predicate_rules
+    conditions = {p: r["requires"] for p, r in ws.predicate_rules.items()
+                  if "requires" in r}
+    assert len(conditions) >= 6, conditions      # the demo declares them at all
+    # and who may run an action, which is the half a shape cannot reach: a
+    # delivery signed by nobody, or by a warehouse system instead of the
+    # courier who handed it over, is type-correct and still a hole in the
+    # audit trail. Every action the demo declares an actor for carries one.
+    actors = {p: r["by"] for p, r in ws.predicate_rules.items() if "by" in r}
+    assert len(actors) >= 10, actors
+    for t in ws:
+        if t.p in actors:
+            who = str(t.attrs.get("by") or "")
+            assert who, (t.s, t.p, t.o)
+            assert (ws.nodes_meta.get(who) or {}).get("type") in actors[t.p], (t.p, who)
+    for t in sorted(ws, key=lambda t: t.when() or ""):
+        union.add(t.s, t.p, t.o, **t.attrs)
+    assert not [f for f in union.audit() if f["severity"] == "error"]
+
+    # no event points at a sentence. An action big enough to carry its own
+    # properties is an object here — PC-0007 has a before, an after and an
+    # approver — so every object of every dated triple is a node the graph
+    # knows something else about, not a dead end of prose.
+    entities = {t.s for t in ws} | set(ws.nodes_meta)
+    dated = {t.p for t in ws if t.when()}
+    assert not {t.o for t in ws if t.p in dated} - entities
+    assert ws.nodes_meta["PC-0007"]["type"] == "price-change"
+    # the promoted object holds the state its own event left it in ...
+    assert ws.state("PC-0007") == "applied"
+    # ... and does not smear it onto the product it moved or the person who
+    # signed it off, which is the whole risk of promoting an event
+    changed = [t for t in ws.history("PC-0007") if t.p == "CHANGED"][0]
+    assert ws.state(changed.o) != "applied"
+    approver = [t.o for t in ws if t.s == "PC-0007" and t.p == "APPROVED_BY"][0]
+    assert ws.state(approver) == "on-call"      # their own, not the change's
+    # but the product still reads its own repricing off its history, because
+    # history folds the incoming side in
+    assert "CHANGED" in [t.p for t in ws.history(changed.o)]
+
+    # the shapes bite: a product is not a customer and cannot place an order
+    commerce = TrikeDB(examples / "trike_commerce.yaml", autosave=False)
+    with pytest.raises(OntologyError):
+        commerce.add("Matte Mug 350ml", "PLACED_BY", "TC-1001")
+    with pytest.raises(OntologyError):
+        commerce.add("ORD-25101", "PLACED_BY", "Matte Mug 350ml")
+
+    # an order's state is assembled from two member graphs, newest event wins
+    history = ws.history("ORD-25101")
+    assert [t.p for t in history] == ["DELIVERED_TO", "SHIPPED_FROM", "PLACED_BY"]
+    assert [t.attrs["graph"] for t in history] == ["fulfilment", "fulfilment", "commerce"]
+    assert ws.state("ORD-25101") == "delivered"
+
+    # and a question no single member graph can answer on its own
+    ships = ws.query(["?order SHIPPED_FROM ?warehouse", "?team RUNS ?warehouse",
+                      "?person MEMBER_OF ?team"])
+    assert ships and {r["team"] for r in ships} == {"fulfilment-ops"}
+    returns = ws.query(["?order RETURNED_TO ?warehouse", "?team RUNS ?warehouse"])
+    assert returns and {r["team"] for r in returns} == {"customer-care"}
+
+    # and promoting the price change is what makes this question askable at
+    # all: who signed off a repricing on a product we went on to retire, and
+    # which team do they sit on — four hops that only exist because the
+    # change is an object with links instead of a sentence on the product
+    signed = ws.query(["?change CHANGED ?product", "?change APPROVED_BY ?person",
+                       "?retirement RETIRED ?product", "?person MEMBER_OF ?team"])
+    assert signed and {r["team"] for r in signed} == {"catalog-merch"}
 
 
 # ---------------------------------------------------------------- sparql
@@ -619,6 +1099,29 @@ def test_node_props_roundtrip(tmp_path):
     again = TrikeDB(path)
     assert again.node("v") == {"type": "saas", "url": "https://v.example", "plan": "enterprise"}
     assert again.node("j") == {}
+
+
+def test_a_node_can_be_given_a_name(tmp_path):
+    # `name` is the most natural key for what a node is called, and for a
+    # while the parameter holding the node ate it: set_node("SVC-1",
+    # name="checkout-api") raised TypeError, and so did `node -a name=...`
+    # on the CLI. The node is positional-only now.
+    path = tmp_path / "named.yaml"
+    db = TrikeDB(path)
+    db.set_node("SVC-1", type="service", name="checkout-api")
+    assert db.node("SVC-1") == {"type": "service", "name": "checkout-api"}
+    assert TrikeDB(path).node("SVC-1")["name"] == "checkout-api"
+    page = db.to_html()
+    assert "checkout-api" in page
+
+
+def test_cli_node_can_set_a_name(tmp_path, capsys):
+    from trikedb.cli import main
+
+    path = str(tmp_path / "cli-named.yaml")
+    assert main(["node", path, "SVC-1", "-a", "name=checkout-api"]) == 0
+    capsys.readouterr()
+    assert TrikeDB(path).node("SVC-1") == {"name": "checkout-api"}
 
 
 def test_set_node_rejects_type_replacement():
@@ -1867,7 +2370,7 @@ def test_edge_attrs_queryable_via_sparql(tmp_path):
 
 
 def test_semantic_sentences_shape(tmp_path):
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
 
     db = TrikeDB(tmp_path / "g.yaml")
     db.add("svc-etl-01", "USES_ROLE", "ROLE_ADMIN", note="keypair認証")
@@ -1881,7 +2384,7 @@ def test_semantic_sentences_shape(tmp_path):
 
 
 def test_semantic_sentences_chunk_long_node(tmp_path):
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
     db.set_node("doc", type="document", body="重要な検索語 " * 1000)
     items = semantic.sentences(db)
@@ -1895,7 +2398,7 @@ def test_semantic_chunk_index_does_not_eat_a_property(tmp_path):
     """`chunk` is a payload field now, so a property of that name has to
     move aside like every other reserved key — otherwise the chunk number
     silently replaces the value the caller stored."""
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
     db.set_node("doc", type="document", chunk="第3章", body="長い本文 " * 1000)
     payloads = [p for _, p in semantic.sentences(db) if p.get("kind") == "node"]
@@ -1910,7 +2413,7 @@ def test_semantic_hit_previews_a_document_instead_of_shipping_it(tmp_path):
     hit carries the passage that matched; the full value stays in node()."""
     import json
 
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     from unittest.mock import MagicMock, patch
     body = "認証キーペアの話 " * 20_000
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
@@ -1918,7 +2421,7 @@ def test_semantic_hit_previews_a_document_instead_of_shipping_it(tmp_path):
     db.set_node("doc", type="document", body=body)
     model = MagicMock()
     model.encode.side_effect = lambda texts: [[1.0, 0.0]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         hits = semantic.search(db, "認証キーペア", k=5)
         found = db.find("認証キーペア", k=5)
     hit = next(h for h in hits if h.get("node") == "doc")
@@ -1934,7 +2437,7 @@ def test_semantic_search_gives_one_slot_per_chunked_node(tmp_path):
     """A 700KB property is hundreds of chunks of one node; if each can win a
     slot, the whole result list is that one document and the triples that
     answer the structural half of the query are pushed out."""
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     from unittest.mock import MagicMock, patch
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
     for i in range(5):
@@ -1945,7 +2448,7 @@ def test_semantic_search_gives_one_slot_per_chunked_node(tmp_path):
     # every sentence identical to the query: ranking is then decided purely
     # by the dedup rule, which is what this test is about
     model.encode.side_effect = lambda texts: [[1.0, 0.0]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         hits = semantic.search(db, "本文", k=8)
     nodes = [h["node"] for h in hits if h["kind"] == "node"]
     assert sorted(nodes) == ["doc", "other"]      # one slot each, not hundreds
@@ -1954,7 +2457,7 @@ def test_semantic_search_gives_one_slot_per_chunked_node(tmp_path):
 
 def test_semantic_search_ranks_by_meaning(tmp_path):
     pytest.importorskip("model2vec")
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
 
     db = TrikeDB(tmp_path / "g.yaml")
     db.add("ACME_DWH", "AFFECTED_BY", "2025-11 MFA必須化、キーペア認証へ移行")
@@ -2030,7 +2533,7 @@ def test_sparql_update_preserves_attrs(tmp_path):
 
 def test_search_k_clamps_to_positive(tmp_path):
     # k=0 や k=-1 でもクラッシュせず最低1件返すこと
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     db = TrikeDB(tmp_path / "g.yaml")
     db.add("a", "REL", "b")
     items = semantic.sentences(db)
@@ -2039,7 +2542,7 @@ def test_search_k_clamps_to_positive(tmp_path):
     import numpy as np
     fake_model = MagicMock()
     fake_model.encode = lambda texts: [[0.1, 0.2]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=fake_model):
+    with patch("trikedb.embeddings._load_model", return_value=fake_model):
         rows = semantic.search(db, "test", k=0)
         assert len(rows) >= 1
         rows = semantic.search(db, "test", k=-5)
@@ -2047,13 +2550,13 @@ def test_search_k_clamps_to_positive(tmp_path):
 
 
 def test_semantic_search_caches_corpus_embeddings(tmp_path, embedding_cache_dir):
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     from unittest.mock import MagicMock, patch
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
     db.add("a", "REL", "b")
     model = MagicMock()
     model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         semantic.search(db, "first", k=1)
         semantic.search(db, "second", k=1)
     assert model.encode.call_count == 3  # corpus once, then two query vectors
@@ -2063,7 +2566,7 @@ def test_semantic_search_caches_corpus_embeddings(tmp_path, embedding_cache_dir)
 def test_semantic_cache_never_lands_next_to_the_graph(tmp_path, embedding_cache_dir):
     """It used to be a sidecar, which `git add -A` staged as a 28MB binary
     beside a YAML whose whole point is being a reviewable diff."""
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     from unittest.mock import MagicMock, patch
     graph_dir = tmp_path / "repo"
     graph_dir.mkdir()
@@ -2071,7 +2574,7 @@ def test_semantic_cache_never_lands_next_to_the_graph(tmp_path, embedding_cache_
     db.add("a", "REL", "b")
     model = MagicMock()
     model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         semantic.search(db, "q", k=1)
     assert [f.name for f in graph_dir.iterdir()] == ["g.yaml"]
     assert len(list(embedding_cache_dir.glob("*.npz"))) == 1
@@ -2082,7 +2585,7 @@ def test_semantic_cache_encodes_only_what_changed(tmp_path, embedding_cache_dir)
     whole graph for the one new sentence is what made this 16s at 40k
     sentences, and a per-revision cache file would leave the old corpus
     behind on disk."""
-    from trikedb import semantic
+    from trikedb import embeddings as semantic
     from unittest.mock import MagicMock, patch
     cache_dir = embedding_cache_dir
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
@@ -2090,7 +2593,7 @@ def test_semantic_cache_encodes_only_what_changed(tmp_path, embedding_cache_dir)
         db.add(f"s{i}", "REL", f"o{i}")
     model = MagicMock()
     model.encode.side_effect = lambda texts: [[0.1, 0.2]] * len(texts)
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         semantic.search(db, "q", k=1)
         assert len(model.encode.call_args_list[0][0][0]) == 50   # cold: all of it
         db.add("brand", "REL", "new")
@@ -2104,7 +2607,7 @@ def test_semantic_cache_encodes_only_what_changed(tmp_path, embedding_cache_dir)
     # graph instead of growing forever (a search alone never rewrites it)
     db.remove(s="brand")
     db.add("later", "REL", "fact")
-    with patch("trikedb.semantic._load_model", return_value=model):
+    with patch("trikedb.embeddings._load_model", return_value=model):
         semantic.search(db, "q", k=1)
     import numpy as np
     with np.load(next(iter(cache_dir.glob("*.npz")))) as data:
@@ -3419,8 +3922,9 @@ def test_the_running_code_is_the_code_on_disk():
                 out |= references(const)
         return out
 
-    for name in ("db", "storage", "storage_sql", "cli", "audit", "importers",
-                 "semantics", "semantic", "html"):
+    for name in ("db", "model", "rules", "rdf", "persistence", "storage",
+                 "storage_sql", "cli", "audit", "importers", "reasoning",
+                 "embeddings", "html"):
         module = importlib.import_module(f"trikedb.{name}")
         path = _pathlib.Path(module.__file__)
         fresh = compile(path.read_text(encoding="utf-8"), str(path), "exec")
@@ -3469,7 +3973,7 @@ def test_serve_opens_the_graph_once(tmp_path):
     assert first
 
     # the second call must be served from the graph the first one built
-    import trikedb.db as db_module
+    import trikedb.persistence as db_module
 
     reads = []
     original = db_module._read_text
@@ -3493,7 +3997,7 @@ def test_a_rest_update_writes_once(tmp_path):
     pytest.importorskip("starlette")
     from starlette.testclient import TestClient
 
-    import trikedb.db as db_module
+    import trikedb.persistence as db_module
     from trikedb.serve import build_app
 
     g = tmp_path / "g.yaml"
@@ -3940,3 +4444,126 @@ def test_cli_acts_declares_and_tells_the_history(tmp_path, capsys):
     assert "by alice" in told and "by bob" in told               # both runs kept
     assert main(["history", g, "nobody"]) == 0
     assert "nothing recorded" in capsys.readouterr().out
+
+
+def test_typing_a_node_cannot_contradict_an_edge_already_written():
+    # The other half of the domain/range check: the link is written first
+    # and the type arrives after, which is the order an import usually
+    # produces. Whichever came first, the graph has to end up obeying its
+    # own ontology.
+    db = TrikeDB(autosave=False)
+    db.declare_link("PLACED_BY", description="order -> customer",
+                    domain="order", range="customer")
+    db.add("ORD-1", "PLACED_BY", "C-1", at="2025-01-01")
+    with pytest.raises(OntologyError) as e:
+        db.set_node("C-1", type="product")
+    assert "ORD-1 PLACED_BY C-1" in str(e.value)
+    with pytest.raises(OntologyError):
+        db.set_node("ORD-1", type="customer")
+    # and the types that do fit still go on.
+    db.set_node("ORD-1", type="order")
+    db.set_node("C-1", type="customer")
+    assert db.node("C-1")["type"] == "customer"
+
+
+def test_typing_a_node_does_not_read_the_whole_graph():
+    """A bulk load types every node it writes, so a scan per type is quadratic.
+
+    This used to walk all of `_triples` on each `set_node(type=...)`:
+    25,000 triples under one `domain`/`range` declaration took 98 seconds,
+    and 200,000 was over an hour — a guarantee nobody would leave switched
+    on. The bound is generous on purpose; what it catches is the shape
+    coming back, not a slow machine.
+    """
+    import time
+
+    db = TrikeDB(autosave=False)
+    db.declare_link("PLACED_BY", description="order -> customer",
+                    domain="order", range="customer")
+    start = time.perf_counter()
+    with db.batch():
+        for i in range(10_000):
+            db.set_node("ORD-%d" % i, type="order")
+            db.set_node("C-%d" % i, type="customer")
+            db.add("ORD-%d" % i, "PLACED_BY", "C-%d" % i, at="2025-01-01")
+    elapsed = time.perf_counter() - start
+    assert len(db) == 10_000
+    assert elapsed < 10, "%.1fs for a 10k typed load — the scan is back" % elapsed
+
+
+def _state_of(db):
+    """Everything a rollback has to put back, in a comparable shape."""
+    return (
+        [(t.s, t.p, t.o, dict(t.attrs), dict(t.rdf_terms or {})) for t in db._triples],
+        {n: dict(p) for n, p in db.nodes_meta.items()},
+        dict(db.ontology),
+        {p: {k: tuple(v) for k, v in r.items()} for p, r in db.predicate_rules.items()},
+    )
+
+
+@pytest.mark.parametrize("mutate", [
+    pytest.param(lambda db: db.add("new", "P", "thing"), id="add"),
+    pytest.param(lambda db: db.add("a", "P", "b", note="merged into an existing triple"),
+                 id="add-upsert"),
+    pytest.param(lambda db: db.act("a", "P", "b", state="done", at="2030-01-01"), id="act"),
+    pytest.param(lambda db: db.set_node("a", colour="green"), id="set_node-new-prop"),
+    pytest.param(lambda db: db.set_node("b", type="other", replace=True), id="set_node-retype"),
+    pytest.param(lambda db: db.set_node("brand-new", type="thing"), id="set_node-new-node"),
+    pytest.param(lambda db: db.remove(s="a"), id="remove"),
+    pytest.param(lambda db: db.declare_link("P", description="changed", domain="thing"),
+                 id="declare_link"),
+    pytest.param(lambda db: db.update('INSERT DATA {t:x t:P t:y}'), id="sparql-insert"),
+])
+def test_a_failed_batch_puts_everything_back(mutate, tmp_path):
+    """The rollback guarantee, checked against every way of changing the store.
+
+    batch() used to snapshot by deep-copying the whole graph, which was
+    correct and cost 1.5 seconds per action on a 200k-triple graph. It
+    copies pointers now, which is only correct as long as nothing edits an
+    object the store is already holding — so this asserts the property the
+    cheap snapshot depends on, rather than the implementation that happens
+    to provide it. A mutation added later that edits in place fails here.
+    """
+    db = TrikeDB(tmp_path / "rollback.yaml")
+    db.declare_link("P", description="a thing to a thing", domain="thing")
+    db.set_node("a", type="thing")
+    db.set_node("b", type="thing")
+    db.add("a", "P", "b", at="2025-01-01", note="original")
+    before = _state_of(db)
+
+    with pytest.raises(RuntimeError):
+        with db.batch():
+            mutate(db)
+            raise RuntimeError("rolled back")
+
+    assert _state_of(db) == before
+    assert _state_of(TrikeDB(db.path)) == before   # and nothing reached the file
+
+
+def test_an_action_does_not_copy_the_graph_it_is_not_touching():
+    """`act()` opens a batch, and a batch has to be able to undo itself.
+
+    It did that by deep-copying every triple, every node and the whole
+    ontology on the way in — so one action on a 200k-triple graph spent
+    1.5 seconds copying the 199,999 triples it was not going to touch, and
+    the action layer got slower the more history a graph had. The bound is
+    generous; what it catches is a full copy coming back.
+    """
+    import time
+
+    db = TrikeDB(autosave=False)
+    db.declare_link("REVIEWED", description="customer -> product",
+                    domain="customer", range="product")
+    with db.batch():
+        for i in range(20_000):
+            db.set_node("C%d" % i, type="customer")
+            db.set_node("P%d" % i, type="product")
+            db.add("C%d" % i, "REVIEWED", "P%d" % i, at="2025-01-01")
+    start = time.perf_counter()
+    for rep in range(50):
+        db.act("C0", "REVIEWED", "P0", at="2030-01-%02d" % (rep + 1), state="done")
+    per_act = (time.perf_counter() - start) / 50
+    assert db.node("C0")["state"] == "done"
+    assert per_act < 0.02, (
+        "%.1f ms per act() on a 20k-triple graph — batch() is copying the "
+        "whole store again" % (per_act * 1e3))

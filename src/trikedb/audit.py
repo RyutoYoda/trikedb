@@ -18,7 +18,11 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
-ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration"}
+from .rules import unmet as _unmet
+
+ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration",
+               "precondition-unmet", "action-has-no-actor",
+               "actor-contradicts-declaration"}
 
 
 def audit(db) -> list:
@@ -87,7 +91,12 @@ def audit(db) -> list:
     #    is a documented pattern (`set_node("PROVIDES", since="2024")` — RDF
     #    treats a predicate as an ordinary name), and flagging it meant the
     #    recommended usage produced a warning.
+    #    Whoever performed an action counts as mentioned too: an actor is
+    #    named in by=, not in a triple's subject or object, so a courier who
+    #    only ever delivers would otherwise be reported as unattached the
+    #    moment a predicate declares who may run it.
     linked = {x for t in db for x in (t.s, t.p, t.o)}
+    linked |= {str(t.attrs["by"]) for t in db if t.attrs.get("by")}
     for n in db.nodes_meta:
         if n not in linked:
             findings.append({
@@ -131,6 +140,49 @@ def audit(db) -> list:
                     "detail": f"{t.p} declares {shape}, but its {role} {name!r} "
                               f"is a {have!r}",
                 })
+
+    # 7. the other half of a declaration: when an action may run, and who
+    #    may run it. add() and act() refuse what they can see, but a file
+    #    is hand-edited and loaded whole — and on load the order the lines
+    #    happen to be in must not decide whether the graph obeys itself.
+    #    So the finished file is read back with the time, not the line
+    #    number, saying what came first.
+    #    The conditions themselves are asked through rules.unmet, the
+    #    same call the write path makes, rather than re-derived here: two
+    #    implementations of "had this happened yet" would eventually
+    #    disagree, and the one a reader trusts is whichever they ran last.
+    for t in db:
+        rule = rules.get(t.p)
+        if not rule:
+            continue
+        actors = rule.get("by")
+        who = str(t.attrs.get("by") or "")
+        if actors and not who:
+            findings.append({
+                "kind": "action-has-no-actor", "severity": "error",
+                "detail": f"{t.p} is performed by {_names(actors)}, but "
+                          f"({t.s} {t.p} {t.o}) says nobody did it",
+            })
+        elif actors and (db.nodes_meta.get(who) or {}).get("type") is None:
+            findings.append({
+                "kind": "unchecked-actor", "severity": "warning",
+                "detail": f"{t.p} is performed by {_names(actors)}, but "
+                          f"{who!r} has no type — nothing checked it",
+            })
+        if rule.get("requires") and not t.when():
+            findings.append({
+                "kind": "precondition-unmet", "severity": "error",
+                "detail": f"{t.p} requires {_names(rule['requires'])} first, but "
+                          f"({t.s} {t.p} {t.o}) does not say when it happened",
+            })
+            continue
+        for detail in _unmet(db, t, rule):
+            findings.append({
+                "kind": ("actor-contradicts-declaration"
+                         if "cannot be the one who did it" in detail
+                         else "precondition-unmet"),
+                "severity": "error", "detail": detail,
+            })
 
     return findings
 

@@ -10,6 +10,38 @@
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
   #graph { position: fixed; inset: 52px 0 0 0; }
 
+  /* The action log, as a strip along the bottom. The graph draws an event
+     where it happened — on the line between the two objects — which is the
+     one thing a list cannot show; the strip puts the same events in time
+     order, which is the one thing the graph cannot show. Both readings of
+     the same triples, neither a replacement for the other. */
+  #strip { position: fixed; left: 0; right: 0; bottom: 0; height: 58px; z-index: 19;
+           display: none; align-items: stretch; background: var(--panel);
+           border-top: 1px solid var(--border); }
+  body.strip-on #strip { display: flex; }
+  body.strip-on #graph { inset: 52px 0 58px 0; }
+  body.strip-on #detail { bottom: 58px; }
+  #strip .striphead { display: flex; flex-direction: column; justify-content: center;
+            padding: 0 11px; border-right: 1px solid var(--border); cursor: pointer; min-width: 78px; }
+  #strip .striphead:hover .striptitle { color: var(--text); }
+  .striptitle { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .stripcount { font-size: 11px; color: var(--text); font-family: ui-monospace, Menlo, monospace; }
+  #striprail { display: flex; gap: 6px; align-items: center; overflow-x: auto; overflow-y: hidden;
+               padding: 0 10px; flex: 1; scrollbar-width: thin; }
+  #striprail::-webkit-scrollbar { height: 6px; }
+  #striprail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .tick { flex: 0 0 auto; max-width: 250px; padding: 5px 8px; cursor: pointer;
+          border: 1px solid var(--border); border-left: 2px solid #7a4444; border-radius: 7px; }
+  .tick:hover { border-color: #f7784f; }
+  .tick.on { border-color: #f7784f; background: #2c1d1a; }
+  body.light .tick.on { background: #fbe6df; }
+  .tick .tickhead { display: flex; gap: 6px; align-items: center; }
+  .tick .ticknode { display: flex; gap: 6px; align-items: center; min-width: 0; margin-top: 3px; }
+  .tick .ticknode .pred { flex: 0 0 auto; }
+  .tick .tickname { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    font-family: ui-monospace, Menlo, monospace; }
+  body.light #strip .tick { border-left-color: #d89b9b; }
+
   #header { position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
             display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box;
             background: var(--panel); border-bottom: 1px solid var(--border); }
@@ -63,18 +95,30 @@
   #detail.open { display: block; }
   #detail h2 { font-size: 15px; margin: 0 40px 4px 0; word-break: break-all;
                font-family: ui-monospace, Menlo, monospace; }
+  /* An id may be broken anywhere; a sentence may not. */
+  #detail h2.human { word-break: normal; overflow-wrap: anywhere; font-family: inherit; }
   #detail .close { position: absolute; top: 10px; right: 12px; }
   #detail h3 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em;
                margin: 16px 0 6px; }
   .rel { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0;
-         font-size: 12px; word-break: break-all; }
+         font-size: 12px; overflow-wrap: anywhere; }
   .pred { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px;
           font-family: ui-monospace, Menlo, monospace; color: #14161b; font-weight: 700; margin-right: 6px; }
   .rel .attr { color: var(--dim); font-size: 11px; margin-top: 4px;
                font-family: ui-monospace, Menlo, monospace; }
   .rel .attr a { color: #7aa3d8; }
   a.nodelink { color: var(--text); cursor: pointer; text-decoration: underline dotted; }
+  #detail .nodeid { font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+                    color: var(--dim); margin: -4px 0 2px; }
   .deprecated { opacity: .55; }
+  /* a predicate chip in the panel opens what that predicate declares */
+  .pred[data-pred] { cursor: pointer; }
+  .pred[data-pred]:hover { outline: 2px solid var(--text); outline-offset: 1px; }
+  .rel .attr code { color: var(--text); word-break: normal; overflow-wrap: anywhere; }
+  .rel .attr .rulekey { display: inline-block; min-width: 64px; color: var(--text); font-weight: 700; }
+  .rel .attr.rulemore { margin-top: 2px; padding-left: 64px; }
+  .rel.rule, .rel.rule .attr { word-break: normal; overflow-wrap: anywhere; }
+  .rel .undeclared { color: var(--dim); font-size: 11px; margin-top: 4px; font-style: italic; }
 
   .state { display: inline-block; border: 1px solid #7a4444; border-radius: 7px; padding: 1px 7px;
            font-size: 10px; color: #f7784f; white-space: nowrap; letter-spacing: .02em;
@@ -102,8 +146,9 @@
   <input id="search" placeholder="search nodes...">
   <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
   <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
-  <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
   <button class="btn" id="btn-sparql">SPARQL</button>
+  <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
+  <button class="btn" id="btn-onto" title="every predicate and what it declares: domain, range, requires, by">ontology</button>
   <button class="btn" id="btn-fit">Fit</button>
   <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
 </div>
@@ -128,6 +173,14 @@
 
 <div id="graph"></div>
 
+<div id="strip">
+  <div class="striphead" id="btn-fulllog" title="open the whole log in the panel">
+    <span class="striptitle">action log</span>
+    <span class="stripcount" id="stripcount"></span>
+  </div>
+  <div id="striprail"></div>
+</div>
+
 <script>
 const show = (v) => (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
 const esc = (s) => show(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -149,9 +202,17 @@ const TRIPLES = JSON.parse("[{\"s\": \"オントロジーのこれまでと、�
 const PREDICATES = Object.assign(Object.create(null), JSON.parse("{\"扱うテーマ\": \"#4f8ef7\", \"使う知識グラフ\": \"#f7784f\", \"表現する\": \"#2fbf71\", \"得意\": \"#b04ff7\", \"解決する\": \"#f7c34f\", \"原因\": \"#4ff7e3\", \"対策\": \"#f74f9e\", \"検討する論点\": \"#8ef74f\", \"作成方法\": \"#f74f4f\", \"次の工程\": \"#4f6af7\", \"課題\": \"#4f8ef7\", \"特徴\": \"#f7784f\", \"実装する\": \"#2fbf71\", \"対応する\": \"#b04ff7\", \"実際にグラフ化した\": \"#f7c34f\", \"構成する章\": \"#4ff7e3\", \"扱う\": \"#f74f9e\", \"説明する\": \"#8ef74f\", \"使う規則\": \"#f74f4f\", \"使う検査\": \"#4f6af7\", \"役割\": \"#4f8ef7\", \"限界\": \"#f7784f\", \"論点\": \"#2fbf71\", \"予測する\": \"#b04ff7\", \"第1層\": \"#f7c34f\", \"第2層\": \"#4ff7e3\", \"第3層\": \"#f74f9e\", \"理由\": \"#8ef74f\", \"対象\": \"#f74f4f\", \"品質\": \"#4f6af7\", \"設計思想\": \"#4f8ef7\", \"変換できる\": \"#f7784f\", \"守らせる\": \"#2fbf71\", \"検証した\": \"#b04ff7\", \"使用したモデル\": \"#f7c34f\", \"正解率\": \"#4ff7e3\", \"検索レイヤーの上限\": \"#f74f9e\", \"実践する\": \"#8ef74f\", \"原典での定義\": \"#f74f4f\", \"含む\": \"#4f6af7\", \"目的\": \"#4f8ef7\", \"目指す\": \"#f7784f\", \"技術スタック\": \"#2fbf71\", \"セマンティックウェブで使われる\": \"#b04ff7\", \"基本単位\": \"#f7c34f\", \"位置づく\": \"#4ff7e3\", \"検証する\": \"#f74f9e\", \"問い合わせる\": \"#8ef74f\", \"参照URL\": \"#f74f4f\"}"));
 const NODES_META = Object.assign(Object.create(null), JSON.parse("{}"));
 const NODE_TYPES = Object.assign(Object.create(null), JSON.parse("{}"));
-const NT = JSON.parse("\"\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:ルール本体かドキュメントURLか\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:変換できる\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:目的\u003e \u003curn:trikedb:共有された知識のモデル化\u003e .\\n\u003curn:trikedb:人による承認\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:知識グラフへの反映\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/shacl/\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:リソース間のステートメント\u003e .\\n\u003curn:trikedb:RAG\u003e \u003curn:trikedb:限界\u003e \u003curn:trikedb:断片をまたいだ関係が切れる\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第1層\u003e \u003curn:trikedb:そのまま受ける\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:基本単位\u003e \u003curn:trikedb:トリプル\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:解決する\u003e \u003curn:trikedb:1回の検索で届かない問題\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:品質\u003e \u003curn:trikedb:矛盾の検出\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:エージェンティックに扱う\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:扱うテーマ\u003e \u003curn:trikedb:知識グラフ\u003e .\\n\u003curn:trikedb:コンテキストサイロ\u003e \u003curn:trikedb:原因\u003e \u003curn:trikedb:意味がバラバラ\u003e .\\n\u003curn:trikedb:SPARQL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/sparql11-query/\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:検索レイヤーの上限\u003e \u003curn:trikedb:89.3%25\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:複雑な知識と関係\u003e .\\n\u003curn:trikedb:SPARQL\u003e \u003curn:trikedb:問い合わせる\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:最近の流れと論点\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:対応する\u003e \u003curn:trikedb:SPARQL\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:位置づく\u003e \\\"W3C Semantic Web technology stack\\\" .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:使う規則\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:WebQSP\u003e \u003curn:trikedb:使用したモデル\u003e \u003curn:trikedb:qwen3:8b\u003e .\\n\u003curn:trikedb:1993年の定義\u003e \u003curn:trikedb:説明する\u003e \u003curn:trikedb:概念化の明示的な仕様\u003e .\\n\u003curn:trikedb:グラフを渡さない\u003e \u003curn:trikedb:正解率\u003e \u003curn:trikedb:42.7%25\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:GraphRAG\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:RDFS\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:どう配るか\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:特徴\u003e \u003curn:trikedb:何度も探す\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:RAG\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:実際にグラフ化した\u003e \u003curn:trikedb:このファイル\u003e .\\n\u003curn:trikedb:AIによる候補抽出\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:検証\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:これからのデータ基盤\u003e .\\n\u003curn:trikedb:グラフを渡す\u003e \u003curn:trikedb:正解率\u003e \u003curn:trikedb:77.7%25\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/rdf11-concepts/\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:どこで探索を止めるか\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:設計は3層に収束する\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:検証した\u003e \u003curn:trikedb:WebQSP\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:ガバナンス\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:守らせる\u003e \u003curn:trikedb:宣言した述語だけ\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:mdファイルはグラフへ移る\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:使う知識グラフ\u003e \u003curn:trikedb:プロパティグラフ\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:SHACL\u003e .\\n\u003curn:trikedb:RDFグラフ\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:主語・述語・目的語\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:実装する\u003e \u003curn:trikedb:ファイル1つの知識グラフ\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:クラス\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/OWL/\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://tomgruber.org/writing/definition-of-ontology.pdf\u003e .\\n\u003curn:trikedb:コンテキストサイロ\u003e \u003curn:trikedb:対策\u003e \u003curn:trikedb:共通のルール\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:制約\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:何を入れるか\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:オントロジーの背景\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:セマンティックウェブで使われる\u003e \u003curn:trikedb:語彙と意味の定義\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \\\"Palantir Ontology\\\" .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:対応する\u003e \u003curn:trikedb:MCP\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:役割\u003e \u003curn:trikedb:書いてないことを埋める\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:使う知識グラフ\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:目指す\u003e \u003curn:trikedb:人間と機械が読めるWeb上の知識共有\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第2層\u003e \u003curn:trikedb:整える\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:原典での定義\u003e \u003curn:trikedb:明示的な概念化の仕様\u003e .\\n\u003curn:trikedb:mdファイルはグラフへ移る\u003e \u003curn:trikedb:理由\u003e \u003curn:trikedb:実際の依存関係は網の目\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:エージェンティックサーチ\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/owl2-overview/\u003e .\\n\u003curn:trikedb:作成パイプライン\u003e \u003curn:trikedb:課題\u003e \u003curn:trikedb:トークン消費\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:関係\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:作成方法\u003e \u003curn:trikedb:AIによる候補抽出\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:トークン消費をどう削減するか\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:解決する\u003e \u003curn:trikedb:コンテキストサイロ\u003e .\\n\u003curn:trikedb:検証\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:人による承認\u003e .\\n\u003curn:trikedb:プロパティグラフ\u003e \u003curn:trikedb:得意\u003e \u003curn:trikedb:経路探索\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:共通のルールを持った知識グラフ\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:設計思想\u003e \u003curn:trikedb:サーバを立てずファイル1つ\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:SPARQL\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:使う検査\u003e \u003curn:trikedb:SHACL\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:誰に見せるか\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:自然言語をモデリングする\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:品質\u003e \u003curn:trikedb:用語の一貫性\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:対象\u003e \u003curn:trikedb:意味の層\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:1993年の定義\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:コンテキストのサイロ化を防ぐ\u003e .\\n\u003curn:trikedb:GraphRAG\u003e \u003curn:trikedb:限界\u003e \u003curn:trikedb:事前構築が重い\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:何を入れないか\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:検証する\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:扱うテーマ\u003e \u003curn:trikedb:オントロジー\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:役割\u003e \u003curn:trikedb:書き忘れを見つける\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第3層\u003e \u003curn:trikedb:使わせる\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:誰が書けるか\u003e .\\n\"");
+const NT = JSON.parse("\"\u003curn:trikedb:OWL\u003e \u003curn:trikedb:役割\u003e \u003curn:trikedb:書いてないことを埋める\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:何を入れないか\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:mdファイルはグラフへ移る\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:ガバナンス\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:SPARQL\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:これからのデータ基盤\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/rdf11-concepts/\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:対象\u003e \u003curn:trikedb:意味の層\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/OWL/\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:ルール本体かドキュメントURLか\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:使う規則\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:リソース間のステートメント\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:コンテキストのサイロ化を防ぐ\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:原典での定義\u003e \u003curn:trikedb:明示的な概念化の仕様\u003e .\\n\u003curn:trikedb:RDFグラフ\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:主語・述語・目的語\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:検証する\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:位置づく\u003e \\\"W3C Semantic Web technology stack\\\" .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:GraphRAG\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:セマンティックウェブで使われる\u003e \u003curn:trikedb:語彙と意味の定義\u003e .\\n\u003curn:trikedb:作成パイプライン\u003e \u003curn:trikedb:課題\u003e \u003curn:trikedb:トークン消費\u003e .\\n\u003curn:trikedb:人による承認\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:知識グラフへの反映\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:扱うテーマ\u003e \u003curn:trikedb:知識グラフ\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第1層\u003e \u003curn:trikedb:そのまま受ける\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:使う検査\u003e \u003curn:trikedb:SHACL\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:トークン消費をどう削減するか\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:検証した\u003e \u003curn:trikedb:WebQSP\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:エージェンティックに扱う\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://tomgruber.org/writing/definition-of-ontology.pdf\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:解決する\u003e \u003curn:trikedb:1回の検索で届かない問題\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:技術スタック\u003e \u003curn:trikedb:RDFS\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:関係\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:どこで探索を止めるか\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:扱うテーマ\u003e \u003curn:trikedb:オントロジー\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:設計思想\u003e \u003curn:trikedb:サーバを立てずファイル1つ\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:守らせる\u003e \u003curn:trikedb:宣言した述語だけ\u003e .\\n\u003curn:trikedb:1993年の定義\u003e \u003curn:trikedb:説明する\u003e \u003curn:trikedb:概念化の明示的な仕様\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:クラス\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:変換できる\u003e \u003curn:trikedb:RDF\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:OWL\u003e .\\n\u003curn:trikedb:エージェンティックサーチ\u003e \u003curn:trikedb:特徴\u003e \u003curn:trikedb:何度も探す\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:1993年の定義\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:目的\u003e \u003curn:trikedb:共有された知識のモデル化\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:オントロジーの背景\u003e .\\n\u003curn:trikedb:まとめ\u003e \u003curn:trikedb:実践する\u003e \u003curn:trikedb:共通のルールを持った知識グラフ\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:品質\u003e \u003curn:trikedb:矛盾の検出\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \\\"Palantir Ontology\\\" .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:RAG\u003e .\\n\u003curn:trikedb:GraphRAG\u003e \u003curn:trikedb:限界\u003e \u003curn:trikedb:事前構築が重い\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第2層\u003e \u003curn:trikedb:整える\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:設計は3層に収束する\u003e .\\n\u003curn:trikedb:検証\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:人による承認\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:使う知識グラフ\u003e \u003curn:trikedb:プロパティグラフ\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:作成方法\u003e \u003curn:trikedb:AIによる候補抽出\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:対応する\u003e \u003curn:trikedb:SPARQL\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:構成する章\u003e \u003curn:trikedb:最近の流れと論点\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:誰が書けるか\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:表現する\u003e \u003curn:trikedb:複雑な知識と関係\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:検討する論点\u003e \u003curn:trikedb:何を入れるか\u003e .\\n\u003curn:trikedb:AIによる候補抽出\u003e \u003curn:trikedb:次の工程\u003e \u003curn:trikedb:検証\u003e .\\n\u003curn:trikedb:設計は3層に収束する\u003e \u003curn:trikedb:第3層\u003e \u003curn:trikedb:使わせる\u003e .\\n\u003curn:trikedb:グラフを渡さない\u003e \u003curn:trikedb:正解率\u003e \u003curn:trikedb:42.7%25\u003e .\\n\u003curn:trikedb:コンテキストサイロ\u003e \u003curn:trikedb:原因\u003e \u003curn:trikedb:意味がバラバラ\u003e .\\n\u003curn:trikedb:グラフを渡す\u003e \u003curn:trikedb:正解率\u003e \u003curn:trikedb:77.7%25\u003e .\\n\u003curn:trikedb:自然言語をモデリングする\u003e \u003curn:trikedb:品質\u003e \u003curn:trikedb:用語の一貫性\u003e .\\n\u003curn:trikedb:OWL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/owl2-overview/\u003e .\\n\u003curn:trikedb:SPARQL\u003e \u003curn:trikedb:問い合わせる\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:対応する\u003e \u003curn:trikedb:MCP\u003e .\\n\u003curn:trikedb:WebQSP\u003e \u003curn:trikedb:使用したモデル\u003e \u003curn:trikedb:qwen3:8b\u003e .\\n\u003curn:trikedb:セマンティックウェブ\u003e \u003curn:trikedb:目指す\u003e \u003curn:trikedb:人間と機械が読めるWeb上の知識共有\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:役割\u003e \u003curn:trikedb:書き忘れを見つける\u003e .\\n\u003curn:trikedb:SPARQL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/sparql11-query/\u003e .\\n\u003curn:trikedb:これからのデータ基盤\u003e \u003curn:trikedb:予測する\u003e \u003curn:trikedb:自然言語をモデリングする\u003e .\\n\u003curn:trikedb:mdファイルはグラフへ移る\u003e \u003curn:trikedb:理由\u003e \u003curn:trikedb:実際の依存関係は網の目\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:実装する\u003e \u003curn:trikedb:ファイル1つの知識グラフ\u003e .\\n\u003curn:trikedb:SHACL\u003e \u003curn:trikedb:参照URL\u003e \u003chttps://www.w3.org/TR/shacl/\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:使う知識グラフ\u003e \u003curn:trikedb:RDFグラフ\u003e .\\n\u003curn:trikedb:知識グラフ\u003e \u003curn:trikedb:解決する\u003e \u003curn:trikedb:コンテキストサイロ\u003e .\\n\u003curn:trikedb:最近の流れと論点\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:エージェンティックサーチ\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:どう配るか\u003e .\\n\u003curn:trikedb:プロパティグラフ\u003e \u003curn:trikedb:得意\u003e \u003curn:trikedb:経路探索\u003e .\\n\u003curn:trikedb:オントロジーの背景\u003e \u003curn:trikedb:扱う\u003e \u003curn:trikedb:SHACL\u003e .\\n\u003curn:trikedb:ガバナンス\u003e \u003curn:trikedb:論点\u003e \u003curn:trikedb:誰に見せるか\u003e .\\n\u003curn:trikedb:オントロジー\u003e \u003curn:trikedb:含む\u003e \u003curn:trikedb:制約\u003e .\\n\u003curn:trikedb:RAG\u003e \u003curn:trikedb:限界\u003e \u003curn:trikedb:断片をまたいだ関係が切れる\u003e .\\n\u003curn:trikedb:コンテキストサイロ\u003e \u003curn:trikedb:対策\u003e \u003curn:trikedb:共通のルール\u003e .\\n\u003curn:trikedb:RDF\u003e \u003curn:trikedb:基本単位\u003e \u003curn:trikedb:トリプル\u003e .\\n\u003curn:trikedb:TrikeDB\u003e \u003curn:trikedb:検索レイヤーの上限\u003e \u003curn:trikedb:89.3%25\u003e .\\n\u003curn:trikedb:オントロジーのこれまでと、これから\u003e \u003curn:trikedb:実際にグラフ化した\u003e \u003curn:trikedb:このファイル\u003e .\\n\"");
 const EVENT_PREDICATES = JSON.parse("[]");
 const EVENT_NODES = JSON.parse("[]");      // event objects that are payloads, not nodes
+const RULES = JSON.parse("{\"セマンティックウェブで使われる\": {\"n\": 1}, \"予測する\": {\"n\": 3}, \"位置づく\": {\"n\": 1}, \"作成方法\": {\"n\": 1}, \"使う検査\": {\"n\": 1}, \"使う知識グラフ\": {\"n\": 2}, \"使う規則\": {\"n\": 1}, \"使用したモデル\": {\"n\": 1}, \"原典での定義\": {\"n\": 1}, \"原因\": {\"n\": 1}, \"参照URL\": {\"n\": 6}, \"含む\": {\"n\": 3}, \"品質\": {\"n\": 2}, \"問い合わせる\": {\"n\": 1}, \"基本単位\": {\"n\": 1}, \"変換できる\": {\"n\": 1}, \"守らせる\": {\"n\": 1}, \"実装する\": {\"n\": 1}, \"実践する\": {\"n\": 3}, \"実際にグラフ化した\": {\"n\": 1}, \"対応する\": {\"n\": 2}, \"対策\": {\"n\": 1}, \"対象\": {\"n\": 1}, \"役割\": {\"n\": 2}, \"得意\": {\"n\": 1}, \"扱う\": {\"n\": 9}, \"扱うテーマ\": {\"n\": 2}, \"技術スタック\": {\"n\": 4}, \"検索レイヤーの上限\": {\"n\": 1}, \"検討する論点\": {\"n\": 5}, \"検証した\": {\"n\": 1}, \"検証する\": {\"n\": 1}, \"構成する章\": {\"n\": 3}, \"次の工程\": {\"n\": 3}, \"正解率\": {\"n\": 2}, \"特徴\": {\"n\": 1}, \"理由\": {\"n\": 1}, \"目指す\": {\"n\": 1}, \"目的\": {\"n\": 1}, \"第1層\": {\"n\": 1}, \"第2層\": {\"n\": 1}, \"第3層\": {\"n\": 1}, \"表現する\": {\"n\": 3}, \"解決する\": {\"n\": 2}, \"設計思想\": {\"n\": 1}, \"説明する\": {\"n\": 1}, \"課題\": {\"n\": 1}, \"論点\": {\"n\": 3}, \"限界\": {\"n\": 2}}");                  // what each predicate declares about itself
+const RULE_ORDER = ["domain", "range", "requires", "by"];
+const RULE_SAYS = {
+  domain: "subject must be",
+  range: "object must be",
+  requires: "must have happened first",
+  by: "may only be done by",
+};
 const GRAPHS = Object.assign(Object.create(null), JSON.parse("{}"));   // workspace: {graph name: color}; {} otherwise
 const LEVELS = Object.assign(Object.create(null), JSON.parse("{\"オントロジーのこれまでと、これから\": 1, \"オントロジー\": 2, \"知識グラフ\": 2, \"RDFグラフ\": 5, \"プロパティグラフ\": 3, \"主語・述語・目的語\": 6, \"経路探索\": 4, \"コンテキストサイロ\": 3, \"意味がバラバラ\": 4, \"共通のルール\": 4, \"何を入れるか\": 3, \"何を入れないか\": 3, \"ルール本体かドキュメントURLか\": 3, \"AIによる候補抽出\": 3, \"検証\": 4, \"人による承認\": 5, \"知識グラフへの反映\": 6, \"作成パイプライン\": 1, \"トークン消費\": 2, \"エージェンティックサーチ\": 3, \"何度も探す\": 4, \"トークン消費をどう削減するか\": 4, \"どこで探索を止めるか\": 4, \"TrikeDB\": 1, \"ファイル1つの知識グラフ\": 2, \"SPARQL\": 2, \"MCP\": 2, \"このファイル\": 2, \"オントロジーの背景\": 2, \"最近の流れと論点\": 2, \"これからのデータ基盤\": 2, \"1993年の定義\": 3, \"RDF\": 3, \"OWL\": 4, \"SHACL\": 4, \"Palantir Ontology\": 3, \"概念化の明示的な仕様\": 4, \"書いてないことを埋める\": 5, \"書き忘れを見つける\": 5, \"RAG\": 3, \"GraphRAG\": 3, \"ガバナンス\": 3, \"断片をまたいだ関係が切れる\": 4, \"事前構築が重い\": 4, \"1回の検索で届かない問題\": 4, \"誰が書けるか\": 4, \"誰に見せるか\": 4, \"どう配るか\": 4, \"設計は3層に収束する\": 3, \"mdファイルはグラフへ移る\": 3, \"自然言語をモデリングする\": 3, \"そのまま受ける\": 4, \"整える\": 4, \"使わせる\": 4, \"実際の依存関係は網の目\": 4, \"意味の層\": 4, \"用語の一貫性\": 4, \"矛盾の検出\": 4, \"サーバを立てずファイル1つ\": 2, \"宣言した述語だけ\": 2, \"WebQSP\": 2, \"qwen3:8b\": 3, \"グラフを渡さない\": 1, \"42.7%\": 2, \"グラフを渡す\": 1, \"77.7%\": 2, \"89.3%\": 2, \"まとめ\": 1, \"コンテキストのサイロ化を防ぐ\": 2, \"共通のルールを持った知識グラフ\": 2, \"エージェンティックに扱う\": 2, \"明示的な概念化の仕様\": 3, \"クラス\": 3, \"関係\": 3, \"制約\": 3, \"共有された知識のモデル化\": 3, \"セマンティックウェブ\": 1, \"人間と機械が読めるWeb上の知識共有\": 2, \"RDFS\": 2, \"語彙と意味の定義\": 3, \"リソース間のステートメント\": 4, \"トリプル\": 4, \"W3C Semantic Web technology stack\": 5, \"複雑な知識と関係\": 5, \"https://tomgruber.org/writing/definition-of-ontology.pdf\": 3, \"https://www.w3.org/OWL/\": 2, \"https://www.w3.org/TR/rdf11-concepts/\": 4, \"https://www.w3.org/TR/owl2-overview/\": 5, \"https://www.w3.org/TR/shacl/\": 5, \"https://www.w3.org/TR/sparql11-query/\": 3}"));   // computed column per node; a `level` prop overrides
 const BASE = "urn:trikedb:";
@@ -220,9 +281,19 @@ const timeKey = (t) => timeOf(t).replace(/\d+/g, (d) => d.padStart(4, "0"))
 const eventOrder = new Map(eventTriples.map((t, i) => [t, i]));
 const byTime = (a, b) =>
   timeKey(b).localeCompare(timeKey(a)) || eventOrder.get(b) - eventOrder.get(a);
-const eventsOf = Object.create(null);   // node -> its events, newest first
+const eventsOf = Object.create(null);   // node -> its own events, newest first
 eventTriples.forEach(t => (eventsOf[t.s] ??= []).push(t));
 Object.values(eventsOf).forEach(l => l.sort(byTime));
+// ...and the events written from the other node's side. Once an event grows
+// its own properties it becomes an object — a price change with a before and
+// an after — and then the product is the OBJECT of the event, not its
+// subject. Without this fold, promoting an event to an object cuts every
+// object it touches off from its own history. Same rule as history() in
+// Python: history folds both ways, state does not, because the change is
+// what is 'applied' — not the product, and certainly not the approver.
+const incomingOf = Object.create(null);
+eventTriples.forEach(t => { if (t.o !== t.s) (incomingOf[t.o] ??= []).push(t); });
+Object.values(incomingOf).forEach(l => l.sort(byTime));
 // The state act() wrote onto the node, if it wrote one; otherwise the state
 // the node's last event left it in, which is how a graph hand-written in
 // YAML says the same thing. Same rule as TrikeDB.state() in Python.
@@ -377,16 +448,37 @@ network.redraw();
 const hiddenTypes = new Set();
 const hiddenPreds = new Set();
 const hiddenGraphs = new Set();
-function refreshVisibility() {
-  nodes.update(ids.map(id => {
+// Which nodes a filter leaves standing. Separate from the update below
+// because the *camera* wants the answer too, and asking twice is how the
+// two drift apart.
+function visibleNodes() {
+  return ids.filter(id => {
     const meta = NODES_META[id] || {};
     const byType = meta.type && hiddenTypes.has(meta.type);
     const byGraph = nodeGraphs[id] && [...nodeGraphs[id]].every(g => hiddenGraphs.has(g));
-    return { id: nodeIds.get(id), hidden: !!(byType || byGraph) };
-  }));
+    return !(byType || byGraph);
+  });
+}
+let framed = visibleNodes().join("\u0000");
+function refreshVisibility() {
+  const shown = visibleNodes();
+  const keep = new Set(shown);
+  nodes.update(ids.map(id => ({ id: nodeIds.get(id), hidden: !keep.has(id) })));
   edges.update(TRIPLES.map((t, i) => ({
     id: i, hidden: !!(hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))),
   })));
+  // Frame what is left. Hiding five sixths of a workspace used to leave
+  // the remainder as a speck in whichever corner the layout had put it,
+  // at the zoom chosen for the whole graph — so the answer to what you
+  // just clicked was off screen until you found `Fit`. Moving the camera
+  // when nothing moved would be the jarring kind of help, though, and a
+  // predicate toggle hides edges only, so the visible set is compared
+  // before anything is re-framed.
+  const sig = shown.join("\u0000");
+  if (sig !== framed && shown.length) {
+    network.fit({ nodes: visualIds(shown), animation: true });
+  }
+  framed = sig;
 }
 const legend = document.getElementById("legend");
 const typeEls = Object.create(null);
@@ -408,7 +500,10 @@ for (const [ty, color] of Object.entries(NODE_TYPES)) {
 for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
-  el.title = `show/hide ${p} edges`;
+  const r = RULES[p] || {};
+  const shape = RULE_ORDER.filter(k => (r[k] || []).length)
+    .map(k => `${k}: ${r[k].join(", ")}`).join("\n");
+  el.title = `show/hide ${p} edges` + (shape ? `\n\n${shape}` : "");
   el.innerHTML = `<b style="background:${color}"></b>${esc(p)}`;
   el.onclick = () => {
     hiddenPreds.has(p) ? hiddenPreds.delete(p) : hiddenPreds.add(p);
@@ -571,6 +666,32 @@ searchBox.addEventListener("keydown", (e) => {
   showDetail(id);
 });
 
+// A node keeps its id in the drawing — short, stable, and the thing you
+// would paste into a query — and says what it is in words wherever there is
+// room for words: the panel heading, every link to it, and the log. `name`
+// first, then the two other spellings a graph already uses for the same
+// thing. A node with none of them is its id, which for a record like
+// PC-0007 is the honest answer rather than a missing one.
+const HUMAN_KEYS = ["label", "name", "title", "summary"];
+// Which property supplied the words, so the panel can show it as the
+// heading without also listing it underneath as a property of itself.
+const humanKeyOf = (id) => {
+  const m = NODES_META[id] || {};
+  return HUMAN_KEYS.find(k => m[k] !== undefined && m[k] !== null && String(m[k]).trim()) || "";
+};
+const nameOf = (id) => {
+  const k = humanKeyOf(id);
+  return k ? String(NODES_META[id][k]) : "";
+};
+// A link always carries the id in data-node (that is what gets focused) and
+// keeps it in the tooltip when the visible text is the name instead.
+function nodeLink(id) {
+  const nm = nameOf(id);
+  return nm ? `<a class="nodelink" data-node="${esc(id)}" title="${esc(id)}">${esc(nm)}</a>`
+            : `<a class="nodelink" data-node="${esc(id)}">${esc(id)}</a>`;
+}
+const linkOrText = (x) => ids.includes(x) ? nodeLink(x) : linkify(x);
+
 // --------------------------------------------------------- detail panel
 // String({}) is "[object Object]", which is what an attribute holding a
 // mapping used to render as. Nothing in the graph should hold one, but the
@@ -581,8 +702,8 @@ function relHTML(t, other, arrow) {
   const attrs = Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k));
   const cls = t.deprecated ? "rel deprecated" : "rel";
   return `<div class="${cls}">
-    <span class="pred" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>${arrow}
-    ${ids.includes(other) ? `<a class="nodelink" data-node="${esc(other)}">${esc(other)}</a>` : linkify(other)}
+    <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>${arrow}
+    ${linkOrText(other)}
     ${attrs.map(([k, v]) => `<div class="attr">${esc(k)}: ${linkify(v)}</div>`).join("")}
   </div>`;
 }
@@ -590,7 +711,7 @@ function relHTML(t, other, arrow) {
 // An event reads as when / what state it left this node in / what happened,
 // with the rest of the action log (by, input, result) underneath — the point
 // of attaching events to a node is being able to read its state off it.
-function eventHTML(t) {
+function eventHTML(t, from) {
   const when = timeOf(t), st = stateOf(t);
   const skip = ["s", "p", "o", ...TIME_KEYS, ...STATE_KEYS];
   const attrs = Object.entries(t).filter(([k]) => !skip.includes(k));
@@ -598,26 +719,32 @@ function eventHTML(t) {
     <div class="evhead">
       ${when ? `<span class="when">${esc(when)}</span>` : ""}
       ${st ? `<span class="state">${esc(st)}</span>` : ""}
-      <span class="pred" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
+      <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
     </div>
-    <div class="evwhat">${ids.includes(t.o) ? `<a class="nodelink" data-node="${esc(t.o)}">${esc(t.o)}</a>` : linkify(t.o)}</div>
+    <div class="evwhat">${from ? "&larr; " : ""}${linkOrText(from ? t.s : t.o)}</div>
     ${attrs.map(([k, v]) => `<div class="attr">${esc(k)}: ${linkify(v)}</div>`).join("")}
   </div>`;
 }
 
 function showDetail(id) {
   const meta = NODES_META[id] || {};
-  const evs = eventsOf[id] || [];
+  const own = eventsOf[id] || [], into = incomingOf[id] || [];
+  const evs = own.concat(into).sort(byTime);
   const out = TRIPLES.filter(t => t.s === id && !isEventTriple(t));
-  const inc = TRIPLES.filter(t => t.o === id);
-  let html = `<h2>${esc(id)}</h2>`;
+  const inc = TRIPLES.filter(t => t.o === id && !isEventTriple(t));
+  const nmKey = humanKeyOf(id), nm = nmKey ? String(meta[nmKey]) : "";
+  let html = nm ? `<h2 class="human">${esc(nm)}</h2><div class="nodeid">${esc(id)}</div>`
+                : `<h2>${esc(id)}</h2>`;
   if (meta.type) html += `<span class="pred" style="background:${NODE_TYPES[meta.type] || "#5a83b8"}">${esc(meta.type)}</span>`;
   const st = currentState(id);
   if (st) html += `<span class="state">${esc(st)}</span>`;
-  const props = Object.entries(meta).filter(([k]) => k !== "type");
+  // nmKey is already the heading; repeating it as a property says the
+  // same sentence twice in the space of four lines.
+  const props = Object.entries(meta).filter(([k]) => k !== "type" && k !== nmKey);
   if (props.length) html += "<h3>properties</h3>" + props.map(([k, v]) =>
     `<div class="rel"><div class="attr">${esc(k)}: ${linkify(v)}</div></div>`).join("");
-  if (evs.length) html += `<h3>events &middot; ${evs.length}</h3>` + evs.map(eventHTML).join("");
+  if (evs.length) html += `<h3>events &middot; ${evs.length}</h3>`
+    + evs.map(t => eventHTML(t, t.o === id)).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
   document.getElementById("detail-body").innerHTML = html;
@@ -629,6 +756,11 @@ document.getElementById("btn-close").onclick = () => {
   document.body.classList.remove("detail-open");
 };
 document.getElementById("detail").addEventListener("click", (e) => {
+  // The chip comes first: inside an event row it sits within the clickable
+  // row itself, and asking what a predicate declares must not navigate away
+  // from the fact that prompted the question.
+  const chip = e.target.closest(".pred[data-pred]");
+  if (chip) { showOntology(chip.dataset.pred); return; }
   const n = e.target.closest("a.nodelink") || e.target.closest(".rel.event[data-node]");
   if (n) focusNode(n.dataset.node);
 });
@@ -651,9 +783,10 @@ function focusNode(id) {
 
 // ------------------------------------------------------- the action log
 // The events themselves live in the graph, on the line between the two
-// objects. This is the same log read across every node at once, in time
-// order — something you open when you want it, not a strip pinned across
-// the bottom where the events look detached from everything they touch.
+// objects, which is where they happened. Read across every node at once in
+// time order they are also a log, and that is the one thing the drawing
+// cannot show — so the same events run along the bottom as a strip and open
+// in full in the panel. Neither is the events' home; both are readings of it.
 const timeline = eventTriples.slice().sort(byTime);
 const btnEvents = document.getElementById("btn-events");
 if (!timeline.length) btnEvents.style.display = "none";
@@ -664,11 +797,48 @@ function timelineHTML(t) {
     <div class="evhead">
       ${when ? `<span class="when">${esc(when)}</span>` : ""}
       ${st ? `<span class="state">${esc(st)}</span>` : ""}
-      <a class="nodelink" data-node="${esc(t.s)}">${esc(t.s)}</a>
+      <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
+      ${nodeLink(t.s)}
     </div>
-    <div class="evwhat">${esc(t.o.length > 90 ? t.o.slice(0, 90) + "\u2026" : t.o)}</div>
+    <div class="evwhat">&rarr; ${ids.includes(t.o) ? nodeLink(t.o)
+      : esc(t.o.length > 90 ? t.o.slice(0, 90) + "\u2026" : t.o)}</div>
   </div>`;
 }
+// The strip. Newest first, same order as the panel log and as history():
+// a log you append to reads from the top.
+const rail = document.getElementById("striprail");
+function tickHTML(t, i) {
+  const when = timeOf(t), st = stateOf(t);
+  return `<div class="tick" data-ev="${i}" data-node="${esc(t.s)}" title="${esc(t.s + " " + t.p + " " + t.o)}">
+    <div class="tickhead">
+      ${when ? `<span class="when">${esc(when)}</span>` : ""}
+      ${st ? `<span class="state">${esc(st)}</span>` : ""}
+    </div>
+    <div class="ticknode">
+      <span class="pred" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
+      <span class="tickname">${esc(nameOf(t.s) || t.s)}</span>
+    </div>
+  </div>`;
+}
+if (timeline.length) {
+  document.getElementById("stripcount").textContent = timeline.length + " events";
+  rail.innerHTML = timeline.map(tickHTML).join("");
+  document.body.classList.add("strip-on");
+  btnEvents.classList.add("active");
+}
+rail.addEventListener("click", (e) => {
+  const el = e.target.closest(".tick");
+  if (!el) return;
+  rail.querySelectorAll(".tick.on").forEach(n => n.classList.remove("on"));
+  el.classList.add("on");
+  focusNode(el.dataset.node);
+});
+btnEvents.onclick = () => {
+  const on = document.body.classList.toggle("strip-on");
+  btnEvents.classList.toggle("active", on);
+};
+document.getElementById("btn-fulllog").onclick = () => showTimeline();
+
 function showTimeline() {
   document.getElementById("detail-body").innerHTML =
     `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
@@ -676,7 +846,53 @@ function showTimeline() {
   document.getElementById("detail").classList.add("open");
   document.body.classList.add("detail-open");
 }
-btnEvents.onclick = showTimeline;
+
+// ------------------------------------------------------ the declarations
+// Every line on this page was allowed in by a rule, and the rules were the
+// one thing the page never showed. You could read that a courier delivered
+// an order and not that DELIVERED_TO refuses to be written at all until
+// SHIPPED_FROM has happened, or that only a courier may write it. A
+// declaration is part of the graph, so it gets drawn with it: the button
+// lists every predicate, and a predicate chip anywhere in the panel opens
+// its own declaration next to the fact that raised the question.
+const ruleNames = Object.keys(RULES);
+const enforced = ruleNames.filter(p => RULE_ORDER.some(k => (RULES[p][k] || []).length));
+function ruleHTML(p) {
+  const r = RULES[p] || {};
+  // domain, range and by name alternatives; requires names steps that
+  // must ALL hold. Running either kind together on one line with a
+  // separator hides which of the two a reader is looking at.
+  const rows = RULE_ORDER.filter(k => (r[k] || []).length).map(k => {
+    const vals = r[k].map(v => `<code>${esc(v)}</code>`);
+    const head = `<span class="rulekey">${k}</span>${esc(RULE_SAYS[k])}`;
+    if (vals.length === 1) return `<div class="attr">${head}: ${vals[0]}</div>`;
+    if (k !== "requires") return `<div class="attr">${head} one of: ${vals.join(" &middot; ")}</div>`;
+    return `<div class="attr"><span class="rulekey">requires</span>all of these must have happened first:</div>`
+      + vals.map(v => `<div class="attr rulemore">${v}</div>`).join("");
+  }).join("");
+  return `<div class="rel rule">
+    <span class="pred" style="background:${PREDICATES[p] || "#5a83b8"}">${esc(p)}</span>
+    ${r.n ? `<span class="when">${r.n} triple${r.n === 1 ? "" : "s"}</span>` : ""}
+    ${r.description ? `<div class="attr">${esc(r.description)}</div>` : ""}
+    ${rows || `<div class="undeclared">nothing declared \u2014 anything may write this</div>`}
+  </div>`;
+}
+function showOntology(only) {
+  const names = only && RULES[only] ? [only] : ruleNames;
+  const head = only && RULES[only]
+    ? `<h2>${esc(only)}</h2><h3>what this predicate declares</h3>`
+    : `<h2>ontology</h2><h3>${ruleNames.length} predicate${ruleNames.length === 1 ? "" : "s"}`
+      + ` &middot; ${enforced.length} enforced</h3>`;
+  document.getElementById("detail-body").innerHTML = head + names.map(ruleHTML).join("");
+  document.getElementById("detail").classList.add("open");
+  document.body.classList.add("detail-open");
+}
+const btnOnto = document.getElementById("btn-onto");
+if (!ruleNames.length) btnOnto.style.display = "none";
+else {
+  btnOnto.textContent = "ontology \u00b7 " + ruleNames.length;
+  btnOnto.onclick = () => showOntology();
+}
 
 // ------------------------------------------------------- SPARQL console
 document.getElementById("btn-sparql").onclick = (e) => {

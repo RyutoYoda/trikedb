@@ -22,9 +22,10 @@
 </p>
 
 <p align="center">
-  <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 Live demo</a></b> — 600 real Freebase facts, click around, run SPARQL in the browser
-  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">workspace demo</a> — the same facts as 6 domain graphs, tiled and filterable
+  <b><a href="https://ryutoyoda.github.io/trikedb/">🦕 Live demo</a></b> — a company as five graphs: every action declares what must have happened before it, carries a date and an actor, and the page shows the declarations
   &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/pipeline.html">pipeline demo</a> — a data platform with an action log: every table wears its current state
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/freebase.html">Freebase demo</a> — 600 real third-party facts, click around, run SPARQL in the browser
+  &nbsp;·&nbsp; <a href="https://ryutoyoda.github.io/trikedb/workspace.html">workspace demo</a> — the same Freebase facts as 6 domain graphs, tiled and filterable
   &nbsp;·&nbsp; <a href="https://pypi.org/project/trikedb/">PyPI</a>
 </p>
 
@@ -51,10 +52,10 @@ triples:
 
 That file **is** the database. No server, no daemon, no cloud deployment. It diffs cleanly in git, survives in a repo next to your code, and — the part trikedb is actually designed around — **an LLM agent can `Read` it directly and ground its domain reasoning in explicit entity names.**
 
-And it renders as an interactive workbench ([live demo](https://ryutoyoda.github.io/trikedb/) — 600 real Freebase facts):
+And it renders as an interactive workbench ([Freebase demo](https://ryutoyoda.github.io/trikedb/freebase.html) — 600 real Freebase facts):
 
 <p align="center">
-  <a href="https://ryutoyoda.github.io/trikedb/">
+  <a href="https://ryutoyoda.github.io/trikedb/freebase.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb HTML workbench — 600 Freebase facts as force-directed clusters, with a node detail panel open">
   </a>
 </p>
@@ -155,6 +156,30 @@ db.state("RAW_CRM_CONTACTS")     # 'applied' — the node itself is different no
 db.history("RAW_CRM_CONTACTS")   # everything that happened to it, newest first
 # Run the same action again and you get a second record, not an overwritten one.
 
+# An action can also declare *when* it may run and *who* may run it — the half a
+# type check cannot reach. An order delivered before it ever shipped breaks no
+# type; a price change approved by nobody is type-correct. Both are refused now.
+db.declare_link("DELIVERED_TO", domain="order", range="region",
+                requires="SHIPPED_FROM",   # this has to have happened first
+                by="courier")              # and this is who may do it
+# db.act("ORD-25101", "DELIVERED_TO", "Riverside", by="Kai") would raise
+# OntologyError: ORD-25101 has no SHIPPED_FROM on either end. What the write
+# path cannot see yet — a hand-edited file, an actor typed later — `trikedb
+# audit` reads back off the finished graph, with the clock deciding what came
+# first rather than the line a triple happens to sit on.
+
+# A condition can span more than one step, joined on shared variables, with ?s
+# and ?o already bound to the action's own two ends — because the thing a rule
+# turns on is usually named by neither. "You may review what you bought": the
+# review is customer -> product, and the purchase is an *order*, a third node.
+db.declare_link("REVIEWED", domain="customer", range="product",
+                requires=["?order PLACED_BY ?s",    # an order this customer placed
+                          "?order CONTAINS ?o"])    # that held this very product
+# Checked when the triple is written, not downgraded to a report afterwards.
+# Inside a batch() a condition that does not hold yet is held and asked again at
+# the end, because writing more triples can satisfy a condition and never break
+# one — so the evidence may arrive after the write that needs it.
+
 # Ask questions — join patterns with zero dependencies …
 db.query(["?vendor PROVIDES ?job", "?job INGESTS_TO ?table"])
 # [{'vendor': 'salesflow-crm', 'job': 'crm-sync-job', 'table': 'RAW_CRM_CONTACTS'}]
@@ -222,6 +247,10 @@ trikedb search pipeline.yaml "what syncs the CRM?" -k 5
 
 # declare what a predicate connects, and have it enforced from then on
 trikedb ontology pipeline.yaml --link INGESTS_TO=job>table
+
+# execution conditions and permissions are declared in the YAML alongside the
+# shape, and checked over the whole file
+trikedb audit pipeline.yaml     # exits 1 on an action that ran out of order
 
 # record something you did: the node moves to its new state, the log keeps the run
 trike act pipeline.yaml RAW_CRM_CONTACTS AFFECTED_BY "email column dropped" \
@@ -681,6 +710,17 @@ triples:
 Three conventions worth stealing (see [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml)):
 
 - **Change events hang off the node they changed.** A triple carrying a time attribute (`at:`, `when:`, `date:`, ...) is a change event on its *subject*, not a note floating on its own: the HTML view puts the newest event's `state:` on the node's label and lists the history — when, who, what — in the detail panel. That is the action layer: "what state is this table in, and what put it there?" is something you read off the node. Use `--events AFFECTED_BY` to pin the predicates by hand instead of auto-detecting them.
+- <a id="when-an-event-becomes-an-object"></a>**When an event grows properties of its own, promote it to an object.** `REPRICED: "list price 8400 -> 7560 yen"` is a sentence: nothing can point at it, nothing can ask who approved it. The moment a change has a before, an after and an approver it is a thing, so give it an id and let it link like anything else — the same move Palantir makes when an Action Type earns its own Object Type, and what PROV-O calls an `Activity`:
+
+  ```yaml
+  nodes:
+    PC-0007: {type: price-change, price_before: 8400, price_after: 7560}
+  triples:
+    - {s: PC-0007, p: CHANGED, o: Copper Kettle 1.5L, at: 2025-07-16, state: applied}
+    - {s: PC-0007, p: APPROVED_BY, o: Rune Halvorsen}
+  ```
+
+  `history()` folds **both directions**, so the kettle still reads its own repricing even though it is now the *object* of `CHANGED`. `state()` stays subject-only, so `applied` lands on the change and not on the kettle or on Rune. That split is the whole reason promotion is safe here: you can model the event properly without the event's state leaking onto everything it touched. `examples/trike_workspace.yaml` is built this way — no dangling prose in 567 triples.
 - **An action is run, not described.** `db.act(...)` (`trike act`, or the `act` MCP tool) stamps the time, appends the event, and moves the node to the state that action left it in — one write, all three or none. Read it back with `db.state(node)` and `db.history(node)`. Two runs of the same action leave two records: an event's identity includes when it happened, so appending to the log can never overwrite it.
 - **A declaration can be enforced instead of just documented.** `INGESTS_TO: "job -> table"` is a comment; `INGESTS_TO: {domain: job, range: table}` is a rule — the edge written backwards is refused on the way in, and the error names the direction that does work. Types written after the edges that use them are checked too, from the node's side, so which came first cannot decide whether the graph obeys its own ontology. What nothing could check yet — an endpoint with no type — `trikedb audit` reports.
 - **`deprecated: true`** on edges renders them dashed in the HTML view and lets agents filter dead paths.
@@ -749,13 +789,15 @@ One source of truth, two projections: YAML for machines, HTML for people.
 
 ## Examples
 
-- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. This powers the live demo.
+- [`examples/trike_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trike_workspace.yaml) — a fictional homeware and pantry retailer as five member graphs (catalog / commerce / fulfilment / org / incidents) unioned into one **workspace**: 567 triples in which all 36 predicates declare a `domain` and a `range`, nine declare `requires` — what must already have happened — and eleven declare `by:`, who is allowed to sign them. 240 of those triples are dated actions, so `state('ORD-25101')` is assembled from events in two different member graphs rather than read off a status column. This powers the live demo.
+- [`examples/generate_trike_demo.py`](https://github.com/RyutoYoda/trikedb/blob/main/examples/generate_trike_demo.py) — the generator those six files come out of. Deterministic: run it and the committed YAML comes back byte for byte, and a test checks that it still does — so the demo grows by editing the generator, not the data.
+- [`examples/freebase_sample.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_sample.yaml) — **real-world data**: ~600 facts from the Freebase knowledge graph (CC BY, extracted from the WebQSP benchmark subgraphs) around Tupac Shakur, Agatha Christie, Nikola Tesla and more. Node types are inferred from predicate domains. Nothing in it is declared and nothing in it is dated — which is the point of keeping it: it is third-party data nobody here curated. This powers the Freebase demo.
 - [`examples/freebase_workspace.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/freebase_workspace.yaml) — the same facts split into 6 domain graphs (film / music / books / people / places / misc) and unioned back as a **workspace**: each member renders as its own island with a filter chip. This powers the workspace demo.
 - [`examples/acme_pipeline.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/acme_pipeline.yaml) — a fictional data platform showing the operational conventions: ontology, deprecations, change events.
 - [`examples/python_ecosystem.yaml`](https://github.com/RyutoYoda/trikedb/blob/main/examples/python_ecosystem.yaml) — free-form predicates, no ontology.
 - [`examples/trikedb_quickstart.ipynb`](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb) — runnable notebook quickstart with an inline graph.
 
-**Live demo:** https://ryutoyoda.github.io/trikedb/ · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html · **Pipeline demo:** https://ryutoyoda.github.io/trikedb/pipeline.html (the action layer — dated events, actors, states)
+**Live demo:** https://ryutoyoda.github.io/trikedb/ (declarations enforced at write time — `domain`, `range`, `requires`, `by`) · **Pipeline demo:** https://ryutoyoda.github.io/trikedb/pipeline.html (the action layer — dated events, actors, states) · **Freebase demo:** https://ryutoyoda.github.io/trikedb/freebase.html · **Workspace demo:** https://ryutoyoda.github.io/trikedb/workspace.html
 
 The exported HTML is a small workbench, not just a picture: click a node for a right-hand panel with all its properties (URLs become links), search nodes top-right, and open the **SPARQL console** to run real SPARQL 1.1 in the browser — powered by [Oxigraph](https://github.com/oxigraph/oxigraph) compiled to WASM, loaded from CDN on first use. A node with a history wears its current state on its label and lists its events — when, who, what — newest first in the detail panel; **an event is drawn on the line between the two objects it happened between**, labelled with its date and the state it left behind, and clicking any line opens the node it hangs off; the `events` button reads the whole log in time order, and event payloads that are not entities in their own right render as red diamonds; the initial layout adapts to graph shape (`--layout flow|free|auto`). Filter the view by toggling node-type checkboxes (with **all / none** shortcuts) — the legend slides horizontally when types get numerous — and, in a workspace, toggle member graphs the same way.
 
