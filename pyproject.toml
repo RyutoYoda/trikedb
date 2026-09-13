@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.39.4"
+version = "0.39.5"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
@@ -79,3 +79,6 @@ where = ["src"]
 # untracked (output/, tmp/), and their stale copies of these tests fail
 # for reasons that have nothing to do with the code being changed.
 testpaths = ["tests", "benchmarks"]
+# Keep direct `pytest` and `python -m pytest` invocation behavior identical.
+# The regression suite imports helpers from the checkout's benchmarks package.
+pythonpath = ["."]
