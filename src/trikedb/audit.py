@@ -189,28 +189,54 @@ def audit(db) -> list:
     # 8. an event written onto the node instead of onto the triple.
     #    Promotion gives an event an id so it can hold the properties that
     #    made it worth promoting — a before, an after, a reason. It does
-    #    not move `at:` and `state:`: those are read off the triple, by
-    #    when() and by state(), and a node carrying both of them is an
-    #    event record sitting where nothing reads it. The failure is
-    #    silent — history() simply returns fewer rows than the file looks
-    #    like it holds — so it is reported here rather than left to be
-    #    noticed. Both keys are required to call it: a date alone is an
-    #    ordinary property (a release has one), and a state alone is what
-    #    act() writes onto every node it touches.
+    #    not move `at:` and `state:`: those are read off the *triple*, by
+    #    when() and by state(). Put them on the node and nothing raises —
+    #    the graph loads, state() answers None and history() returns fewer
+    #    rows than the file looks like it holds — so it is said out loud
+    #    here rather than left to be noticed.
+    #
+    #    Two ways to recognise an event record, because either alone is
+    #    ordinary: a node that says `type: event`, or a node carrying both
+    #    an event's time and an event's state. A date on its own is a
+    #    plain property (a release has one) and a state on its own is what
+    #    act() writes onto every node it touches, so neither can be the
+    #    signal by itself.
+    #
+    #    Then the question is whether anything dates the event at all, and
+    #    that is asked of every triple touching the node, either side: the
+    #    documented promoted form has the event as the *subject*
+    #    (`PC-0007 CHANGED kettle at: ...`), so looking only at the
+    #    incoming ones would miss the same mistake made the other way
+    #    round. Nothing dated anywhere is lost history; dated on the
+    #    triple with a copy still on the node is dead weight. Both are
+    #    reported, with the sentence that fits.
     for name, props in db.nodes_meta.items():
         stamp = next((k for k in TIME_ATTRS if k in props), None)
         mark = next((k for k in ("state", "status") if k in props), None)
-        if not (stamp and mark):
+        says_event = str(props.get("type", "")).strip().lower() == "event"
+        if not (says_event or (stamp and mark)):
             continue
-        undated = [t for t in db if t.o == name and not t.when()]
-        where = (f"({undated[0].s} {undated[0].p} {name}) carries no time, so "
-                 f"history() does not see it" if undated else
-                 f"the triples pointing at {name!r} carry their own time, so "
-                 f"{stamp!r} here is a second copy and {mark!r} is read by nothing")
+        touching = [t for t in db if t.s == name or t.o == name]
+        if not touching:
+            continue                      # an orphan, and orphan-node says so
+        misplaced = " and ".join(repr(k) for k in (stamp, mark) if k)
+        if any(t.when() for t in touching):
+            if not misplaced:
+                continue                  # typed an event and properly dated
+            detail = (f"node {name!r} keeps {misplaced} as node properties — an "
+                      f"event's time and state are read off the triple, so this "
+                      f"copy is read by nothing; the triples touching {name!r} "
+                      f"already carry their own time")
+        else:
+            t = touching[0]
+            said = (f"has {misplaced}" if misplaced else "says type: event")
+            detail = (f"node {name!r} {said} but no triple touching it carries a "
+                      f"time — an event's time belongs on the triple, so "
+                      f"state() and history() do not see this one. Put `at:` on "
+                      f"({t.s} {t.p} {t.o})")
         findings.append({
             "kind": "event-written-on-node", "severity": "warning",
-            "detail": f"node {name!r} has both {stamp!r} and {mark!r} — an event's "
-                      f"time and state belong on the triple, not the node; {where}",
+            "detail": detail,
         })
 
     return findings

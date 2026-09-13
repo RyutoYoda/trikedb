@@ -4576,28 +4576,51 @@ def test_audit_reports_an_event_written_onto_the_node():
     reason — it does not move `at:` and `state:`. Put those on the node and
     the graph still loads, `history()` just quietly returns fewer rows than
     the file looks like it holds. A user lost 16 of 18 events to that
-    silence, so audit says it out loud.
+    silence, so audit says it out loud — in every spelling of the mistake,
+    because which key they happened to write is not the user's decision to
+    get right.
     """
-    db = TrikeDB(autosave=False)
-    db.set_node("evt-1", type="event", date="2026-09-10", state="SHIPPED")
-    db.add("order1", "AFFECTED_BY", "evt-1")            # no time on the triple
-    found = [f for f in db.audit() if f["kind"] == "event-written-on-node"]
-    assert len(found) == 1
-    assert found[0]["severity"] == "warning"
-    assert "history() does not see it" in found[0]["detail"]
-    assert db.state("order1") is None and db.history("order1") == []
+    def flag(build):
+        db = TrikeDB(autosave=False)
+        build(db)
+        found = [f for f in db.audit() if f["kind"] == "event-written-on-node"]
+        assert len(found) == 1, found
+        assert found[0]["severity"] == "warning"
+        return found[0]["detail"], db
+
+    # `type: event` plus any of the payload keys, or none of them at all.
+    for props in ({"date": "2026-09-10"}, {"state": "SHIPPED"},
+                  {"date": "2026-09-10", "state": "SHIPPED"}, {}):
+        detail, db = flag(lambda d, p=props: (
+            d.set_node("evt-1", type="event", **p),
+            d.add("order1", "AFFECTED_BY", "evt-1")))
+        assert "Put `at:` on (order1 AFFECTED_BY evt-1)" in detail
+        assert db.state("order1") is None and db.history("order1") == []
+
+    # Time and state together are enough on their own, whatever the type.
+    detail, _ = flag(lambda d: (
+        d.set_node("evt-1", type="shipment", date="2026-09-10", state="SHIPPED"),
+        d.add("order1", "AFFECTED_BY", "evt-1")))
+    assert "'date' and 'state'" in detail
+
+    # The same mistake made the other way round: the documented promoted
+    # form has the event as the *subject*, so looking only at incoming
+    # triples would miss it.
+    detail, _ = flag(lambda d: (
+        d.set_node("PC-7", type="event", date="2025-07-16", state="applied"),
+        d.add("PC-7", "CHANGED", "order1")))
+    assert "Put `at:` on (PC-7 CHANGED order1)" in detail
 
     # Dating the triple revives the history; the node's copy is still dead.
-    db2 = TrikeDB(autosave=False)
-    db2.set_node("evt-1", type="event", date="2026-09-10", state="SHIPPED")
-    db2.add("order1", "AFFECTED_BY", "evt-1", at="2026-09-10")
-    found = [f for f in db2.audit() if f["kind"] == "event-written-on-node"]
-    assert len(found) == 1 and "read by nothing" in found[0]["detail"]
-    assert len(db2.history("order1")) == 1
+    detail, db = flag(lambda d: (
+        d.set_node("evt-1", type="event", date="2026-09-10", state="SHIPPED"),
+        d.add("order1", "AFFECTED_BY", "evt-1", at="2026-09-10")))
+    assert "read by nothing" in detail
+    assert len(db.history("order1")) == 1
 
 
 def test_audit_does_not_flag_a_date_or_a_state_on_its_own():
-    """Both keys together are the signal; either alone is ordinary.
+    """Either key alone is ordinary; it takes `type: event` or both to call it.
 
     A release has a date and is not an event. act() writes `state` onto
     every node it touches, so a state alone would flag half the graph.
@@ -4612,5 +4635,20 @@ def test_audit_does_not_flag_a_date_or_a_state_on_its_own():
     # The documented promoted form keeps at:/state: on the triple, so it is clean.
     db.set_node("PC-7", type="price-change", price_before=8400, price_after=7560)
     db.add("PC-7", "CHANGED", "Copper Kettle", at="2025-07-16", state="applied")
+    # ...and so is an event node that carries nothing but its type, dated properly.
+    db.set_node("evt-9", type="event")
+    db.add("order1", "AFFECTED_BY", "evt-9", at="2026-09-10", state="SHIPPED")
     assert [f for f in db.audit() if f["kind"] == "event-written-on-node"] == []
     assert db.state("PC-7") == "applied" and db.state("Copper Kettle") is None
+
+
+def test_history_and_state_docstrings_point_at_the_promoted_form():
+    """The docstring that sells promotion must say where at:/state: go.
+
+    history() is what a reader finds first — it is the method that
+    advertises promotion — and it sent one to build the shape that loses
+    events. Both it and state() now carry the rule and the pointer.
+    """
+    for doc in (TrikeDB.history.__doc__, TrikeDB.state.__doc__):
+        assert "event-written-on-node" in doc
+        assert "promote it to an object" in doc

@@ -3,6 +3,37 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.39.4
+
+0.39.3 caught one spelling of an event written onto the node. There were
+six, and which key a user happens to write is not theirs to get right.
+
+- **`event-written-on-node` now fires on every shape of it.** 0.39.3
+  asked for a time *and* a state on the node, so `{type: event, date:}`,
+  `{type: event, state:}` and a bare `{type: event}` all still loaded,
+  still returned an empty `history()`, and still said nothing. A node
+  that declares `type: event` is a stronger signal than either key, and
+  it went unused. Now an event record is recognised two ways — it says
+  `type: event`, or it carries both an event's time and an event's state
+  — and either key alone stays ordinary, so a release with a date and an
+  `act()`-written state on a real entity are still not flagged.
+- **The mirrored mistake is caught too.** The check only looked at
+  triples pointing *at* the node, but the documented promoted form has
+  the event as the **subject** (`PC-0007 CHANGED kettle at: ...`), so the
+  same misplacement made the other way round — `PC-0007 {date, state}
+  CHANGED kettle` with nothing on the triple — was invisible to it. Every
+  triple touching the node is asked now, either side, and the finding
+  names the triple to put `at:` on.
+- **`history()` says where `at:` and `state:` go.** It is the method that
+  advertises promotion, and it is what the user who lost 16 events read;
+  0.39.3 put the rule and the README pointer on `state()` only, which is
+  not the door they came through. Both carry it now, and a test holds
+  them to it.
+
+Verified against the graph that reported this: 437 triples, one finding —
+an event node nothing dates, which 0.39.3 would have kept quiet about.
+Zero findings on all 16 shipped examples.
+
 ## 0.39.3
 
 An event written onto the node instead of onto the triple loaded fine and

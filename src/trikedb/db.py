@@ -505,6 +505,15 @@ class TrikeDB:
 
         ``incoming=False`` narrows it back to what this node is the
         subject of, which is the view :meth:`state` reads.
+
+        Promotion moves the properties the event grew — a before, an
+        after, a reason — onto the node. It does not move ``at:`` and
+        ``state:``, which are read off the triple and belong there in
+        both spellings; a graph that puts them on the event node instead
+        loads without complaint and then returns nothing here.
+        ``audit()`` reports that as ``event-written-on-node``. The YAML
+        for the promoted form is in the README, under "When an event
+        grows properties of its own, promote it to an object".
         """
         name = str(name)
         rows = self._own_events(name, p)
