@@ -31,10 +31,7 @@ flowchart TB
     PN("networkx<br/>图算法")
     PV("SQL views<br/>warehouse row之上")
     PD("没有引擎<br/>JSON-LD · 页面内的文档")
-    Q("查询与检索<br/>派生视图 · 从不存储")
-    QE("精确查询<br/>SPARQL · pattern query")
-    QS("语义检索<br/>查询时延迟生成embedding<br/>按句缓存")
-    QF("find<br/>语义召回 → 硬结构过滤")
+    Q("<b>查询与检索</b><br/>用户API: sparql · query/match · find · search<br/>内部: Oxigraph / rdflib · 延迟embedding<br/>派生视图 · 从不存储（向量是缓存）")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>所有读取图的入口")
     RG("程序<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -57,12 +54,7 @@ flowchart TB
     C -.-> PN
     C -.-> PD
     C -.-> Q
-    Q --> QE
-    Q --> QS
-    Q --> QF
-    QE --> RQ
-    QS --> RQ
-    QF --> RQ
+    Q --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -79,7 +71,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
+    class PO,PR,PN,PV,PD,Q proj
 ```
 
 按从上到下阅读：核心是一份文档，存储是选定的一个目的地，投影是按需生成的

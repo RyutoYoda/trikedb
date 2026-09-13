@@ -31,10 +31,7 @@ flowchart TB
     PN("networkx<br/>グラフアルゴリズム")
     PV("SQL view<br/>warehouse rowの上")
     PD("エンジンなし<br/>JSON-LD · ページ内の文書")
-    Q("クエリ・検索<br/>導出されるview · 保存しない")
-    QE("厳密検索<br/>SPARQL · pattern query")
-    QS("意味検索<br/>クエリ時に遅延embedding<br/>文単位でcache")
-    QF("find<br/>意味でrecall → 構造でfilter")
+    Q("<b>クエリ・検索</b><br/>ユーザーAPI: sparql · query/match · find · search<br/>内部: Oxigraph / rdflib · 遅延embedding<br/>導出されるview · 保存しない（vectorはcache）")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>グラフを読むすべての入口")
     RG("プログラム<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -57,12 +54,7 @@ flowchart TB
     C -.-> PN
     C -.-> PD
     C -.-> Q
-    Q --> QE
-    Q --> QS
-    Q --> QF
-    QE --> RQ
-    QS --> RQ
-    QF --> RQ
+    Q --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -79,7 +71,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
+    class PO,PR,PN,PV,PD,Q proj
 ```
 
 図は上から下へ読みます。コアは1つの文書、ストレージは選んだ保存先1つ、

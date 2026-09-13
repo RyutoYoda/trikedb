@@ -31,10 +31,7 @@ flowchart TB
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
     PD("no engine at all<br/>JSON-LD · the document inside the page")
-    Q("query & retrieval<br/>derived, never stored")
-    QE("exact<br/>SPARQL · pattern query")
-    QS("semantic<br/>search: lazy embeddings<br/>cached per sentence")
-    QF("find<br/>semantic recall → hard filter")
+    Q("<b>query & retrieval</b><br/>user API: sparql · query/match · find · search<br/>inside: Oxigraph / rdflib · lazy embeddings<br/>derived, never stored; vectors are a cache")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -57,12 +54,7 @@ flowchart TB
     C -.-> PN
     C -.-> PD
     C -.-> Q
-    Q --> QE
-    Q --> QS
-    Q --> QF
-    QE --> RQ
-    QS --> RQ
-    QF --> RQ
+    Q --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -79,7 +71,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
+    class PO,PR,PN,PV,PD,Q proj
 ```
 
 Read the diagram top to bottom: the core is one document, storage is one
