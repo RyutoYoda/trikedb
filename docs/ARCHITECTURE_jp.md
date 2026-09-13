@@ -18,7 +18,7 @@ flowchart TB
     WC("アプリ<br/>REST · Python")
     WI("一括import<br/>CSV · Markdown · YAML")
     WP("プログラム<br/>SPARQL UPDATE")
-    G{{"述語ガード — 対応する書き込みはすべてここを通る<br/>未宣言の述語は入らない"}}
+    G{{"宣言・書き込みガード<br/>語彙 · domain → range · requires · by<br/>型変更は既存edgeを再検査 · batchは原子的に確定"}}
     C("<b>1つの文書</b><br/>triples · nodes · 述語の宣言")
     subgraph pick["グラフはこのうち1つに存在 — 2つには存在しない"]
         direction LR
@@ -31,6 +31,10 @@ flowchart TB
     PN("networkx<br/>グラフアルゴリズム")
     PV("SQL view<br/>warehouse rowの上")
     PD("エンジンなし<br/>JSON-LD · ページ内の文書")
+    Q("クエリ・検索<br/>導出されるview · 保存しない")
+    QE("厳密検索<br/>SPARQL · pattern query")
+    QS("意味検索<br/>クエリ時に遅延embedding<br/>文単位でcache")
+    QF("find<br/>意味でrecall → 構造でfilter")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>グラフを読むすべての入口")
     RG("プログラム<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -52,6 +56,13 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
+    C -.-> Q
+    Q --> QE
+    Q --> QS
+    Q --> QF
+    QE --> RQ
+    QS --> RQ
+    QF --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -68,7 +79,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD proj
+    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
 ```
 
 図は上から下へ読みます。コアは1つの文書、ストレージは選んだ保存先1つ、
@@ -105,6 +116,8 @@ import は上の層から厳密に下の層へ、一方向だけ。関数内 imp
 ## クエリと対応範囲
 
 SELECT/ASKは通常Oxigraph、CONSTRUCT/DESCRIBE・fallback・更新・OWL/SHACLはrdflibです。pattern queryは独自のマッチングです。SPARQLの曖昧な先頭はパーサーで判定し、PREFIXやコメントにも対応します。
+
+`search()`は意味検索の投影です。現在のtripleとnode属性を文にし、クエリされたときだけembeddingを遅延生成し、グラフ文書の外に文単位の交換可能なcacheとして保持します。`find()`は広い意味検索のrecallと厳密な構造filterを組み合わせます。どちらも保存された事実を変更しません。
 
 更新は単一default graphのINSERT/DELETEとCLEAR/DROP DEFAULTに対応します。named graph更新、WITH/USING、LOAD/CREATE/COPY/MOVE/ADDは保存前に拒否します。合成メタデータの削除には属性APIを使ってください。SPARQLの戻り値は文字列で、型付きresults protocolではありません。型付きRDFはto_rdflib/to_jsonldで取得できます。
 

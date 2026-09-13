@@ -18,7 +18,7 @@ flowchart TB
     WC("app<br/>REST · Python")
     WI("bulk import<br/>CSV · Markdown · YAML")
     WP("program<br/>SPARQL UPDATE")
-    G{{"the predicate guard — every supported write passes here<br/>an undeclared predicate never lands"}}
+    G{{"declaration & write guard<br/>vocabulary · domain → range · requires · by<br/>type changes re-check edges · batch settles atomically"}}
     C("<b>ONE document</b><br/>triples · nodes · predicate declarations")
     subgraph pick["a graph lives in ONE of these — never in two"]
         direction LR
@@ -31,6 +31,10 @@ flowchart TB
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
     PD("no engine at all<br/>JSON-LD · the document inside the page")
+    Q("query & retrieval<br/>derived, never stored")
+    QE("exact<br/>SPARQL · pattern query")
+    QS("semantic<br/>search: lazy embeddings<br/>cached per sentence")
+    QF("find<br/>semantic recall → hard filter")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -52,6 +56,13 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
+    C -.-> Q
+    Q --> QE
+    Q --> QS
+    Q --> QF
+    QE --> RQ
+    QS --> RQ
+    QF --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -68,7 +79,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD proj
+    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
 ```
 
 Read the diagram top to bottom: the core is one document, storage is one
@@ -106,6 +117,12 @@ Imports run one way only, from a higher layer to a strictly lower one. An import
 ## Query execution and boundaries
 
 Oxigraph normally answers SELECT and ASK. rdflib handles CONSTRUCT/DESCRIBE and fallback reads, SPARQL updates, OWL and SHACL. Pattern queries use the core's own matching code. Prefixes and comments are parsed when dispatching ambiguous SPARQL text.
+
+`search()` is a semantic retrieval projection: it turns the current triples and
+node properties into sentences, embeds only when a query asks for it, and keeps
+vectors as a replaceable per-sentence cache outside the graph document.
+`find()` composes that broad semantic recall with an exact structured filter;
+neither changes the stored facts.
 
 Updates support INSERT/DELETE and CLEAR/DROP DEFAULT on one default graph. Named-graph writes, WITH/USING datasets, LOAD, CREATE, COPY, MOVE and ADD are rejected before persistence. Deleting projected metadata is rejected; use property APIs instead. SPARQL response rows expose lexical strings, not a full typed SPARQL-results protocol. Use `to_rdflib()`/`to_jsonld()` for typed RDF export.
 

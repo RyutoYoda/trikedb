@@ -18,7 +18,7 @@ flowchart TB
     WC("应用<br/>REST · Python")
     WI("批量导入<br/>CSV · Markdown · YAML")
     WP("程序<br/>SPARQL UPDATE")
-    G{{"谓词守卫 — 所有受支持的写入都经过这里<br/>未声明的谓词不会落地"}}
+    G{{"声明与写入守卫<br/>词汇 · domain → range · requires · by<br/>类型变化重新检查边 · batch原子地完成"}}
     C("<b>一份文档</b><br/>triples · nodes · 谓词声明")
     subgraph pick["一个图只存在于其中一个 — 绝不同时存在"]
         direction LR
@@ -31,6 +31,10 @@ flowchart TB
     PN("networkx<br/>图算法")
     PV("SQL views<br/>warehouse row之上")
     PD("没有引擎<br/>JSON-LD · 页面内的文档")
+    Q("查询与检索<br/>派生视图 · 从不存储")
+    QE("精确查询<br/>SPARQL · pattern query")
+    QS("语义检索<br/>查询时延迟生成embedding<br/>按句缓存")
+    QF("find<br/>语义召回 → 硬结构过滤")
     RQ("agent MCP · CLI · REST · Python · HTML<br/>所有读取图的入口")
     RG("程序<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
@@ -52,6 +56,13 @@ flowchart TB
     C -.-> PR
     C -.-> PN
     C -.-> PD
+    C -.-> Q
+    Q --> QE
+    Q --> QS
+    Q --> QF
+    QE --> RQ
+    QS --> RQ
+    QF --> RQ
     PO --> RQ
     PR --> RQ
     PN --> RG
@@ -68,7 +79,7 @@ flowchart TB
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
     class SF,SO,SW store
-    class PO,PR,PN,PV,PD proj
+    class PO,PR,PN,PV,PD,Q,QE,QS,QF proj
 ```
 
 按从上到下阅读：核心是一份文档，存储是选定的一个目的地，投影是按需生成的
@@ -104,6 +115,8 @@ import 只能从高层指向严格更低的层，单向。函数内部的 import
 ## 查询与边界
 
 SELECT/ASK通常由Oxigraph执行；CONSTRUCT/DESCRIBE、fallback、更新、OWL/SHACL由rdflib执行。pattern query使用核心匹配代码。存在PREFIX或注释的模糊SPARQL开头通过解析器分派。
+
+`search()`是语义检索投影：它把当前triple和节点属性转换为句子，只有查询时才延迟生成embedding，并把向量作为图文档之外、可替换的逐句缓存保存。`find()`把宽泛的语义召回与精确的结构过滤组合起来；两者都不会修改已存储的事实。
 
 更新支持单一default graph的INSERT/DELETE及CLEAR/DROP DEFAULT。named graph、WITH/USING、LOAD/CREATE/COPY/MOVE/ADD在持久化前拒绝。合成元数据通过属性API修改。SPARQL返回词法字符串，不是完整的带类型results protocol；类型信息请使用to_rdflib/to_jsonld。
 
