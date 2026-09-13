@@ -6,15 +6,75 @@
 
 ```mermaid
 flowchart TB
-  A[Python / CLI / MCP / REST] --> C[TrikeDB facts and metadata]
-  C --> S[storage: document and version]
-  S --> L[Local atomic replace]
-  S --> R[S3 conditional PUT / SQL CAS]
-  C --> RDF[RDF projection]
-  RDF --> O[Oxigraph SELECT / ASK]
-  RDF --> D[rdflib / JSON-LD / OWL / SHACL]
-  C --> P[NetworkX / HTML]
+    LA["<b>層1</b><br/>インターフェース — 書き込み"]
+    LG[" "]
+    LB["<b>層2</b><br/>コア — ちょうど1つ"]
+    LC["<b>層3</b><br/>ストレージ — 1つを選ぶ"]
+    LD["<b>層4</b><br/>投影 — 保存しない"]
+    LE["<b>層1</b><br/>インターフェース — 読み取り"]
+    LA ~~~ LG ~~~ LB ~~~ LC ~~~ LD ~~~ LE
+
+    WA("エージェント<br/>MCP")
+    WC("アプリ<br/>REST · Python")
+    WI("一括import<br/>CSV · Markdown · YAML")
+    WP("プログラム<br/>SPARQL UPDATE")
+    G{{"述語ガード — 対応する書き込みはすべてここを通る<br/>未宣言の述語は入らない"}}
+    C("<b>1つの文書</b><br/>triples · nodes · 述語の宣言")
+    subgraph pick["グラフはこのうち1つに存在 — 2つには存在しない"]
+        direction LR
+        SF("ファイル<br/>graph.yaml · graph.json")
+        SO("オブジェクト<br/>s3:// · gs:// · az://")
+        SW("テーブル行<br/>snowflake:// · bigquery://")
+    end
+    PO("oxigraph<br/>すべてのread query")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · export")
+    PN("networkx<br/>グラフアルゴリズム")
+    PV("SQL view<br/>warehouse rowの上")
+    PD("エンジンなし<br/>JSON-LD · ページ内の文書")
+    RQ("agent MCP · CLI · REST · Python · HTML<br/>グラフを読むすべての入口")
+    RG("プログラム<br/>Python")
+    RS("SQL<br/>BI · dbt · notebook")
+
+    WA --> G
+    WC --> G
+    WI --> G
+    WP --> G
+    G --> C
+    C <--> SF
+    C <--> SO
+    C <--> SW
+    SF ~~~ PO
+    SF ~~~ PR
+    SO ~~~ PN
+    SW -.-> PV
+    SW ~~~ PD
+    C -.-> PO
+    C -.-> PR
+    C -.-> PN
+    C -.-> PD
+    PO --> RQ
+    PR --> RQ
+    PN --> RG
+    PV --> RS
+    PD --> RQ
+
+    style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    classDef lbl fill:none,stroke:none,color:#4b5563
+    classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
+    classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
+    classDef store fill:#e3f3f4,stroke:#2b8a9c,color:#0c454f,rx:10,ry:10
+    classDef proj fill:#efe9fb,stroke:#8055e6,color:#3a2568,rx:10,ry:10
+    class LA,LG,LB,LC,LD,LE lbl
+    class WA,WC,WI,WP,RQ,RG,RS iface
+    class C,G core
+    class SF,SO,SW store
+    class PO,PR,PN,PV,PD proj
 ```
+
+図は上から下へ読みます。コアは1つの文書、ストレージは選んだ保存先1つ、
+投影は追加コピーではなく導出されたviewです。実際に文書を運ぶ矢印は実線、
+必要なときだけ作るものは点線です。ガードは対応するAPI書き込みを守りますが、
+手編集ファイルとrawな`load`/`save`は文書の形だけを検証します。
 
 ## データと投影
 

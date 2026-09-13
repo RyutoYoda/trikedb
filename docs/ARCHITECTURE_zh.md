@@ -6,15 +6,74 @@
 
 ```mermaid
 flowchart TB
-  A[Python / CLI / MCP / REST] --> C[TrikeDB facts and metadata]
-  C --> S[storage: document and version]
-  S --> L[Local atomic replace]
-  S --> R[S3 conditional PUT / SQL CAS]
-  C --> RDF[RDF projection]
-  RDF --> O[Oxigraph SELECT / ASK]
-  RDF --> D[rdflib / JSON-LD / OWL / SHACL]
-  C --> P[NetworkX / HTML]
+    LA["<b>层1</b><br/>接口 — 写入"]
+    LG[" "]
+    LB["<b>层2</b><br/>核心 — 恰好一个"]
+    LC["<b>层3</b><br/>存储 — 任选一个"]
+    LD["<b>层4</b><br/>投影 — 从不存储"]
+    LE["<b>层1</b><br/>接口 — 读取"]
+    LA ~~~ LG ~~~ LB ~~~ LC ~~~ LD ~~~ LE
+
+    WA("agent<br/>MCP")
+    WC("应用<br/>REST · Python")
+    WI("批量导入<br/>CSV · Markdown · YAML")
+    WP("程序<br/>SPARQL UPDATE")
+    G{{"谓词守卫 — 所有受支持的写入都经过这里<br/>未声明的谓词不会落地"}}
+    C("<b>一份文档</b><br/>triples · nodes · 谓词声明")
+    subgraph pick["一个图只存在于其中一个 — 绝不同时存在"]
+        direction LR
+        SF("文件<br/>graph.yaml · graph.json")
+        SO("对象<br/>s3:// · gs:// · az://")
+        SW("表行<br/>snowflake:// · bigquery://")
+    end
+    PO("oxigraph<br/>回答所有读取查询")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 导出")
+    PN("networkx<br/>图算法")
+    PV("SQL views<br/>warehouse row之上")
+    PD("没有引擎<br/>JSON-LD · 页面内的文档")
+    RQ("agent MCP · CLI · REST · Python · HTML<br/>所有读取图的入口")
+    RG("程序<br/>Python")
+    RS("SQL<br/>BI · dbt · notebook")
+
+    WA --> G
+    WC --> G
+    WI --> G
+    WP --> G
+    G --> C
+    C <--> SF
+    C <--> SO
+    C <--> SW
+    SF ~~~ PO
+    SF ~~~ PR
+    SO ~~~ PN
+    SW -.-> PV
+    SW ~~~ PD
+    C -.-> PO
+    C -.-> PR
+    C -.-> PN
+    C -.-> PD
+    PO --> RQ
+    PR --> RQ
+    PN --> RG
+    PV --> RS
+    PD --> RQ
+
+    style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    classDef lbl fill:none,stroke:none,color:#4b5563
+    classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
+    classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
+    classDef store fill:#e3f3f4,stroke:#2b8a9c,color:#0c454f,rx:10,ry:10
+    classDef proj fill:#efe9fb,stroke:#8055e6,color:#3a2568,rx:10,ry:10
+    class LA,LG,LB,LC,LD,LE lbl
+    class WA,WC,WI,WP,RQ,RG,RS iface
+    class C,G core
+    class SF,SO,SW store
+    class PO,PR,PN,PV,PD proj
 ```
+
+按从上到下阅读：核心是一份文档，存储是选定的一个目的地，投影是按需生成的
+视图，而不是额外副本。实线表示文档移动或持久化，虚线表示按需生成。守卫保护
+受支持的 API 写入；手工编辑的文件以及原始`load`/`save`只进行文档形状验证。
 
 ## 数据与投影
 

@@ -6,15 +6,76 @@ One graph is one YAML or JSON document. Storage owns bytes and version tokens; t
 
 ```mermaid
 flowchart TB
-  A[Python / CLI / MCP / REST] --> C[TrikeDB facts and metadata]
-  C --> S[storage: document and version]
-  S --> L[Local atomic replace]
-  S --> R[S3 conditional PUT / SQL CAS]
-  C --> RDF[RDF projection]
-  RDF --> O[Oxigraph SELECT / ASK]
-  RDF --> D[rdflib / JSON-LD / OWL / SHACL]
-  C --> P[NetworkX / HTML]
+    LA["<b>LAYER 1</b><br/>Interface — writing"]
+    LG[" "]
+    LB["<b>LAYER 2</b><br/>Core — exactly one"]
+    LC["<b>LAYER 3</b><br/>Storage — pick exactly one"]
+    LD["<b>LAYER 4</b><br/>Projection — never stored"]
+    LE["<b>LAYER 1</b><br/>Interface — reading"]
+    LA ~~~ LG ~~~ LB ~~~ LC ~~~ LD ~~~ LE
+
+    WA("agent<br/>MCP")
+    WC("app<br/>REST · Python")
+    WI("bulk import<br/>CSV · Markdown · YAML")
+    WP("program<br/>SPARQL UPDATE")
+    G{{"the predicate guard — every supported write passes here<br/>an undeclared predicate never lands"}}
+    C("<b>ONE document</b><br/>triples · nodes · predicate declarations")
+    subgraph pick["a graph lives in ONE of these — never in two"]
+        direction LR
+        SF("file<br/>graph.yaml · graph.json")
+        SO("object<br/>s3:// · gs:// · az://")
+        SW("table row<br/>snowflake:// · bigquery://")
+    end
+    PO("oxigraph<br/>answers every read query")
+    PR("rdflib.Graph<br/>updates · owlrl · pyshacl · exports")
+    PN("networkx<br/>graph algorithms")
+    PV("SQL views<br/>over the warehouse row")
+    PD("no engine at all<br/>JSON-LD · the document inside the page")
+    RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
+    RG("program<br/>Python")
+    RS("SQL<br/>BI · dbt · notebook")
+
+    WA --> G
+    WC --> G
+    WI --> G
+    WP --> G
+    G --> C
+    C <--> SF
+    C <--> SO
+    C <--> SW
+    SF ~~~ PO
+    SF ~~~ PR
+    SO ~~~ PN
+    SW -.-> PV
+    SW ~~~ PD
+    C -.-> PO
+    C -.-> PR
+    C -.-> PN
+    C -.-> PD
+    PO --> RQ
+    PR --> RQ
+    PN --> RG
+    PV --> RS
+    PD --> RQ
+
+    style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
+    classDef lbl fill:none,stroke:none,color:#4b5563
+    classDef iface fill:#eef1f6,stroke:#8d9aad,color:#1f2937,rx:10,ry:10
+    classDef core fill:#fbf1d8,stroke:#b07d17,color:#5a4409,rx:10,ry:10
+    classDef store fill:#e3f3f4,stroke:#2b8a9c,color:#0c454f,rx:10,ry:10
+    classDef proj fill:#efe9fb,stroke:#8055e6,color:#3a2568,rx:10,ry:10
+    class LA,LG,LB,LC,LD,LE lbl
+    class WA,WC,WI,WP,RQ,RG,RS iface
+    class C,G core
+    class SF,SO,SW store
+    class PO,PR,PN,PV,PD proj
 ```
+
+Read the diagram top to bottom: the core is one document, storage is one
+chosen destination, and projections are derived views rather than additional
+copies. Solid arrows move or persist the document; dotted arrows are built on
+demand. The guard protects supported API writes; hand-edited files and raw
+`load`/`save` remain document-shape validation paths.
 
 ## Data and projections
 
