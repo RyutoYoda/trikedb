@@ -22,6 +22,99 @@ from .model import (RULE_KEYS, OntologyError, Triple, _is_pattern, _term,
                     _time_key, _unify)
 
 
+#: The node property that ties an actor in the graph to an authenticated
+#: identity. Curated, never written through the authenticated write path —
+#: see check_identity_prop.
+IDENTITY_PROP = "subject"
+
+
+def actor_of(db, identity: str) -> str:
+    """Which node in the graph is this authenticated identity?
+
+    ``by`` is checked against the actor's node *type*, so an identity has
+    to arrive as a node name before the declaration can mean anything. An
+    IdP hands out ``auth0|ryuto``; a graph declaring ``by: approver``
+    would refuse every token ever minted, because no node by that name has
+    a type. A node carrying ``subject: <identity>`` is the mapping, and it
+    lives in the graph because that is where everything else about an
+    actor already lives — its type, its team, what it has signed before.
+
+    An identity nobody has mapped stays itself, so a graph that declares
+    no ``by`` anywhere still gets the caller stamped onto its events with
+    no setup at all. Two nodes claiming one identity is refused rather
+    than resolved: picking either would decide, silently and by dict
+    order, who an action is attributed to.
+    """
+    named = sorted(
+        name for name, props in db.nodes_meta.items()
+        if str((props or {}).get(IDENTITY_PROP) or "") == identity
+    )
+    if len(named) > 1:
+        raise OntologyError(
+            f"identity {identity!r} is claimed by {len(named)} nodes "
+            f"({', '.join(repr(n) for n in named)}) — one identity is one "
+            f"actor, so remove the {IDENTITY_PROP} property from all but one"
+        )
+    return named[0] if named else identity
+
+
+def signed_by(db, p: str, attrs: dict, *, stamp: bool = False) -> dict:
+    """Sign this write as whoever is actually calling.
+
+    ``by`` says who may perform an action, and until the caller's identity
+    reaches it the declaration guards nothing over a network: an agent
+    holding any valid token could name anyone as the actor. Where the
+    transport knows who is calling — OAuth on ``trikedb serve`` — that
+    name is no longer the caller's to choose.
+
+    ``stamp`` is what an action gets: ``act()`` is a thing being done, so
+    it is signed whether or not anyone declared it has to be. A plain
+    ``add()`` is a fact rather than a deed and takes no signature it was
+    not asked for — unless its predicate declares ``by``, in which case
+    the signature is required anyway and filling it in beats making every
+    caller repeat their own name back.
+
+    Nothing happens at all when no identity is bound (stdio, a static
+    token, library use): the actor is then whatever the caller says, which
+    is the behaviour every existing graph was written with.
+    """
+    actor = getattr(db, "_actor", None)
+    if not actor:
+        return attrs
+    who = str(attrs.get("by") or "")
+    if who and who != actor:
+        raise OntologyError(
+            f"by={who!r} is not who is calling — this request is "
+            f"authenticated as {actor!r}, and an action is signed by "
+            f"whoever ran it. Omit by= and it is stamped for you"
+        )
+    if not who and (stamp or (db.predicate_rules.get(p) or {}).get("by")):
+        return {**attrs, "by": actor}
+    return attrs
+
+
+def check_identity_prop(db, name: str, props: dict) -> None:
+    """Refuse to let an authenticated caller rewrite the identity map.
+
+    ``subject`` is what turns a token into an actor, so writing it is
+    handing somebody a name in the graph — and an agent able to do that
+    could hand itself whichever name ``by`` declares, which is the whole
+    guarantee back out through the door it came in.
+
+    So this one property is curation, not accumulation: it belongs in the
+    reviewed file next to the types it has to agree with. Everything else
+    an agent may still attach freely.
+    """
+    actor = getattr(db, "_actor", None)
+    if actor and IDENTITY_PROP in props:
+        raise OntologyError(
+            f"{IDENTITY_PROP!r} maps an authenticated identity onto "
+            f"{name!r}, so it cannot be written by a request that is "
+            f"itself authenticated (as {actor!r}) — an actor that could "
+            f"name itself is not an actor. Curate it in the graph file"
+        )
+
+
 def declare_predicate(db, name: str, value: Any, *,
                       keep_existing: bool = False) -> None:
     """Record one predicate declaration: a description, or a shape.

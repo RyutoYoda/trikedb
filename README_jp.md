@@ -536,6 +536,20 @@ trikedb serve graph.yaml --public-url https://kg.example.com \
 
 ディスカバリは `/.well-known/oauth-protected-resource/mcp` で配られ、未認証のリクエストにはログインフローを始める RFC 9728 のチャレンジが返ります。
 
+そして誰が呼んでいるかを trikedb が知ると、身元は「門」だけのものではなくなります。`/mcp` 経由で書かれたアクションは**トークンによって署名されます** — `by` には呼び出した本人の身元が入り、他人を名乗る `by` は記録されずに拒否されます。これが `APPROVED_BY: {by: approver}` のような宣言を、エージェントが口先で回避できないものに変えます。bot のトークンは、どれだけ丁寧に頼んでも承認を書けません。
+
+身元とノードは `subject` プロパティで結びます:
+
+```yaml
+nodes:
+  Rune Halvorsen: {type: approver, subject: "auth0|ryuto"}
+  crm-sync-job:   {type: bot,      subject: "auth0|bot"}
+```
+
+`sub` が `auth0|ryuto` のトークンは、これで `by: Rune Halvorsen` を刻みます — `by: approver` が照合されるのはこの名前です。不透明な `sub` より読める名前で署名したければ `--actor-claim email` を渡してください。対応付けていない身元はそのまま刻まれるので、`subject` がどこにも無いグラフでも署名付きのイベントは残ります。ただし署名は、あなたの IdP が人を呼ぶときの名前になります。
+
+対応表そのものはエージェントには書けません。認証されたリクエストは `subject` プロパティを一切書けない — 自分に名前を付けられる行為者は行為者ではないからです。オントロジーの他の部分と同じく、ファイルでキュレーションしてください。静的な `--token` は誰も名指ししませんし、stdio やライブラリ利用も同じなので、そちらでの `by` の挙動は今までと完全に同じです。
+
 ## ファイル形式
 
 trikedb のファイルは、トップレベルのキーが3つある普通の YAML です（必須なのは `triples` だけ）:

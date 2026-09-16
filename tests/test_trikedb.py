@@ -2191,6 +2191,257 @@ def test_serve_stateless_serves_requests_with_no_session(tmp_path):
         assert "sparql" in r.text and "add_triple" in r.text
 
 
+# ------------------------------------------------- who an action is signed by
+#
+# `by` says who may perform an action. Over a network that guarantee is only
+# worth what binds it to the caller: a declaration checked against a name the
+# caller typed is checked against nothing. These drive the real stack — HTTP,
+# a genuinely signed JWT, the MCP transport, the tool functions — because the
+# hole being closed lived in the gap between the token and the write, and a
+# test that calls db.act() directly cannot see that gap at all.
+
+
+def _mcp(client, tool, args, token, host="kg.example.com"):
+    """Call one MCP tool over Streamable HTTP. Returns (is_error, text)."""
+    import json as _json
+
+    r = client.post(
+        "/mcp",
+        headers={"Authorization": f"Bearer {token}", "Host": host,
+                 "Accept": "application/json, text/event-stream",
+                 "Content-Type": "application/json"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+              "params": {"name": tool, "arguments": args}},
+    )
+    assert r.status_code == 200, r.text
+    body = _json.loads(r.text.split("data: ", 1)[1])
+    result = body["result"]
+    return bool(result.get("isError")), result["content"][0]["text"]
+
+
+@pytest.fixture
+def signed_graph(tmp_path):
+    """A graph that declares who may do what, and who its actors are.
+
+    `subject` is the mapping from an authenticated identity to a node,
+    curated in the file the way a node's type is — which is what lets a
+    declaration about `approver` mean anything about a token whose `sub`
+    is `auth0|ryuto`.
+    """
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g, autosave=True)
+    db.set_node("Rune Halvorsen", type="approver", subject="auth0|ryuto")
+    db.set_node("crm-sync-job", type="bot", subject="auth0|bot")
+    db.set_node("PC-0007", type="price-change")
+    db.set_node("Copper Kettle", type="product")
+    db.declare_link("APPROVED_BY", domain="price-change", range="approver",
+                    by="approver")
+    db.declare_link("CHANGED", domain="price-change", range="product")
+    return g
+
+
+def _served(path, **kw):
+    from trikedb.serve import build_app
+
+    return build_app(str(path), oauth_issuer=ISSUER, stateless=True,
+                     public_url="https://kg.example.com", **kw)
+
+
+def test_action_is_signed_by_the_token_not_by_the_caller(signed_graph, idp):
+    """An authenticated write wears the identity that made it.
+
+    Two halves. The actor is *filled in* — an agent never has to name
+    itself, and the name it gets is the graph's node rather than the
+    IdP's opaque `sub`. And it cannot be overridden: `by=` naming
+    somebody else is refused, which is the whole point, because the
+    declaration it would otherwise satisfy is about accountability.
+    """
+    pytest.importorskip("starlette")
+    import json
+
+    from starlette.testclient import TestClient
+
+    with TestClient(_served(signed_graph)) as client:
+        bad, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle",
+            "by": "Someone Else"}, idp())
+        assert bad and "is not who is calling" in text
+        assert "'Rune Halvorsen'" in text     # the error says who they are
+
+        ok, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle",
+            "state": "applied"}, idp())
+        assert not ok
+        assert json.loads(text)["by"] == "Rune Halvorsen"
+
+    # …and it is in the file, not only in the reply.
+    event = [t for t in TrikeDB(signed_graph) if t.p == "CHANGED"]
+    assert [t.attrs["by"] for t in event] == ["Rune Halvorsen"]
+
+
+def test_declared_by_is_enforced_against_whoever_is_actually_calling(
+        signed_graph, idp):
+    """The guarantee, end to end: a bot cannot approve a price change.
+
+    `APPROVED_BY` is declared to be performed by an `approver`. Nobody
+    in this test names an actor — the refusal comes from the token, and
+    so does the acceptance. Before the identity was bound, both calls
+    below succeeded with `by` set to whatever the caller fancied.
+    """
+    pytest.importorskip("starlette")
+    import json
+
+    from starlette.testclient import TestClient
+
+    with TestClient(_served(signed_graph)) as client:
+        bad, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "APPROVED_BY", "o": "Rune Halvorsen"},
+            idp(sub="auth0|bot"))
+        assert bad
+        assert "declared to be performed by approver" in text
+        assert "'crm-sync-job', which is a 'bot'" in text
+
+        ok, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "APPROVED_BY", "o": "Rune Halvorsen"}, idp())
+        assert not ok and json.loads(text)["by"] == "Rune Halvorsen"
+
+    approvals = list(TrikeDB(signed_graph).triples(p="APPROVED_BY"))
+    assert [t.attrs["by"] for t in approvals] == ["Rune Halvorsen"]
+
+
+def test_forged_actor_is_refused_on_every_write_path(signed_graph, idp, tmp_path):
+    """`act` is not the only door: add_triple and import take attrs too.
+
+    A guard on one tool is not a guard. `by` arrives as a plain edge
+    attribute through add_triple and as a CSV column through import, and
+    either would hand the name straight back to the caller.
+    """
+    pytest.importorskip("starlette")
+    import json
+
+    from starlette.testclient import TestClient
+
+    csv = tmp_path / "rows.csv"
+    csv.write_text("s,p,o,by\nPC-0007,CHANGED,Copper Kettle,Nobody\n")
+
+    with TestClient(_served(signed_graph)) as client:
+        bad, text = _mcp(client, "add_triple", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle",
+            "attrs": {"by": "Nobody"}}, idp())
+        assert bad and "is not who is calling" in text
+
+        bad, text = _mcp(client, "import_source",
+                         {"file_path": str(csv)}, idp())
+        assert bad and "is not who is calling" in text
+
+        # A fact is not a deed: an ordinary add takes no signature it was
+        # not asked for, or every plain triple in the graph grows a `by`.
+        ok, text = _mcp(client, "add_triple", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle"}, idp())
+        assert not ok and "by" not in json.loads(text)
+
+
+def test_identity_map_is_not_writable_by_an_authenticated_caller(
+        signed_graph, idp):
+    """An actor that can name itself is not an actor.
+
+    `subject` is what turns a token into a node, so an agent able to
+    write it could grant itself whichever name `by` declares — the
+    guarantee leaving by the door it came in. It stays curation.
+    """
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    with TestClient(_served(signed_graph)) as client:
+        bad, text = _mcp(client, "set_node", {
+            "name": "Mallory",
+            "props": {"type": "approver", "subject": "auth0|ryuto"}}, idp())
+        assert bad and "maps an authenticated identity" in text
+        # Anything else about a node an agent may still attach freely.
+        ok, _ = _mcp(client, "set_node",
+                     {"name": "Mallory", "props": {"type": "approver"}}, idp())
+        assert not ok
+
+    assert "subject" not in TrikeDB(signed_graph).node("Mallory")
+
+
+def test_actor_claim_picks_the_identity_and_fails_loudly_when_absent(
+        signed_graph, idp):
+    """`sub` is an opaque IdP string; some graphs are keyed on the person.
+
+    And a configured claim the token does not carry raises rather than
+    quietly falling back to `sub` — a fallback would sign actions with
+    a different kind of name than the graph was set up for, and only
+    for the tokens that happen to be thin.
+    """
+    pytest.importorskip("starlette")
+    import json
+
+    from starlette.testclient import TestClient
+
+    with TestClient(_served(signed_graph, actor_claim="email")) as client:
+        ok, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle"},
+            idp(email="ryuto@example.com"))
+        assert not ok and json.loads(text)["by"] == "ryuto@example.com"
+
+        bad, text = _mcp(client, "act", {
+            "s": "PC-0007", "p": "CHANGED", "o": "Copper Kettle"}, idp())
+        assert bad and "carries no 'email' claim" in text
+
+
+def test_transports_with_no_user_behind_them_sign_nothing(tmp_path):
+    """stdio, a static token and library use are unchanged.
+
+    A shared secret names nobody and the OS already authenticated stdio,
+    so there is no identity to bind and inventing one would put a wrong
+    name on every event. This is the regression guard for every graph
+    written before any of this existed.
+    """
+    pytest.importorskip("mcp")
+    import asyncio
+    import json
+
+    from trikedb.mcp_server import build_server
+
+    g = tmp_path / "g.yaml"
+    db = TrikeDB(g, autosave=True)
+    db.set_node("PC-0007", type="price-change")
+    db.set_node("Rune Halvorsen", type="approver")
+    db.declare_link("APPROVED_BY", domain="price-change", range="approver",
+                    by="approver")
+    server = build_server(g)
+
+    async def call(name, args):
+        content = await server.call_tool(name, args)
+        blocks = content[0] if isinstance(content, tuple) else content
+        return json.loads(blocks[0].text)
+
+    # Recording what a third party did is exactly what stdio is for.
+    got = asyncio.run(call("act", {"s": "PC-0007", "p": "APPROVED_BY",
+                                   "o": "Rune Halvorsen",
+                                   "by": "Rune Halvorsen"}))
+    assert got["by"] == "Rune Halvorsen"
+    # And the identity map is writable here, because this is where it is curated.
+    asyncio.run(call("set_node", {"name": "Rune Halvorsen",
+                                  "props": {"subject": "auth0|ryuto"}}))
+    assert TrikeDB(g).node("Rune Halvorsen")["subject"] == "auth0|ryuto"
+
+
+def test_one_identity_cannot_be_claimed_by_two_nodes(tmp_path):
+    """Resolving it either way would decide by dict order who acted."""
+    from trikedb.rules import actor_of
+
+    db = TrikeDB(tmp_path / "g.yaml", autosave=False)
+    db.set_node("Rune Halvorsen", type="approver", subject="auth0|ryuto")
+    assert actor_of(db, "auth0|ryuto") == "Rune Halvorsen"
+    assert actor_of(db, "auth0|nobody") == "auth0|nobody"   # unmapped stays itself
+
+    db.set_node("R. Halvorsen", type="approver", subject="auth0|ryuto")
+    with pytest.raises(OntologyError, match="claimed by 2 nodes"):
+        actor_of(db, "auth0|ryuto")
+
+
 def test_conditional_write_refuses_to_clobber(tmp_path, monkeypatch):
     """A save must not overwrite bytes it never read.
 

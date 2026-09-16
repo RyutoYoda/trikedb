@@ -3,6 +3,39 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.40.0
+
+`by` said who did something, and over HTTP it was whatever the caller
+typed. A declaration that only an approver may approve was a convention
+an agent could step around by naming an approver.
+
+- **An action written through an authenticated `/mcp` is signed by the
+  token.** `act` stamps `by` with the caller's own identity, and a `by`
+  naming somebody else is refused rather than recorded. `add_triple`
+  stamps it too, but only on a predicate that declares `by` — a fact is
+  not a deed, so a plain triple still grows no `by`. Nothing changes for
+  a static `--token`, for stdio, or for library use: those transports
+  name nobody, and `by` there behaves exactly as it always has.
+- **`subject` is the node property that maps an identity onto an actor.**
+  A token's `sub` is `auth0|ryuto`; a graph knows the same person as
+  `Rune Halvorsen`, whose `type` is what a declared `by` is checked
+  against. Curating `{type: approver, subject: "auth0|ryuto"}` connects
+  the two, so a bot's token cannot write `APPROVED_BY` — not for naming
+  the wrong actor, but for being one. An identity mapped nowhere is
+  stamped verbatim, so a graph with no `subject` in it still gets signed
+  events. Two nodes claiming one `subject` is an error, not a coin flip.
+- **The identity map is not writable by an authenticated caller.**
+  `set_node` with a `subject` property is refused whenever the request
+  itself carries an identity, because an actor that could name itself is
+  not an actor. The guard sits on the wrapper every MCP tool goes
+  through, not on the four write tools, so a tool added later cannot
+  quietly omit it.
+- **`--actor-claim CLAIM` signs with a claim other than `sub`.**
+  `--actor-claim email` writes `by: ryuto@example.com`. A token missing
+  the configured claim is refused with a message naming the claim, rather
+  than falling back to `sub` — a signature that is sometimes a different
+  kind of name is worse than none.
+
 ## 0.39.6
 
 - **The workbench now calls the inventory what it is.** The `ontology · N`

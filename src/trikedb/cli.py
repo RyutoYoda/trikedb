@@ -242,6 +242,12 @@ def main(argv=None) -> int:
         help="scope a token must carry; repeat for several",
     )
     p_serve.add_argument(
+        "--actor-claim", default=None, metavar="CLAIM",
+        help="JWT claim naming who is calling (default: sub). Under OAuth, "
+             "actions written through /mcp are signed with this identity and "
+             "a caller cannot pass somebody else's name as by=",
+    )
+    p_serve.add_argument(
         "--stateless", action="store_true",
         help="serve each MCP request independently, with no session to carry. "
              "Needed for clients that don't echo Mcp-Session-Id back, and for "
@@ -673,6 +679,7 @@ def _cmd_serve(args) -> int:
         oauth_audience=args.oauth_audience,
         required_scopes=args.required_scope,
         stateless=args.stateless,
+        actor_claim=args.actor_claim,
     )
     return 0
 

@@ -534,6 +534,20 @@ trikedb serve graph.yaml --public-url https://kg.example.com \
 
 发现文档已经替你在 `/.well-known/oauth-protected-resource/mcp` 提供好了，而一个未认证的请求会拿到启动登录流程的 RFC 9728 challenge。
 
+而一旦 trikedb 知道是谁在调用，身份就不再只是一道门。通过 `/mcp` 写入的 action 是**由 token 签名的**：`by` 会被填成调用者自己的身份，而一个指名他人的 `by` 会被拒绝，而不是被记下来。这正是把 `APPROVED_BY: {by: approver}` 这样的声明变成 agent 无法用话术绕开的东西 — 一个 bot 的 token 写不了审批，无论它问得多客气。
+
+用 `subject` 属性把身份系到节点上：
+
+```yaml
+nodes:
+  Rune Halvorsen: {type: approver, subject: "auth0|ryuto"}
+  crm-sync-job:   {type: bot,      subject: "auth0|bot"}
+```
+
+`sub` 是 `auth0|ryuto` 的 token 现在会盖上 `by: Rune Halvorsen`，而 `by: approver` 校验的就是这个名字。想用比不透明的 `sub` 更易读的东西签名，就传 `--actor-claim email`。没有映射过的身份会被原样盖上，所以一个哪里都没有 `subject` 的图谱照样能拿到带签名的事件 — 只是签名用的是你的 IdP 对人的称呼。
+
+这张映射表本身不是 agent 可写的：一个已认证的请求根本写不了 `subject` 属性，因为一个能给自己起名字的行为者不是行为者。像本体的其余部分一样，在文件里策管它。静态的 `--token` 谁也没有指名，stdio 和库调用也一样，所以那些路径上 `by` 的行为跟以前完全一致。
+
 ## 文件格式
 
 一个 trikedb 文件就是普通的 YAML，有三个顶层键（只有 `triples` 是必需的）：

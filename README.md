@@ -675,6 +675,35 @@ Discovery is served for you at
 `/.well-known/oauth-protected-resource/mcp`, and an unauthenticated
 request gets the RFC 9728 challenge that starts the login flow.
 
+And once trikedb knows who is calling, identity stops being only a gate.
+An action written through `/mcp` is **signed by the token**: `by` is
+filled in with the caller's own identity, and a `by` naming somebody
+else is refused rather than recorded. Which is what turns a declaration
+like `APPROVED_BY: {by: approver}` into something an agent cannot talk
+its way around — a bot's token cannot write an approval, however nicely
+it asks.
+
+Tie an identity to a node with a `subject` property:
+
+```yaml
+nodes:
+  Rune Halvorsen: {type: approver, subject: "auth0|ryuto"}
+  crm-sync-job:   {type: bot,      subject: "auth0|bot"}
+```
+
+A token whose `sub` is `auth0|ryuto` now stamps `by: Rune Halvorsen`,
+which is the name `by: approver` is checked against. Pass
+`--actor-claim email` to sign with something more legible than an opaque
+`sub`. An identity you haven't mapped is stamped verbatim, so a graph
+with no `subject` anywhere still gets signed events — it just signs them
+with whatever your IdP calls people.
+
+The map itself is not agent-writable: an authenticated request cannot
+write a `subject` property at all, because an actor that can name itself
+is not an actor. Curate it in the file, like the rest of the ontology. A
+static `--token` names nobody, and neither does stdio or library use, so
+`by` on those paths behaves exactly as it always has.
+
 ## The file format
 
 A trikedb file is ordinary YAML with three top-level keys (only `triples` is required):

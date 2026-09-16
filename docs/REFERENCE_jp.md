@@ -267,7 +267,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb check FILE [--html PATH]` | パース確認+HTML鮮度検出(埋め込みハッシュ照合) |
 | `trikedb audit FILE [--json] [--strict]` | 健全性所見。errorでexit 1(`--strict`で警告も) |
 | `trikedb mcp FILE` | stdioのMCPサーバー |
-| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + Streamable HTTPのMCP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--actor-claim] [--stateless]` | UI + REST + Streamable HTTPのMCP |
 
 `FILE` 引数はどれもローカルパス・`s3://`/`gs://`/`https://` URL
 (`[remote]` extra)・`snowflake://` グラフ(`[snowflake]` extra)・
@@ -311,6 +311,7 @@ claude mcp add kg https://kg.internal:8080/mcp --transport http \
 |---|---|---|
 | `--token SECRET` | 静的Bearerトークン1本 | スクリプト、CI、信頼できるネットワーク内 |
 | `--oauth-issuer URL` | 自社IdPに委譲するOAuth 2.1 (`[oauth]` extra) | claude.ai / ChatGPT のUI、ユーザー単位の識別 |
+| `--actor-claim CLAIM` | 呼び出し元を名指すJWTクレーム(既定: `sub`) | アクションを読める名前で署名する |
 
 ```bash
 pip install 'trikedb[serve,oauth]'
@@ -342,6 +343,48 @@ trikedbは**リソースサーバーに徹する** — JWTを検証するだけ�
 - **クライアント登録** はIdP側の仕事で、trikedbは一切関与しない。Dynamic
   Client Registration対応なら一番楽。MCPクライアントはClient ID Metadata
   Documentや手動発行のclient IDも受け付ける。
+- **身元は門であると同時に署名。** `/mcp` 経由で書かれたアクションの `by` は
+  トークンから埋められ、他人を名乗る `by` は拒否される →
+  [アクションは誰によるものか](#アクションは誰によるものか)
+
+#### アクションは誰によるものか
+
+`by` は「誰がやったか」を言う属性で、
+`declare_link("APPROVED_BY", by="approver")` は「承認者しかできない」という
+宣言だ。認証のあるトランスポート越しでは、trikedbは呼び出し元が書いた文字列を
+信じるのではなく、`by` を自分で埋める:
+
+| 状況 | `by` はどうなるか |
+|---|---|
+| OAuth下の `act` で `by` 省略 | 呼び出し元の身元が刻まれる |
+| OAuth下の `act` で `by` が他人 | `OntologyError` — 書き込み自体が拒否される |
+| OAuth下の `add_triple`、`by` を宣言した述語 | 呼び出し元の身元が刻まれる |
+| OAuth下の `add_triple`、素の述語 | 付かない — 事実は行為ではない |
+| 静的 `--token` / stdio / ライブラリ利用 | 従来どおり。渡した通り、渡さなければ付かない |
+
+トークン中の身元(`auth0|ryuto`)はグラフが人を呼ぶ名前ではないので、
+`subject` ノードプロパティで両者を対応させる:
+
+```yaml
+nodes:
+  Rune Halvorsen: {type: approver, subject: "auth0|ryuto"}
+  crm-sync-job:   {type: bot,      subject: "auth0|bot"}
+```
+
+- 刻まれるのは対応したノードの**名前**で、宣言された `by` が照合されるのは
+  その `type`。だから上のbotのトークンは `APPROVED_BY` を書けない —
+  名前を間違えたからではなく、名前を渡さず、持っている名前が `bot` だから。
+- どこにも `subject` が無い身元はそのまま刻まれる。設定ゼロでも署名付きの
+  イベントは残る。ただし署名はIdPのsubjectになる。
+- 2つのノードが同じ `subject` を主張するのはエラー。どちらかに転ぶのではない
+  — 1つの身元は1人の行為者。
+- `--actor-claim email` にすれば `email` クレームで署名する。設定した
+  クレームを持たないトークンは `sub` にフォールバックせず明確に拒否する。
+  「時々だけ別種の名前になる署名」は署名が無いより悪い。
+- **対応表は認証された呼び出し元には書けない。** リクエストが身元を帯びて
+  いる間、`subject` プロパティ付きの `set_node` は拒否される。自分に名前を
+  付けられる行為者は行為者ではないからだ。オントロジーと同じキュレーション
+  対象データとして扱う。
 
 #### IdPに求める条件
 

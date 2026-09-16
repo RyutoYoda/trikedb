@@ -17,6 +17,12 @@ union. Two ways to authenticate, and they compose:
 
 All three doors are protected by whichever you configure. Workspace unions
 serve read-only; write tools report the member graphs to write to instead.
+
+Under OAuth the identity is not only a gate: an action written through /mcp
+is signed by the token that wrote it, so a predicate declaring ``by`` is
+enforced against whoever is actually calling rather than against a name the
+caller typed. A static ``--token`` names nobody, so it buys access and no
+signature. See ``rules.signed_by``.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ def build_app(
     oauth_audience=None,
     required_scopes=None,
     stateless: bool = False,
+    actor_claim=None,
 ):
     from starlette.applications import Starlette
     from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -136,7 +143,8 @@ def build_app(
         from .mcp_server import build_server
 
         server = build_server(
-            path, auth=auth, public_url=public_url, stateless=stateless, graph=graph
+            path, auth=auth, public_url=public_url, stateless=stateless,
+            graph=graph, actor_claim=actor_claim,
         )
         routes.append(Mount("/", app=server.streamable_http_app()))
 
@@ -179,6 +187,7 @@ def serve(
     oauth_audience=None,
     required_scopes=None,
     stateless: bool = False,
+    actor_claim=None,
 ) -> None:
     """Blocking entry point used by ``trikedb serve``."""
     try:
@@ -196,5 +205,6 @@ def serve(
         oauth_audience=oauth_audience,
         required_scopes=required_scopes,
         stateless=stateless,
+        actor_claim=actor_claim,
     )
     uvicorn.run(app, host=host, port=port)

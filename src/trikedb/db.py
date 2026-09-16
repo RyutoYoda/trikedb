@@ -129,6 +129,13 @@ class TrikeDB:
         self._pidx_len = -1
         #: conditions a half-built graph cannot answer yet; see _settle
         self._pending: list = []
+        #: who the current write is by, when the transport knows. Bound per
+        #: request by the MCP server under this instance's lock — a served
+        #: graph is one instance shared by every caller, so the actor cannot
+        #: live on the constructor. None everywhere else, which is what keeps
+        #: library use, stdio and a static token behaving exactly as before.
+        #: See rules.signed_by.
+        self._actor: Optional[str] = None
         #: which engine answers read queries: "oxigraph" when the extra is
         #: installed, else "rdflib". Pass sparql_engine="rdflib" to pin it —
         #: worth doing if you ever need to compare the two on a real query,
@@ -218,6 +225,7 @@ class TrikeDB:
         s, p = _term(s, "s"), _term(p, "p")
         _validate_rdf_terms(rdf_terms or {})
         self._check_predicate(p)
+        attrs = rules.signed_by(self, p, attrs)
         triple = Triple.from_dict({"s": s, "p": p, "o": o, **attrs,
                                    "rdf_terms": rdf_terms or {}})
         if triple.rdf_terms:
@@ -409,6 +417,7 @@ class TrikeDB:
         adds up. Pass `replace=True` to change a type on purpose.
         """
         self._guard_writable()
+        rules.check_identity_prop(self, str(name), props)
         # A node's properties are replaced, never edited in place. That is
         # what lets batch() snapshot the store by copying pointers instead
         # of walking it — see the note there.
@@ -466,6 +475,7 @@ class TrikeDB:
         if state is not None:
             payload["state"] = state
         payload.update(attrs)
+        payload = rules.signed_by(self, p, payload, stamp=True)
         triple = Triple.from_dict({"s": s, "p": p, "o": o, **payload})
         self._check_link(triple.s, triple.p, triple.o)
         self._check_action(triple)

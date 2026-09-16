@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Union
 
+from . import rules
 from .db import TrikeDB
 from .storage import ConcurrentWriteError, is_remote
 
@@ -39,8 +40,47 @@ def _transport_security(public_url):
     )
 
 
+def _identity(actor_claim=None):
+    """Who is calling, as the token says — or None if nothing says.
+
+    The MCP SDK puts the verified token in a context variable for the
+    duration of the request, which is the only place the tool functions
+    can reach it from: FastMCP calls them with the arguments the client
+    sent and nothing else.
+
+    None is the honest answer for every transport that has no user behind
+    it — stdio (authenticated by the OS), a static ``--token`` (a shared
+    secret names nobody), and library use. The write path then leaves
+    ``by`` alone, exactly as it always has.
+
+    A configured ``actor_claim`` that the token does not carry raises
+    rather than quietly falling back to ``sub``: the fallback would sign
+    actions with a different kind of name than the graph was set up for,
+    and only some of the time. A misconfiguration should fail on the
+    first request, not on the first token that happens to be thin.
+    """
+    try:
+        from mcp.server.auth.middleware.auth_context import get_access_token
+    except ImportError:  # pragma: no cover - older SDKs carry no auth context
+        return None
+    token = get_access_token()
+    if token is None:
+        return None
+    if not actor_claim:
+        return getattr(token, "subject", None) or None
+    value = (getattr(token, "claims", None) or {}).get(actor_claim)
+    if value in (None, ""):
+        raise ValueError(
+            f"this token carries no {actor_claim!r} claim, so there is "
+            f"nobody to sign an action as — check --actor-claim against "
+            f"what your IdP actually issues"
+        )
+    return str(value)
+
+
 def build_server(
-    path: Union[str, Path], auth=None, public_url=None, stateless: bool = False, graph=None
+    path: Union[str, Path], auth=None, public_url=None, stateless: bool = False,
+    graph=None, actor_claim=None,
 ):
     """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
     ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
@@ -50,6 +90,11 @@ def build_server(
     SDK's DNS-rebinding guard only trusts localhost by default, so a server
     behind a proxy or tunnel must declare its public hostname or every
     request arrives with an untrusted Host header and is refused with 421.
+
+    ``actor_claim`` names the JWT claim to take the acting identity from
+    (default: ``sub``). Under OAuth the actor is the token's, not the
+    caller's to choose — see ``rules.signed_by`` — so ``by`` on a write
+    is filled in from here and a borrowed one is refused.
 
     ``stateless`` drops session tracking: each request is served on its own
     transport, so clients need not echo the ``Mcp-Session-Id`` header back and
@@ -81,11 +126,29 @@ def build_server(
 
     from functools import wraps
 
+    def caller():
+        """The acting identity as a node in *this* graph, or None."""
+        who = _identity(actor_claim)
+        return rules.actor_of(db, who) if who else None
+
     def serialized(fn):
+        """One call at a time, and each one knowing who made it.
+
+        The actor is bound here rather than on the four write tools
+        because this is the wrapper none of them can be written without.
+        A guard you have to remember to apply is one that eventually
+        gets left off a new tool, and the tool that forgets it is the
+        hole. Under the lock, so the one shared instance never carries
+        another caller's identity into this one's write.
+        """
         @wraps(fn)
         def call(*args, **kwargs):
             with db._lock:
-                return fn(*args, **kwargs)
+                db._actor = caller()
+                try:
+                    return fn(*args, **kwargs)
+                finally:
+                    db._actor = None
         return call
     settings, verifier = auth if auth else (None, None)
 
@@ -213,7 +276,11 @@ def build_server(
         """Record that you did something to node `s`, and move it to its new state.
 
         `o` is what happened in words, `state` the state it leaves `s` in,
-        `by` who did it, `at` when (omit it and now is stamped). The event
+        `by` who did it, `at` when (omit it and now is stamped). On a
+        server that authenticates you, `by` is your own identity whether
+        you pass it or not, and passing somebody else's is refused — so
+        leave it out unless you are recording what a third party did on
+        an unauthenticated transport. The event
         is appended, never merged: doing the same thing twice leaves two
         records. Use this whenever you change something the graph
         describes — reading back `get_node(s)` then shows the new state

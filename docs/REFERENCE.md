@@ -397,7 +397,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb check FILE [--html PATH]` | Parse check + stale-HTML detection via embedded content hash |
 | `trikedb audit FILE [--json] [--strict]` | Health findings; exit 1 on errors (`--strict`: warnings too) |
 | `trikedb mcp FILE` | MCP server over stdio |
-| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--stateless]` | UI + REST + MCP over Streamable HTTP |
+| `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--actor-claim] [--stateless]` | UI + REST + MCP over Streamable HTTP |
 
 All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
 URLs (`[remote]` extra), `snowflake://` graphs (`[snowflake]` extra),
@@ -441,6 +441,7 @@ Two mechanisms, both covering all three doors:
 |---|---|---|
 | `--token SECRET` | one static Bearer token | scripts, CI, a trusted network |
 | `--oauth-issuer URL` | OAuth 2.1 against your IdP (`[oauth]` extra) | the claude.ai / ChatGPT UIs, per-user identity |
+| `--actor-claim CLAIM` | which JWT claim names the caller (default: `sub`) | signing actions with a legible name |
 
 ```bash
 pip install 'trikedb[serve,oauth]'
@@ -474,6 +475,50 @@ checks each token's signature, `iss`, `exp`, and `aud`.
 - **Client registration** happens at your IdP, and trikedb takes no part
   in it. Dynamic Client Registration is the smooth path; MCP clients also
   accept a Client ID Metadata Document or a client ID you create by hand.
+- **Identity is a signature, not only a gate.** An action written through
+  `/mcp` gets `by` filled in from the token, and a `by` naming somebody
+  else is refused — see [Who an action is by](#who-an-action-is-by).
+
+#### Who an action is by
+
+`by` is the attribute that says who did something, and
+`declare_link("APPROVED_BY", by="approver")` is the declaration that only
+an approver may. Over a transport that authenticates, trikedb fills `by`
+in itself rather than believing what the caller typed:
+
+| Situation | What happens to `by` |
+|---|---|
+| `act` under OAuth, `by` omitted | stamped with the caller's identity |
+| `act` under OAuth, `by` is somebody else | `OntologyError` — the write is refused |
+| `add_triple` under OAuth on a predicate declaring `by` | stamped with the caller's identity |
+| `add_triple` under OAuth on a plain predicate | left absent — a fact is not a deed |
+| static `--token`, stdio, or library use | exactly as before: whatever you pass, nothing if you pass nothing |
+
+The identity in a token (`auth0|ryuto`) is not the name a graph knows
+people by, so map the two with a `subject` node property:
+
+```yaml
+nodes:
+  Rune Halvorsen: {type: approver, subject: "auth0|ryuto"}
+  crm-sync-job:   {type: bot,      subject: "auth0|bot"}
+```
+
+- The mapped node's name is what gets stamped, and its `type` is what a
+  declared `by` is checked against. So the bot's token above cannot
+  write `APPROVED_BY` at all — not because it passed the wrong name, but
+  because it passed none and the one it has is a `bot`.
+- An identity with no `subject` anywhere is stamped verbatim. Zero setup
+  still produces signed events; they are signed with IdP subjects.
+- Two nodes claiming one `subject` is an error, not a coin flip — one
+  identity is one actor.
+- `--actor-claim email` signs with the `email` claim instead. A token
+  missing the configured claim is refused loudly rather than falling
+  back to `sub`, because a signature that is sometimes a different kind
+  of name is worse than no signature.
+- **The map is not writable by an authenticated caller.** `set_node` with
+  a `subject` property is refused whenever a request carries an identity,
+  since an actor that can name itself is not an actor. It is curated
+  data, like the ontology.
 
 #### What your IdP has to provide
 
