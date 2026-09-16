@@ -3,6 +3,35 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.41.0
+
+The workbench panel could be opened but not left. Opening a detail view
+from the action log replaced the log with the node, and the only control
+left was a `×` that threw away the whole trail — the way back out of an
+answer did not exist.
+
+- **The panel remembers how you got here.** A node, the whole action log
+  and a predicate's declaration still replace one another in one panel:
+  each is the answer to a question the last view raised, so stacking
+  windows would be wrong. What was missing is the step back, and the
+  button names its destination — `← action log` reads differently from
+  `← RESOLVED_BY`, and a bare arrow could say neither. Stepping back to
+  a node puts the graph's selection and camera back with it. Closing
+  clears the trail: reopening starts a new question, not an abandoned
+  one. `Esc` closes, unless you are typing in a field.
+- **The header no longer pushes its own buttons off the screen.** It was
+  one row of fixed height with no overflow, so in a 900px window
+  `predicates`, `Fit` and `light` sat past the right edge and `events`
+  was cut in half; with `body { overflow: hidden }` nothing could scroll
+  to them, so they were not awkward to reach, they were gone. The bar
+  takes a second row instead, and everything fixed below it reads the
+  height the bar actually took rather than a constant. Wide windows look
+  exactly as they did.
+- **The member-graph chips step aside for the panel.** The workspace bar
+  ran the full width and the detail panel drew over its right end,
+  hiding chips. It now stops at the panel, the way the SPARQL bar
+  already did.
+
 ## 0.40.0
 
 `by` said who did something, and over HTTP it was whatever the caller

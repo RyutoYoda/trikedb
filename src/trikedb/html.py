@@ -128,10 +128,11 @@ _TEMPLATE = """<!DOCTYPE html>
 <title>__TITLE__</title>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
-  :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa; }
+  :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa;
+          --hdr: 52px; }
   body.light { --bg: #f4f5f8; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
-  #graph { position: fixed; inset: 52px 0 0 0; }
+  #graph { position: fixed; inset: var(--hdr) 0 0 0; }
 
   /* The action log, as a strip along the bottom. The graph draws an event
      where it happened — on the line between the two objects — which is the
@@ -142,7 +143,7 @@ _TEMPLATE = """<!DOCTYPE html>
            display: none; align-items: stretch; background: var(--panel);
            border-top: 1px solid var(--border); }
   body.strip-on #strip { display: flex; }
-  body.strip-on #graph { inset: 52px 0 58px 0; }
+  body.strip-on #graph { inset: var(--hdr) 0 58px 0; }
   body.strip-on #detail { bottom: 58px; }
   #strip .striphead { display: flex; flex-direction: column; justify-content: center;
             padding: 0 11px; border-right: 1px solid var(--border); cursor: pointer; min-width: 78px; }
@@ -165,14 +166,27 @@ _TEMPLATE = """<!DOCTYPE html>
                     font-family: ui-monospace, Menlo, monospace; }
   body.light #strip .tick { border-left-color: #d89b9b; }
 
-  #header { position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
-            display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box;
+  /* One row while it fits, two when it does not. A fixed-height bar with
+     no overflow puts the last buttons past the right edge of a narrow
+     window, and since the body does not scroll, nothing can reach them:
+     they are not hard to press, they are gone. Wrapping keeps every
+     control on screen at any width, and --hdr carries the height the bar
+     actually took to everything positioned below it. */
+  #header { position: fixed; top: 0; left: 0; right: 0; min-height: 52px; z-index: 20;
+            display: flex; flex-wrap: wrap; align-items: center; align-content: center;
+            gap: 8px 10px; padding: 6px 14px; box-sizing: border-box;
             background: var(--panel); border-bottom: 1px solid var(--border); }
   #header h1 { font-size: 15px; margin: 0; white-space: nowrap; }
-  #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Basis 0, not content width: a line breaks on base sizes before any
+     item shrinks, so leaving these at their content width would wrap the
+     bar at widths where it still fits. They grow back into the space the
+     title and the tools leave, the legend three times faster because its
+     chips are filters you click and this is a sentence you read once. */
+  #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; flex: 1 1 0; min-width: 0; }
   /* labels slide horizontally when they outgrow the bar instead of vanishing */
   #legend { display: flex; gap: 8px; margin-left: 6px; overflow-x: auto; overflow-y: hidden;
-            flex-shrink: 1; min-width: 40px; max-width: 46vw; scrollbar-width: thin; }
+            flex: 3 1 40px; min-width: 40px; max-width: 46vw; scrollbar-width: thin; }
   #legend::-webkit-scrollbar { height: 6px; }
   #legend::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
@@ -182,7 +196,8 @@ _TEMPLATE = """<!DOCTYPE html>
   .lg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 2px solid;
           vertical-align: middle; margin-right: 4px; background: var(--bg); font-style: normal;
           font-size: 9px; line-height: 10px; text-align: center; font-weight: 700; }
-  #spacer { flex: 1; }
+  #tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+           gap: 8px 10px; margin-left: auto; }
   #search { width: 210px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
             background: var(--bg); color: var(--text); font-size: 12px; }
   .btn { padding: 6px 11px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg);
@@ -196,11 +211,16 @@ _TEMPLATE = """<!DOCTYPE html>
   .selbtn:hover { border-color: #5a83b8; color: var(--text); }
   #legend-ctl { display: none; gap: 6px; flex-shrink: 0; align-items: center; }
 
-  #sparql { position: fixed; top: 52px; left: 0; right: 0; z-index: 19; display: none;
+  #sparql { position: fixed; top: var(--hdr); left: 0; right: 0; z-index: 19; display: none;
             background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 14px; }
   #sparql.open { display: block; }
   /* never cover the detail panel (its close button stays visible and unambiguous) */
   body.detail-open #sparql { right: 330px; }
+  /* The member-graph chips ran under the panel, which draws over them. */
+  #graphbar { position: fixed; top: var(--hdr); left: 0; right: 0; z-index: 18; display: none;
+              gap: 8px; align-items: center; padding: 7px 14px; background: var(--panel);
+              border-bottom: 1px solid var(--border); overflow-x: auto; }
+  body.detail-open #graphbar { right: 330px; }
   #sparql textarea { width: 100%; box-sizing: border-box; height: 74px; resize: vertical;
             background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px;
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px; }
@@ -212,7 +232,7 @@ _TEMPLATE = """<!DOCTYPE html>
   #results th { color: #7aa3d8; }
   #results .err { color: #f7784f; font-size: 12px; white-space: pre-wrap; }
 
-  #detail { position: fixed; top: 52px; right: 0; bottom: 0; width: 330px; z-index: 18;
+  #detail { position: fixed; top: var(--hdr); right: 0; bottom: 0; width: 330px; z-index: 18;
             background: var(--panel); border-left: 1px solid var(--border); padding: 14px 16px;
             box-sizing: border-box; overflow-y: auto; display: none; }
   #detail.open { display: block; }
@@ -221,6 +241,15 @@ _TEMPLATE = """<!DOCTYPE html>
   /* An id may be broken anywhere; a sentence may not. */
   #detail h2.human { word-break: normal; overflow-wrap: anywhere; font-family: inherit; }
   #detail .close { position: absolute; top: 10px; right: 12px; }
+  /* Where this view was opened from. It names the destination rather
+     than drawing a bare arrow, because one step back out of a
+     declaration and one step back out of the log are different moves
+     and the button is the only thing that can say which. */
+  #detail .back { display: none; max-width: calc(100% - 46px); margin: 0 0 10px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                  color: var(--dim); }
+  #detail .back:hover { color: var(--text); }
+  body.can-back #detail .back { display: block; }
   #detail h3 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em;
                margin: 16px 0 6px; }
   .rel { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0;
@@ -265,20 +294,19 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="subtitle">__SUBTITLE__</div>
   <div id="legend"></div>
   <span id="legend-ctl"></span>
-  <div id="spacer"></div>
-  <input id="search" placeholder="search nodes...">
-  <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
-  <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
-  <button class="btn" id="btn-sparql">SPARQL</button>
-  <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
-  <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
-  <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
+  <div id="tools">
+    <input id="search" placeholder="search nodes...">
+    <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
+    <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
+    <button class="btn" id="btn-sparql">SPARQL</button>
+    <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
+    <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
+    <button class="btn" id="btn-fit">Fit</button>
+    <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
+  </div>
 </div>
 
-<div id="graphbar" style="position: fixed; top: 52px; left: 0; right: 0; z-index: 18; display: none;
-     gap: 8px; align-items: center; padding: 7px 14px; background: var(--panel);
-     border-bottom: 1px solid var(--border); overflow-x: auto;"></div>
+<div id="graphbar"></div>
 
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
@@ -290,7 +318,8 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div id="detail">
-  <button class="btn close" id="btn-close">&times;</button>
+  <button class="btn close" id="btn-close" title="close (Esc)">&times;</button>
+  <button class="btn back" id="btn-back"></button>
   <div id="detail-body"></div>
 </div>
 
@@ -566,6 +595,17 @@ network.on("beforeDrawing", function () {
   }
 });
 network.redraw();
+
+// -------------------------------------- how tall the header really is
+// Everything fixed below the bar is positioned off --hdr rather than a
+// constant, because the bar is one row or two depending on how much of
+// it fits. Measuring beats guessing: the legend, the graph chips and
+// the button labels all take their width from the data.
+const headerEl = document.getElementById("header");
+const syncHeaderHeight = () =>
+  document.documentElement.style.setProperty("--hdr", headerEl.offsetHeight + "px");
+new ResizeObserver(syncHeaderHeight).observe(headerEl);
+syncHeaderHeight();
 
 // ------------------------------------- header legend (click = filter)
 const hiddenTypes = new Set();
@@ -846,7 +886,7 @@ function eventHTML(t, from) {
   </div>`;
 }
 
-function showDetail(id) {
+function nodeHTML(id) {
   const meta = NODES_META[id] || {};
   const own = eventsOf[id] || [], into = incomingOf[id] || [];
   const evs = own.concat(into).sort(byTime);
@@ -867,14 +907,70 @@ function showDetail(id) {
     + evs.map(t => eventHTML(t, t.o === id)).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
-  document.getElementById("detail-body").innerHTML = html;
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
+  return html;
 }
-document.getElementById("btn-close").onclick = () => {
-  document.getElementById("detail").classList.remove("open");
-  document.body.classList.remove("detail-open");
+
+// ------------------------------------------ the panel, and the way back
+// Three things open in this one panel — a node, the whole log, a
+// predicate's declaration — and each one replaces the view before it.
+// That is the right shape, because each is the answer to a question the
+// last view raised: the log names a node, a fact on that node names a
+// predicate. What was missing is the way back out of an answer, so the
+// panel now keeps the trail it took to get here and back walks one step
+// of it. Closing clears the trail: reopening starts a new question
+// rather than resuming an abandoned one.
+const VIEWS = {
+  node: { html: nodeHTML,  label: (id) => nameOf(id) || id },
+  log:  { html: logHTML,   label: () => "action log" },
+  rule: { html: rulesHTML, label: (p) => p || "predicates" },
 };
+const detail = document.getElementById("detail");
+const btnBack = document.getElementById("btn-back");
+let trail = [];
+
+function openPanel(kind, arg) {
+  const top = trail[trail.length - 1];
+  // Opening the view you are already looking at is not a step, so it
+  // must not become one you then have to press back through.
+  if (!top || top.kind !== kind || top.arg !== arg) trail.push({ kind, arg });
+  drawPanel();
+}
+function drawPanel() {
+  const here = trail[trail.length - 1], prev = trail[trail.length - 2];
+  document.getElementById("detail-body").innerHTML = VIEWS[here.kind].html(here.arg);
+  if (prev) btnBack.innerHTML = "&larr; " + esc(VIEWS[prev.kind].label(prev.arg));
+  document.body.classList.toggle("can-back", !!prev);
+  detail.classList.add("open");
+  document.body.classList.add("detail-open");
+  detail.scrollTop = 0;
+}
+function closePanel() {
+  trail = [];
+  document.body.classList.remove("can-back");
+  detail.classList.remove("open");
+  document.body.classList.remove("detail-open");
+}
+btnBack.onclick = () => {
+  trail.pop();
+  if (!trail.length) { closePanel(); return; }
+  drawPanel();
+  // Stepping back to a node puts the drawing back where it was too.
+  // The panel and the selection are two halves of one view, and
+  // leaving the highlight on the node you just left says you are
+  // somewhere you are not.
+  const here = trail[trail.length - 1];
+  if (here.kind === "node" && nodeIds.has(here.arg)) {
+    network.selectNodes(visualIds([here.arg]));
+    network.focus(nodeIds.get(here.arg), { scale: 1.1, animation: true });
+  }
+};
+document.getElementById("btn-close").onclick = closePanel;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !detail.classList.contains("open")) return;
+  if (/^(INPUT|TEXTAREA)$/.test((e.target.tagName || ""))) return;
+  closePanel();
+});
+const showDetail = (id) => openPanel("node", id);
 document.getElementById("detail").addEventListener("click", (e) => {
   // The chip comes first: inside an event row it sits within the clickable
   // row itself, and asking what a predicate declares must not navigate away
@@ -959,13 +1055,11 @@ btnEvents.onclick = () => {
 };
 document.getElementById("btn-fulllog").onclick = () => showTimeline();
 
-function showTimeline() {
-  document.getElementById("detail-body").innerHTML =
-    `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
+function logHTML() {
+  return `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
     + timeline.map(timelineHTML).join("");
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
 }
+function showTimeline() { openPanel("log", ""); }
 
 // ------------------------------------------------------ the declarations
 // Every line on this page was allowed in by a rule, and the rules were the
@@ -997,16 +1091,15 @@ function ruleHTML(p) {
     ${rows || `<div class="undeclared">nothing declared \\u2014 anything may write this</div>`}
   </div>`;
 }
-function showOntology(only) {
+function rulesHTML(only) {
   const names = only && RULES[only] ? [only] : ruleNames;
   const head = only && RULES[only]
     ? `<h2>${esc(only)}</h2><h3>what this predicate declares</h3>`
     : `<h2>predicates</h2><h3>${ruleNames.length} predicate type${ruleNames.length === 1 ? "" : "s"}`
       + ` &middot; ${enforced.length} enforced</h3>`;
-  document.getElementById("detail-body").innerHTML = head + names.map(ruleHTML).join("");
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
+  return head + names.map(ruleHTML).join("");
 }
+function showOntology(only) { openPanel("rule", (only && RULES[only]) ? only : ""); }
 const btnOnto = document.getElementById("btn-onto");
 if (!ruleNames.length) btnOnto.style.display = "none";
 else {

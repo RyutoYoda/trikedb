@@ -1317,7 +1317,47 @@ def test_events_are_drawn_between_the_objects_not_in_a_corner():
     assert '<div id="events">' not in html
     assert 'id="btn-events"' in html
     assert "function showTimeline()" in html
-    assert "#graph { position: fixed; inset: 52px 0 0 0; }" in html
+    # the graph fills everything under the header — no lane reserved at the
+    # bottom for a strip. The top offset is the header's measured height,
+    # because the header is one row or two depending on the window.
+    assert "#graph { position: fixed; inset: var(--hdr) 0 0 0; }" in html
+
+
+def test_header_controls_stay_on_screen_in_a_narrow_window():
+    """The header used to be one row of fixed height with no overflow, so in
+    a 900px window `predicates`, `Fit` and `light` sat past the right edge —
+    and because the body does not scroll, there was no way to reach them at
+    all. The bar wraps to a second row instead, which means its height is no
+    longer a constant: everything fixed below it reads the measured height."""
+    db = TrikeDB(autosave=False)
+    db.add("RAW_SPEND", "FEEDS", "MART_SPEND")
+    html = db.to_html()
+    # the bar may take a second row rather than push controls off the edge
+    assert "flex-wrap: wrap" in html
+    assert "min-height: 52px" in html
+    assert "right: 0; height: 52px;" not in html  # no longer a fixed row
+    # the whole tool cluster wraps as one block, not split mid-way
+    assert 'id="tools"' in html
+    assert 'id="spacer"' not in html
+    # and nothing below the bar assumes how tall it turned out to be
+    assert "--hdr: 52px" in html
+    assert "new ResizeObserver(syncHeaderHeight).observe(headerEl);" in html
+    for fixed in ("#sparql { position: fixed; top: var(--hdr);",
+                  "#detail { position: fixed; top: var(--hdr);",
+                  "#graphbar { position: fixed; top: var(--hdr);"):
+        assert fixed in html
+    assert "top: 52px" not in html
+    # the detail panel covers the right end of the graph bar, so the member
+    # graph chips step aside the way the SPARQL bar already does. This only
+    # works from the stylesheet: the bar used to carry `right: 0` in an
+    # inline style attribute, which outranks any rule written here.
+    assert "body.detail-open #graphbar { right: 330px; }" in html
+    assert '<div id="graphbar"></div>' in html
+    # a line wraps on base sizes, before anything shrinks, so the elastic
+    # items must not claim their content width or the bar breaks while it
+    # still fits
+    assert "flex: 1 1 0; min-width: 0; }" in html   # subtitle
+    assert "flex: 3 1 40px;" in html                # legend
 
 
 def test_edge_labels_are_legible_on_a_hub():

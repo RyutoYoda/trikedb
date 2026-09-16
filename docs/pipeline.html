@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>acme pipeline · trikedb demo</title>
+<title>acme pipeline — trikedb demo</title>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
-  :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa; }
+  :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa;
+          --hdr: 52px; }
   body.light { --bg: #f4f5f8; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
-  #graph { position: fixed; inset: 52px 0 0 0; }
+  #graph { position: fixed; inset: var(--hdr) 0 0 0; }
 
   /* The action log, as a strip along the bottom. The graph draws an event
      where it happened — on the line between the two objects — which is the
@@ -19,7 +20,7 @@
            display: none; align-items: stretch; background: var(--panel);
            border-top: 1px solid var(--border); }
   body.strip-on #strip { display: flex; }
-  body.strip-on #graph { inset: 52px 0 58px 0; }
+  body.strip-on #graph { inset: var(--hdr) 0 58px 0; }
   body.strip-on #detail { bottom: 58px; }
   #strip .striphead { display: flex; flex-direction: column; justify-content: center;
             padding: 0 11px; border-right: 1px solid var(--border); cursor: pointer; min-width: 78px; }
@@ -42,14 +43,27 @@
                     font-family: ui-monospace, Menlo, monospace; }
   body.light #strip .tick { border-left-color: #d89b9b; }
 
-  #header { position: fixed; top: 0; left: 0; right: 0; height: 52px; z-index: 20;
-            display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box;
+  /* One row while it fits, two when it does not. A fixed-height bar with
+     no overflow puts the last buttons past the right edge of a narrow
+     window, and since the body does not scroll, nothing can reach them:
+     they are not hard to press, they are gone. Wrapping keeps every
+     control on screen at any width, and --hdr carries the height the bar
+     actually took to everything positioned below it. */
+  #header { position: fixed; top: 0; left: 0; right: 0; min-height: 52px; z-index: 20;
+            display: flex; flex-wrap: wrap; align-items: center; align-content: center;
+            gap: 8px 10px; padding: 6px 14px; box-sizing: border-box;
             background: var(--panel); border-bottom: 1px solid var(--border); }
   #header h1 { font-size: 15px; margin: 0; white-space: nowrap; }
-  #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Basis 0, not content width: a line breaks on base sizes before any
+     item shrinks, so leaving these at their content width would wrap the
+     bar at widths where it still fits. They grow back into the space the
+     title and the tools leave, the legend three times faster because its
+     chips are filters you click and this is a sentence you read once. */
+  #subtitle { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; flex: 1 1 0; min-width: 0; }
   /* labels slide horizontally when they outgrow the bar instead of vanishing */
   #legend { display: flex; gap: 8px; margin-left: 6px; overflow-x: auto; overflow-y: hidden;
-            flex-shrink: 1; min-width: 40px; max-width: 46vw; scrollbar-width: thin; }
+            flex: 3 1 40px; min-width: 40px; max-width: 46vw; scrollbar-width: thin; }
   #legend::-webkit-scrollbar { height: 6px; }
   #legend::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   .lg { font-size: 10px; color: var(--dim); white-space: nowrap; }
@@ -59,7 +73,8 @@
   .lg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 2px solid;
           vertical-align: middle; margin-right: 4px; background: var(--bg); font-style: normal;
           font-size: 9px; line-height: 10px; text-align: center; font-weight: 700; }
-  #spacer { flex: 1; }
+  #tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+           gap: 8px 10px; margin-left: auto; }
   #search { width: 210px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
             background: var(--bg); color: var(--text); font-size: 12px; }
   .btn { padding: 6px 11px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg);
@@ -73,11 +88,16 @@
   .selbtn:hover { border-color: #5a83b8; color: var(--text); }
   #legend-ctl { display: none; gap: 6px; flex-shrink: 0; align-items: center; }
 
-  #sparql { position: fixed; top: 52px; left: 0; right: 0; z-index: 19; display: none;
+  #sparql { position: fixed; top: var(--hdr); left: 0; right: 0; z-index: 19; display: none;
             background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 14px; }
   #sparql.open { display: block; }
   /* never cover the detail panel (its close button stays visible and unambiguous) */
   body.detail-open #sparql { right: 330px; }
+  /* The member-graph chips ran under the panel, which draws over them. */
+  #graphbar { position: fixed; top: var(--hdr); left: 0; right: 0; z-index: 18; display: none;
+              gap: 8px; align-items: center; padding: 7px 14px; background: var(--panel);
+              border-bottom: 1px solid var(--border); overflow-x: auto; }
+  body.detail-open #graphbar { right: 330px; }
   #sparql textarea { width: 100%; box-sizing: border-box; height: 74px; resize: vertical;
             background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px;
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px; }
@@ -89,7 +109,7 @@
   #results th { color: #7aa3d8; }
   #results .err { color: #f7784f; font-size: 12px; white-space: pre-wrap; }
 
-  #detail { position: fixed; top: 52px; right: 0; bottom: 0; width: 330px; z-index: 18;
+  #detail { position: fixed; top: var(--hdr); right: 0; bottom: 0; width: 330px; z-index: 18;
             background: var(--panel); border-left: 1px solid var(--border); padding: 14px 16px;
             box-sizing: border-box; overflow-y: auto; display: none; }
   #detail.open { display: block; }
@@ -98,6 +118,15 @@
   /* An id may be broken anywhere; a sentence may not. */
   #detail h2.human { word-break: normal; overflow-wrap: anywhere; font-family: inherit; }
   #detail .close { position: absolute; top: 10px; right: 12px; }
+  /* Where this view was opened from. It names the destination rather
+     than drawing a bare arrow, because one step back out of a
+     declaration and one step back out of the log are different moves
+     and the button is the only thing that can say which. */
+  #detail .back { display: none; max-width: calc(100% - 46px); margin: 0 0 10px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                  color: var(--dim); }
+  #detail .back:hover { color: var(--text); }
+  body.can-back #detail .back { display: block; }
   #detail h3 { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em;
                margin: 16px 0 6px; }
   .rel { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0;
@@ -138,24 +167,23 @@
 </head>
 <body>
 <div id="header">
-  <h1>&#x1F996; acme pipeline · trikedb demo</h1>
+  <h1>&#x1F996; acme pipeline — trikedb demo</h1>
   <div id="subtitle">17 triples &middot; 19 nodes &middot; one YAML file</div>
   <div id="legend"></div>
   <span id="legend-ctl"></span>
-  <div id="spacer"></div>
-  <input id="search" placeholder="search nodes...">
-  <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
-  <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
-  <button class="btn" id="btn-sparql">SPARQL</button>
-  <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
-  <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
-  <button class="btn" id="btn-fit">Fit</button>
-  <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
+  <div id="tools">
+    <input id="search" placeholder="search nodes...">
+    <span id="search-count" style="font-size: 11px; color: var(--dim); min-width: 34px;"></span>
+    <button class="btn" id="btn-tosparql" title="turn this search into an editable SPARQL query">text2sparql</button>
+    <button class="btn" id="btn-sparql">SPARQL</button>
+    <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
+    <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
+    <button class="btn" id="btn-fit">Fit</button>
+    <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
+  </div>
 </div>
 
-<div id="graphbar" style="position: fixed; top: 52px; left: 0; right: 0; z-index: 18; display: none;
-     gap: 8px; align-items: center; padding: 7px 14px; background: var(--panel);
-     border-bottom: 1px solid var(--border); overflow-x: auto;"></div>
+<div id="graphbar"></div>
 
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
@@ -167,7 +195,8 @@
 </div>
 
 <div id="detail">
-  <button class="btn close" id="btn-close">&times;</button>
+  <button class="btn close" id="btn-close" title="close (Esc)">&times;</button>
+  <button class="btn back" id="btn-back"></button>
   <div id="detail-body"></div>
 </div>
 
@@ -202,7 +231,7 @@ const TRIPLES = JSON.parse("[{\"s\": \"salesflow-crm\", \"p\": \"PROVIDES\", \"o
 const PREDICATES = Object.assign(Object.create(null), JSON.parse("{\"PROVIDES\": \"#4f8ef7\", \"INGESTS_TO\": \"#f7784f\", \"AFFECTED_BY\": \"#2fbf71\", \"RESTARTED\": \"#b04ff7\", \"MIGRATED_TO\": \"#f7c34f\", \"SUPPLEMENTS\": \"#4ff7e3\"}"));
 const NODES_META = Object.assign(Object.create(null), JSON.parse("{\"salesflow-crm\": {\"type\": \"saas\", \"url\": \"https://salesflow.example\", \"description\": \"CRM vendor\", \"plan\": \"enterprise\"}, \"adastra-ads\": {\"type\": \"saas\", \"url\": \"https://adastra.example\", \"description\": \"ad platform\"}, \"pingtrack-web\": {\"type\": \"saas\", \"url\": \"https://pingtrack.example\", \"description\": \"web analytics\"}, \"crm-sync-job\": {\"type\": \"job\", \"runtime\": \"lambda\", \"owner\": \"data-platform\"}, \"ads-spend-collector\": {\"type\": \"job\", \"runtime\": \"lambda\", \"owner\": \"data-platform\"}, \"web-events-stream\": {\"type\": \"job\", \"runtime\": \"kinesis\", \"owner\": \"data-platform\"}, \"crm-nightly-dump\": {\"type\": \"job\", \"runtime\": \"cron\", \"deprecated\": true}, \"RAW_CRM_CONTACTS\": {\"type\": \"table\", \"schema\": \"ACME_RAW\", \"description\": \"one row per CRM contact\", \"pii\": true}, \"RAW_AD_SPEND_DAILY\": {\"type\": \"table\", \"schema\": \"ACME_RAW\", \"description\": \"daily ad spend by campaign\"}, \"RAW_WEB_EVENTS\": {\"type\": \"table\", \"schema\": \"ACME_RAW\", \"description\": \"clickstream events\", \"append-only\": null}, \"RAW_AD_SPEND_MANUAL\": {\"type\": \"table\", \"schema\": \"ACME_RAW\", \"description\": \"hand-maintained backfill sheet\"}, \"LEGACY_CONTACTS_DUMP\": {\"type\": \"table\", \"schema\": \"ACME_LEGACY\", \"deprecated\": true}}"));
 const NODE_TYPES = Object.assign(Object.create(null), JSON.parse("{\"job\": \"#4f6af7\", \"saas\": \"#f74f4f\", \"table\": \"#8ef74f\"}"));
-const NT = JSON.parse("\"_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"email column dropped for privacy compliance\\\" .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"salesflow v2 renamed company_id to account_id\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n_:trikedb-statement-4 \u003curn:trikedb:via\u003e \\\"https://api.salesflow.example/v2/contacts\\\" .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:url\u003e \\\"https://pingtrack.example\\\" .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:ads-spend-collector\u003e .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-8 \u003curn:trikedb:by\u003e \\\"adastra-ads\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:MIGRATED_TO\u003e .\\n_:trikedb-statement-12 \u003curn:trikedb:by\u003e \\\"salesflow-crm\\\" .\\n_:trikedb-statement-5 \u003curn:trikedb:schedule\u003e \\\"daily 06:00 UTC\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n_:trikedb-statement-13 \u003curn:trikedb:at\u003e \\\"2025-09-02T09:14:00+09:00\\\" .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-8 \u003curn:trikedb:at\u003e \\\"2025-04-01\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"session_id backfill reverted — it double-counted returning visitors\\\" .\\n_:trikedb-statement-9 \u003curn:trikedb:at\u003e \\\"2025-06-15\\\" .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:description\u003e \\\"web analytics\\\" .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:description\u003e \\\"CRM vendor\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-11 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:description\u003e \\\"one row per CRM contact\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-14 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e .\\n_:trikedb-statement-12 \u003curn:trikedb:at\u003e \\\"2025-08-28\\\" .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:description\u003e \\\"ad platform\\\" .\\n_:trikedb-statement-10 \u003curn:trikedb:state\u003e \\\"pending-review\\\" .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:PROVIDES\u003e .\\n_:trikedb-statement-14 \u003curn:trikedb:state\u003e \\\"rolled-back\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-5 \u003curn:trikedb:via\u003e \\\"https://api.adastra.example/v3/spend\\\" .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:web-events-stream\u003e .\\n_:trikedb-statement-3 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:pii\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:plan\u003e \\\"enterprise\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n_:trikedb-statement-13 \u003curn:trikedb:by\u003e \\\"on-call\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"adastra API v3 — spend now reported in micros (was cents)\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"session_id backfill reverted — it double-counted returning visitors\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"salesflow v2 renamed company_id to account_id\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:RESTARTED\u003e \\\"hourly run wedged on a v2 pagination cursor\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-14 \u003curn:trikedb:at\u003e \\\"2025-09-05\\\" .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:MIGRATED_TO\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:web-events-stream\u003e .\\n_:trikedb-statement-7 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:description\u003e \\\"daily ad spend by campaign\\\" .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:ads-spend-collector\u003e .\\n_:trikedb-statement-11 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-15 \u003curn:trikedb:at\u003e \\\"2025-05-20\\\" .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e .\\n_:trikedb-statement-13 \u003curn:trikedb:state\u003e \\\"running\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-11 \u003curn:trikedb:at\u003e \\\"2025-08-11\\\" .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:SUPPLEMENTS\u003e .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:url\u003e \\\"https://adastra.example\\\" .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-4 \u003curn:trikedb:schedule\u003e \\\"hourly\\\" .\\n_:trikedb-statement-10 \u003curn:trikedb:at\u003e \\\"2025-07-02\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"hourly run wedged on a v2 pagination cursor\\\" .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:runtime\u003e \\\"lambda\\\" .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:runtime\u003e \\\"cron\\\" .\\n_:trikedb-statement-12 \u003curn:trikedb:state\u003e \\\"pending-review\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-6 \u003curn:trikedb:schedule\u003e \\\"streaming\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:RESTARTED\u003e .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:url\u003e \\\"https://salesflow.example\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:description\u003e \\\"hand-maintained backfill sheet\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"adastra API v3 — spend now reported in micros (was cents)\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:description\u003e \\\"clickstream events\\\" .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"email column dropped for privacy compliance\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"micros conversion applied to the 2024 backfill as well\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:append-only\u003e \\\"None\\\" .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:schema\u003e \\\"ACME_LEGACY\\\" .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"backfill sheet superseded by the adastra v3 feed\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"micros conversion applied to the 2024 backfill as well\\\" .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:salesflow-crm\u003e .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:runtime\u003e \\\"lambda\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"backfill sheet superseded by the adastra v3 feed\\\" .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n_:trikedb-statement-8 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n_:trikedb-statement-15 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:runtime\u003e \\\"kinesis\\\" .\\n_:trikedb-statement-15 \u003curn:trikedb:state\u003e \\\"migrated\\\" .\\n_:trikedb-statement-10 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-9 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n_:trikedb-statement-16 \u003curn:trikedb:note\u003e \\\"manual backfill covering spend before 2024\\\" .\\n_:trikedb-statement-9 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-15 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:SUPPLEMENTS\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n\"");
+const NT = JSON.parse("\"_:trikedb-statement-11 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:url\u003e \\\"https://pingtrack.example\\\" .\\n_:trikedb-statement-11 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"session_id backfill reverted — it double-counted returning visitors\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:SUPPLEMENTS\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-11 \u003curn:trikedb:at\u003e \\\"2025-08-11\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"salesflow v2 renamed company_id to account_id\\\" .\\n_:trikedb-statement-15 \u003curn:trikedb:at\u003e \\\"2025-05-20\\\" .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:description\u003e \\\"hand-maintained backfill sheet\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:runtime\u003e \\\"lambda\\\" .\\n_:trikedb-statement-5 \u003curn:trikedb:via\u003e \\\"https://api.adastra.example/v3/spend\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:url\u003e \\\"https://salesflow.example\\\" .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"email column dropped for privacy compliance\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"session_id backfill reverted — it double-counted returning visitors\\\" .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n_:trikedb-statement-15 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-14 \u003curn:trikedb:at\u003e \\\"2025-09-05\\\" .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:MIGRATED_TO\u003e .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"backfill sheet superseded by the adastra v3 feed\\\" .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:runtime\u003e \\\"cron\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"micros conversion applied to the 2024 backfill as well\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:append-only\u003e \\\"None\\\" .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:MIGRATED_TO\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:description\u003e \\\"web analytics\\\" .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"backfill sheet superseded by the adastra v3 feed\\\" .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:description\u003e \\\"clickstream events\\\" .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-14 \u003curn:trikedb:state\u003e \\\"rolled-back\\\" .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:web-events-stream\u003e .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:plan\u003e \\\"enterprise\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:salesflow-crm\u003e .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"adastra API v3 — spend now reported in micros (was cents)\\\" .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:AFFECTED_BY\u003e \\\"salesflow v2 renamed company_id to account_id\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-7 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n_:trikedb-statement-9 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-13 \u003curn:trikedb:by\u003e \\\"on-call\\\" .\\n_:trikedb-statement-9 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:description\u003e \\\"ad platform\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:runtime\u003e \\\"kinesis\\\" .\\n_:trikedb-statement-8 \u003curn:trikedb:at\u003e \\\"2025-04-01\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"micros conversion applied to the 2024 backfill as well\\\" .\\n_:trikedb-statement-14 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"adastra API v3 — spend now reported in micros (was cents)\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:ads-spend-collector\u003e .\\n_:trikedb-statement-10 \u003curn:trikedb:state\u003e \\\"pending-review\\\" .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:description\u003e \\\"CRM vendor\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:PROVIDES\u003e .\\n\u003curn:trikedb:pingtrack-web\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n_:trikedb-statement-4 \u003curn:trikedb:schedule\u003e \\\"hourly\\\" .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-3 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:pii\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-8 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:RESTARTED\u003e .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"email column dropped for privacy compliance\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:type\u003e \\\"job\\\" .\\n_:trikedb-statement-5 \u003curn:trikedb:schedule\u003e \\\"daily 06:00 UTC\\\" .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-16 \u003curn:trikedb:note\u003e \\\"manual backfill covering spend before 2024\\\" .\\n_:trikedb-statement-4 \u003curn:trikedb:via\u003e \\\"https://api.salesflow.example/v2/contacts\\\" .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n_:trikedb-statement-10 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n\u003curn:trikedb:LEGACY_CONTACTS_DUMP\u003e \u003curn:trikedb:schema\u003e \\\"ACME_LEGACY\\\" .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:crm-nightly-dump\u003e .\\n_:trikedb-statement-14 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:runtime\u003e \\\"lambda\\\" .\\n_:trikedb-statement-6 \u003curn:trikedb:schedule\u003e \\\"streaming\\\" .\\n\u003curn:trikedb:salesflow-crm\u003e \u003curn:trikedb:type\u003e \\\"saas\\\" .\\n_:trikedb-statement-13 \u003curn:trikedb:at\u003e \\\"2025-09-02T09:14:00+09:00\\\" .\\n_:trikedb-statement-9 \u003curn:trikedb:at\u003e \\\"2025-06-15\\\" .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:url\u003e \\\"https://adastra.example\\\" .\\n_:trikedb-statement-11 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-9 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-15 \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-13 \u003curn:trikedb:state\u003e \\\"running\\\" .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:AFFECTED_BY\u003e .\\n_:trikedb-statement-15 \u003curn:trikedb:state\u003e \\\"migrated\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n\u003curn:trikedb:ads-spend-collector\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e \u003curn:trikedb:description\u003e \\\"daily ad spend by campaign\\\" .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-12 \u003curn:trikedb:at\u003e \\\"2025-08-28\\\" .\\n_:trikedb-statement-12 \u003curn:trikedb:by\u003e \\\"salesflow-crm\\\" .\\n_:trikedb-statement-10 \u003curn:trikedb:at\u003e \\\"2025-07-02\\\" .\\n_:trikedb-statement-3 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-7 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n\u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e \u003curn:trikedb:schema\u003e \\\"ACME_RAW\\\" .\\n_:trikedb-statement-10 \u003curn:trikedb:by\u003e \\\"data-platform\\\" .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:crm-sync-job\u003e .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:RAW_AD_SPEND_MANUAL\u003e .\\n_:trikedb-statement-12 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-6 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#subject\u003e \u003curn:trikedb:web-events-stream\u003e .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_AD_SPEND_DAILY\u003e .\\n_:trikedb-statement-4 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:INGESTS_TO\u003e .\\n_:trikedb-statement-8 \u003curn:trikedb:by\u003e \\\"adastra-ads\\\" .\\n_:trikedb-statement-16 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#predicate\u003e \u003curn:trikedb:SUPPLEMENTS\u003e .\\n\u003curn:trikedb:crm-nightly-dump\u003e \u003curn:trikedb:deprecated\u003e \\\"true\\\"^^\u003chttp://www.w3.org/2001/XMLSchema#boolean\u003e .\\n_:trikedb-statement-8 \u003curn:trikedb:state\u003e \\\"applied\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:RESTARTED\u003e \\\"hourly run wedged on a v2 pagination cursor\\\" .\\n_:trikedb-statement-5 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#type\u003e \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#Statement\u003e .\\n_:trikedb-statement-13 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \\\"hourly run wedged on a v2 pagination cursor\\\" .\\n_:trikedb-statement-12 \u003curn:trikedb:state\u003e \\\"pending-review\\\" .\\n\u003curn:trikedb:crm-sync-job\u003e \u003curn:trikedb:owner\u003e \\\"data-platform\\\" .\\n\u003curn:trikedb:adastra-ads\u003e \u003curn:trikedb:PROVIDES\u003e \u003curn:trikedb:ads-spend-collector\u003e .\\n\u003curn:trikedb:web-events-stream\u003e \u003curn:trikedb:INGESTS_TO\u003e \u003curn:trikedb:RAW_WEB_EVENTS\u003e .\\n\u003curn:trikedb:RAW_WEB_EVENTS\u003e \u003curn:trikedb:type\u003e \\\"table\\\" .\\n\u003curn:trikedb:RAW_CRM_CONTACTS\u003e \u003curn:trikedb:description\u003e \\\"one row per CRM contact\\\" .\\n_:trikedb-statement-15 \u003chttp://www.w3.org/1999/02/22-rdf-syntax-ns#object\u003e \u003curn:trikedb:RAW_CRM_CONTACTS\u003e .\\n\"");
 const EVENT_PREDICATES = JSON.parse("[\"AFFECTED_BY\", \"MIGRATED_TO\", \"RESTARTED\"]");
 const EVENT_NODES = JSON.parse("[\"adastra API v3 — spend now reported in micros (was cents)\", \"backfill sheet superseded by the adastra v3 feed\", \"email column dropped for privacy compliance\", \"hourly run wedged on a v2 pagination cursor\", \"micros conversion applied to the 2024 backfill as well\", \"salesflow v2 renamed company_id to account_id\", \"session_id backfill reverted — it double-counted returning visitors\"]");      // event objects that are payloads, not nodes
 const RULES = JSON.parse("{\"AFFECTED_BY\": {\"description\": \"warehouse table -\u003e change event\", \"domain\": [\"table\"], \"n\": 6}, \"INGESTS_TO\": {\"description\": \"ingestion job -\u003e warehouse table\", \"domain\": [\"job\"], \"range\": [\"table\"], \"n\": 4}, \"MIGRATED_TO\": {\"description\": \"deprecated table -\u003e its replacement\", \"domain\": [\"table\"], \"range\": [\"table\"], \"n\": 1}, \"PROVIDES\": {\"description\": \"SaaS vendor -\u003e ingestion job\", \"domain\": [\"saas\"], \"range\": [\"job\"], \"n\": 4}, \"RESTARTED\": {\"description\": \"ingestion job -\u003e what an operator did to it\", \"domain\": [\"job\"], \"n\": 1}, \"SUPPLEMENTS\": {\"description\": \"table -\u003e table it fills gaps for\", \"domain\": [\"table\"], \"range\": [\"table\"], \"n\": 1}}");                  // what each predicate declares about itself
@@ -443,6 +472,17 @@ network.on("beforeDrawing", function () {
   }
 });
 network.redraw();
+
+// -------------------------------------- how tall the header really is
+// Everything fixed below the bar is positioned off --hdr rather than a
+// constant, because the bar is one row or two depending on how much of
+// it fits. Measuring beats guessing: the legend, the graph chips and
+// the button labels all take their width from the data.
+const headerEl = document.getElementById("header");
+const syncHeaderHeight = () =>
+  document.documentElement.style.setProperty("--hdr", headerEl.offsetHeight + "px");
+new ResizeObserver(syncHeaderHeight).observe(headerEl);
+syncHeaderHeight();
 
 // ------------------------------------- header legend (click = filter)
 const hiddenTypes = new Set();
@@ -726,7 +766,7 @@ function eventHTML(t, from) {
   </div>`;
 }
 
-function showDetail(id) {
+function nodeHTML(id) {
   const meta = NODES_META[id] || {};
   const own = eventsOf[id] || [], into = incomingOf[id] || [];
   const evs = own.concat(into).sort(byTime);
@@ -747,14 +787,70 @@ function showDetail(id) {
     + evs.map(t => eventHTML(t, t.o === id)).join("");
   if (out.length) html += "<h3>outgoing</h3>" + out.map(t => relHTML(t, t.o, "&rarr; ")).join("");
   if (inc.length) html += "<h3>incoming</h3>" + inc.map(t => relHTML(t, t.s, "&larr; ")).join("");
-  document.getElementById("detail-body").innerHTML = html;
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
+  return html;
 }
-document.getElementById("btn-close").onclick = () => {
-  document.getElementById("detail").classList.remove("open");
-  document.body.classList.remove("detail-open");
+
+// ------------------------------------------ the panel, and the way back
+// Three things open in this one panel — a node, the whole log, a
+// predicate's declaration — and each one replaces the view before it.
+// That is the right shape, because each is the answer to a question the
+// last view raised: the log names a node, a fact on that node names a
+// predicate. What was missing is the way back out of an answer, so the
+// panel now keeps the trail it took to get here and back walks one step
+// of it. Closing clears the trail: reopening starts a new question
+// rather than resuming an abandoned one.
+const VIEWS = {
+  node: { html: nodeHTML,  label: (id) => nameOf(id) || id },
+  log:  { html: logHTML,   label: () => "action log" },
+  rule: { html: rulesHTML, label: (p) => p || "predicates" },
 };
+const detail = document.getElementById("detail");
+const btnBack = document.getElementById("btn-back");
+let trail = [];
+
+function openPanel(kind, arg) {
+  const top = trail[trail.length - 1];
+  // Opening the view you are already looking at is not a step, so it
+  // must not become one you then have to press back through.
+  if (!top || top.kind !== kind || top.arg !== arg) trail.push({ kind, arg });
+  drawPanel();
+}
+function drawPanel() {
+  const here = trail[trail.length - 1], prev = trail[trail.length - 2];
+  document.getElementById("detail-body").innerHTML = VIEWS[here.kind].html(here.arg);
+  if (prev) btnBack.innerHTML = "&larr; " + esc(VIEWS[prev.kind].label(prev.arg));
+  document.body.classList.toggle("can-back", !!prev);
+  detail.classList.add("open");
+  document.body.classList.add("detail-open");
+  detail.scrollTop = 0;
+}
+function closePanel() {
+  trail = [];
+  document.body.classList.remove("can-back");
+  detail.classList.remove("open");
+  document.body.classList.remove("detail-open");
+}
+btnBack.onclick = () => {
+  trail.pop();
+  if (!trail.length) { closePanel(); return; }
+  drawPanel();
+  // Stepping back to a node puts the drawing back where it was too.
+  // The panel and the selection are two halves of one view, and
+  // leaving the highlight on the node you just left says you are
+  // somewhere you are not.
+  const here = trail[trail.length - 1];
+  if (here.kind === "node" && nodeIds.has(here.arg)) {
+    network.selectNodes(visualIds([here.arg]));
+    network.focus(nodeIds.get(here.arg), { scale: 1.1, animation: true });
+  }
+};
+document.getElementById("btn-close").onclick = closePanel;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !detail.classList.contains("open")) return;
+  if (/^(INPUT|TEXTAREA)$/.test((e.target.tagName || ""))) return;
+  closePanel();
+});
+const showDetail = (id) => openPanel("node", id);
 document.getElementById("detail").addEventListener("click", (e) => {
   // The chip comes first: inside an event row it sits within the clickable
   // row itself, and asking what a predicate declares must not navigate away
@@ -839,13 +935,11 @@ btnEvents.onclick = () => {
 };
 document.getElementById("btn-fulllog").onclick = () => showTimeline();
 
-function showTimeline() {
-  document.getElementById("detail-body").innerHTML =
-    `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
+function logHTML() {
+  return `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
     + timeline.map(timelineHTML).join("");
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
 }
+function showTimeline() { openPanel("log", ""); }
 
 // ------------------------------------------------------ the declarations
 // Every line on this page was allowed in by a rule, and the rules were the
@@ -877,16 +971,15 @@ function ruleHTML(p) {
     ${rows || `<div class="undeclared">nothing declared \u2014 anything may write this</div>`}
   </div>`;
 }
-function showOntology(only) {
+function rulesHTML(only) {
   const names = only && RULES[only] ? [only] : ruleNames;
   const head = only && RULES[only]
     ? `<h2>${esc(only)}</h2><h3>what this predicate declares</h3>`
     : `<h2>predicates</h2><h3>${ruleNames.length} predicate type${ruleNames.length === 1 ? "" : "s"}`
       + ` &middot; ${enforced.length} enforced</h3>`;
-  document.getElementById("detail-body").innerHTML = head + names.map(ruleHTML).join("");
-  document.getElementById("detail").classList.add("open");
-  document.body.classList.add("detail-open");
+  return head + names.map(ruleHTML).join("");
 }
+function showOntology(only) { openPanel("rule", (only && RULES[only]) ? only : ""); }
 const btnOnto = document.getElementById("btn-onto");
 if (!ruleNames.length) btnOnto.style.display = "none";
 else {
