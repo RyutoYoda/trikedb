@@ -12,3 +12,4 @@ build/
 .env
 benchmarks/retrieval_progress.jsonl
 .vscode/
+.playwright-mcp/
