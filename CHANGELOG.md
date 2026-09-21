@@ -3,6 +3,71 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## Unreleased
+
+The library was fine and the front door was not. A README of 876 lines
+answered every question except the first one — *what do I write, and why
+would I* — and the first thing anyone did after installing was open an
+empty file and look at it.
+
+- **`trikedb init --template`.** An empty file is a worse starting point
+  than a wrong one: with nothing on the screen there is no shape to
+  disagree with. Four templates — `agent-memory`, `service-map`,
+  `decision-log`, `minimal` — each write a small graph that already has a
+  vocabulary, node types and a few facts, so the first edit is a
+  correction rather than an invention. `decision-log` ships the
+  `requires`/`by` pair on a real action, which is the feature people ask
+  for after they stop believing a checklist enforces anything. Without
+  `--force`, `init` refuses to write over a file that exists — the file is
+  the database, so an overwrite here is the whole database. All four load
+  clean under `audit`.
+- **The README is 233 lines and starts with no ontology at all.** The
+  ontology is what makes trikedb worth using and it was also what made it
+  look like a week of modelling before the first fact. It now arrives one
+  section later, as *then lock it down*, after three facts that need
+  nothing declared. Everything cut — the storage backends, serve and
+  OAuth, hybrid retrieval, the triple-store comparison, the compatibility
+  and safety contract — was already in `docs/REFERENCE.md`, said better
+  and at length. The four calls a real graph is actually built from
+  (`add`, `act`, `find`, `sparql`) are now a table instead of something you
+  had to find by reading.
+- **The things a stranger looks for before filing anything.**
+  `CONTRIBUTING.md` (how to run the tests, what a good PR looks like, and
+  what gets turned down and why), `SECURITY.md` (private reporting, and an
+  explicit in-scope/out-of-scope split — the write guard is in scope, a
+  slow SPARQL query is not), and issue templates that point security
+  reports away from the public tracker.
+- **`py.typed`.** The package has been annotated throughout and PEP 561
+  says a type checker must ignore all of it without this marker file, so
+  everyone importing trikedb saw `Any`. Also `Typing :: Typed`, the
+  per-minor Python classifiers, and `Repository`/`Issues`/`Documentation`/
+  `Changelog` URLs, which is what fills in the sidebar on PyPI.
+- **Two tests instead of two more conventions.** One checks that every
+  `https://github.com/RyutoYoda/trikedb/...` link in a README points at a
+  file that exists — absolute is not the same as correct, and PyPI freezes
+  the README per released version, so a link to a translation that was
+  planned and never written is broken there forever. The other checks that
+  every `trikedb …` line in the README parses as a real subcommand with
+  real flags. Both were written because they caught something.
+- **`docs/REFERENCE_zh.md`, and the reference is now the same in three
+  languages.** The Chinese READMEs had been pointing readers at the
+  English reference for every detail, which is not a translation so much
+  as a redirect. The parity test that already held `README.md`,
+  `benchmarks/README.md` and `docs/ARCHITECTURE.md` to the same headings
+  and the same runnable code now covers `docs/REFERENCE.md` too, so the
+  three cannot drift apart again quietly. Three Japanese rows in the
+  Python API table were found by that pass describing an API two releases
+  old — `history` without `incoming`, `declare_link` without `requires`
+  and `by` — and the workbench section was missing the incoming-event
+  marker and the timeline strip.
+- **165 regenerable files left the repository.** `bench_out/` is scratch:
+  `prompts_*.json` are outputs of the run scripts and `eval_set.json` is
+  27 MB that `webqsp_bench.py prepare` downloads from the public WebQSP
+  release. The benchmark's own docstring already promised no dataset
+  content was committed here, and now that is true. What stays is
+  `benchmarks/*_data.json` — the scored results the charts and the number
+  in the README are read from.
+
 ## 0.41.0
 
 The workbench panel could be opened but not left. Opening a detail view

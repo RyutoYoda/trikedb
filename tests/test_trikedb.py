@@ -4589,7 +4589,8 @@ def test_translated_readmes_stay_structurally_in_step():
     # Mermaid blocks are deliberately *not* compared: their labels are prose a
     # reader should get in their own language, and they are untagged as far as
     # code_blocks is concerned.
-    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md"):
+    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md",
+                   "docs/REFERENCE.md"):
         english_path = root / source
         english = english_path.read_text(encoding="utf-8")
         stem = english_path.parent / english_path.stem
@@ -4616,7 +4617,8 @@ def test_readmes_link_to_every_translation():
 
     root = Path(__file__).resolve().parent.parent
     labels = {"": "English", "_jp": "日本語", "_zh": "简体中文"}
-    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md"):
+    for source in ("README.md", "benchmarks/README.md", "docs/ARCHITECTURE.md",
+                   "docs/REFERENCE.md"):
         stem = (root / source).parent / Path(source).stem
         for suffix, label in labels.items():
             path = Path(f"{stem}{suffix}.md")
@@ -4943,3 +4945,173 @@ def test_history_and_state_docstrings_point_at_the_promoted_form():
     for doc in (TrikeDB.history.__doc__, TrikeDB.state.__doc__):
         assert "event-written-on-node" in doc
         assert "promote it to an object" in doc
+
+
+# ------------------------------------------------------ starting templates
+
+def test_every_template_loads_and_passes_its_own_audit(tmp_path):
+    """A starter graph that does not load is worse than no starter graph.
+
+    These are the first trikedb file most people ever open, and they are
+    copied before they are understood — so whatever they demonstrate is
+    what gets built. Each one has to parse, obey the ontology it declares,
+    and leave `audit()` with nothing to say: no undeclared predicate, no
+    edge pointing the wrong way, no node typed in a way its own
+    declarations forbid, no predicate declared and never used.
+    """
+    from trikedb import templates
+
+    assert templates.names(), "no templates are registered"
+    for name in templates.names():
+        path = tmp_path / f"{name}.yaml"
+        path.write_text(templates.render(name), encoding="utf-8")
+        db = TrikeDB(str(path))
+        assert len(db) > 0, f"{name} has no triples"
+        assert db.audit() == [], f"{name} does not pass audit"
+        assert templates.summary(name), f"{name} has no one-line summary"
+
+
+def test_the_decision_log_template_really_refuses_what_it_claims(tmp_path):
+    """Its header says an unapproved or unsigned deploy cannot be written
+    down. That is the entire reason to reach for this template, so it is
+    checked rather than asserted in a comment."""
+    from trikedb import templates
+
+    path = tmp_path / "decisions.yaml"
+    path.write_text(templates.render("decision-log"), encoding="utf-8")
+    db = TrikeDB(str(path))
+
+    # CHG-0002 is proposed and not approved.
+    with pytest.raises(OntologyError, match="APPROVED_BY"):
+        db.act("CHG-0002", "DEPLOYED_TO", "prod", by="rin", state="live")
+    # CHG-0001 went the whole way, so its state is assembled from its events.
+    assert db.state("CHG-0001") == "live"
+    with pytest.raises(OntologyError):
+        db.act("CHG-0001", "DEPLOYED_TO", "prod", state="live")   # nobody signed it
+
+
+def test_unknown_template_names_the_ones_that_exist():
+    from trikedb import templates
+
+    with pytest.raises(ValueError) as exc:
+        templates.render("no-such-template")
+    for name in templates.names():
+        assert name in str(exc.value)
+
+
+def test_init_writes_a_graph_and_refuses_to_clobber_one(tmp_path, capsys):
+    """`init` writes the database, so an accidental second run would destroy
+    whatever had been added to it. It refuses instead, and says how."""
+    from trikedb.cli import main
+
+    path = tmp_path / "graph.yaml"
+    assert main(["init", str(path)]) == 0
+    first = path.read_text(encoding="utf-8")
+    assert len(TrikeDB(str(path))) > 0
+
+    TrikeDB(str(path)).add("extra", "PROVIDES", "fact")   # somebody used it
+    grown = path.read_text(encoding="utf-8")
+
+    assert main(["init", str(path)]) == 1
+    assert path.read_text(encoding="utf-8") == grown, "init overwrote a live graph"
+    assert "--force" in capsys.readouterr().err
+
+    assert main(["init", str(path), "--force", "--template", "minimal"]) == 0
+    assert path.read_text(encoding="utf-8") != grown
+    assert path.read_text(encoding="utf-8") != first
+
+
+def test_init_lists_templates_without_writing_anything(tmp_path, capsys):
+    from trikedb import templates
+    from trikedb.cli import main
+
+    assert main(["init", "--list"]) == 0
+    out = capsys.readouterr().out
+    for name in templates.names():
+        assert name in out and templates.summary(name) in out
+    assert not list(tmp_path.iterdir())
+
+
+def test_init_without_a_file_says_what_to_type(capsys):
+    from trikedb.cli import main
+
+    assert main(["init"]) == 2
+    assert "trikedb init graph.yaml" in capsys.readouterr().err
+
+
+def test_readme_shell_commands_are_real_subcommands():
+    """Every `trikedb ...` line the README tells a newcomer to run has to be a
+    command this CLI actually has, spelled the way it actually takes its
+    arguments. A README is the first thing that gets tried and the last thing
+    that gets tested; `trikedb query FILE "?s P ?o"` looked right for a year
+    and has always needed -w."""
+    import re
+    import shlex
+    from pathlib import Path
+
+    from trikedb.cli import main
+
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
+        encoding="utf-8")
+    lines = [
+        line.strip()
+        for block in re.findall(r"```bash\n(.*?)```", readme, re.S)
+        for line in block.splitlines()
+        if re.match(r"^(trikedb|trike) ", line.strip())
+    ]
+    assert lines, "the README stopped showing any CLI at all"
+
+    for line in lines:
+        argv = shlex.split(line.split("#")[0])[1:]
+        # --help exits 0 only if the subcommand and every flag on the line
+        # parse. It runs nothing, so no graph is touched.
+        with pytest.raises(SystemExit) as exc:
+            main(argv + ["--help"])
+        assert exc.value.code == 0, f"README command does not parse: {line}"
+
+
+def test_readme_links_point_at_files_that_exist():
+    """Absolute is not the same as correct.
+
+    `test_readme_links_are_absolute_for_pypi` catches a link that is relative;
+    this catches one that is absolute and wrong. Both failures are permanent in
+    the same way — PyPI freezes the README per released version, so a link to a
+    file that was never written stays broken on that page forever. The check is
+    only possible for links back into this repository, which is where the dead
+    ones come from: a translation that was planned and not finished.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    pattern = re.compile(
+        r"https://(?:raw\.githubusercontent\.com/RyutoYoda/trikedb/main/"
+        r"|github\.com/RyutoYoda/trikedb/(?:blob|tree)/main/)([^)\"#\s]+)"
+    )
+    missing = []
+    for name in ("README.md", "README_jp.md", "README_zh.md",
+                 "CONTRIBUTING.md", "SECURITY.md"):
+        for rel in pattern.findall((root / name).read_text(encoding="utf-8")):
+            if not (root / rel).exists():
+                missing.append(f"{name} -> {rel}")
+    assert not missing, "links to files that do not exist: " + ", ".join(missing)
+
+
+def test_the_repo_ships_the_files_an_open_source_project_is_judged_by():
+    """A license nobody can find and a security hole nobody knows where to send.
+
+    These four are the ones a stranger looks for before filing anything, and
+    each has a fixed name because GitHub only surfaces them under that name.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for name in ("LICENSE", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md"):
+        assert (root / name).is_file(), f"{name} is missing"
+
+    # PEP 561: without this marker every annotation in the package is ignored
+    # by type checkers, so shipping the hints without it ships nothing.
+    assert (root / "src" / "trikedb" / "py.typed").is_file()
+    assert 'trikedb = ["py.typed"]' in (root / "pyproject.toml").read_text(
+        encoding="utf-8"
+    ), "py.typed exists but is not packaged, so it will not be in the wheel"

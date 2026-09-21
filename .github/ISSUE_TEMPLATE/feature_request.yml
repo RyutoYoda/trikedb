@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose a capability trikedb does not have
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth a look first: CONTRIBUTING.md lists what gets turned down and why
+        — a query language of its own, a server or daemon in the core, scale work
+        for millions of triples, a framework around the graph. Those are a
+        different product rather than a missing feature.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        The task, not the feature. What you reached for and what stopped you is
+        the part that cannot be guessed.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What are you doing instead today?
+      description: If there is a workaround, say what makes it unsatisfying.
+    validations:
+      required: false

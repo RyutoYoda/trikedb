@@ -14,15 +14,29 @@ requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0", "rdflib>=7", "pyoxigraph>=0.4"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    # Beta, not Alpha: the file format and the public API have been stable
+    # across releases and are covered by the compatibility contract in
+    # docs/REFERENCE.md. Not Production/Stable while the version is < 1.0.
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/RyutoYoda/trikedb"
+Repository = "https://github.com/RyutoYoda/trikedb"
+Documentation = "https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md"
+Changelog = "https://github.com/RyutoYoda/trikedb/blob/main/CHANGELOG.md"
+Issues = "https://github.com/RyutoYoda/trikedb/issues"
+Demos = "https://ryutoyoda.github.io/trikedb/"
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.30,<2"]
@@ -72,6 +86,11 @@ trike = "trikedb.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The modules are annotated throughout; without this marker file PEP 561 says
+# a type checker must ignore all of it, so anyone importing trikedb sees Any.
+[tool.setuptools.package-data]
+trikedb = ["py.typed"]
 
 [tool.pytest.ini_options]
 # Name the suites explicitly: a bare `pytest` at the repo root otherwise

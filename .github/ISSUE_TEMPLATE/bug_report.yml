@@ -1,0 +1,34 @@
+name: Bug report
+description: Something behaves differently than documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste real data. A three-triple synthetic graph that
+        reproduces the problem is more useful than an export of your real one.
+        If this is a security issue, report it privately instead:
+        https://github.com/RyutoYoda/trikedb/security/advisories/new
+  - type: input
+    id: version
+    attributes:
+      label: trikedb version
+      description: "`pip show trikedb`, plus your Python version"
+      placeholder: "0.41.0 on Python 3.12"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest thing that reproduces it
+      description: A snippet or a few CLI commands someone can paste and run.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+      description: Include the full traceback if there was one.
+    validations:
+      required: true

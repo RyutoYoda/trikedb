@@ -1,5 +1,5 @@
-include README*.md CHANGELOG.md LICENSE
-recursive-include src *.py
+include README*.md CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE
+recursive-include src *.py py.typed
 recursive-include tests *.py
 recursive-include examples *.yaml *.csv *.md *.ipynb *.py
 recursive-include benchmarks *.py *.json *.md
