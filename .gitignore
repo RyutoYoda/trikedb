@@ -13,3 +13,15 @@ build/
 benchmarks/retrieval_progress.jsonl
 .vscode/
 .playwright-mcp/
+
+# Benchmark scratch. Every file here is regenerated — the evaluation set by
+# `benchmarks/webqsp_bench.py prepare` from the public WebQSP release, the
+# prompts and answers by the run scripts. `benchmarks/*_data.json` holds the
+# scored results that the charts and the README quote, and those are tracked.
+bench_out/
+
+# Scratch directories that are not part of the project.
+output/
+tmp/
+assets/
+*.bak-*
