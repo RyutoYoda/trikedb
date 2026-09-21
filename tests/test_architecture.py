@@ -26,6 +26,7 @@ LAYERS = {
     "model": 0,          # Triple and the shared helpers: what a fact *is*
     "storage_sql": 0,    # bytes in a warehouse row
     "oauth": 0,          # tokens; knows nothing about graphs
+    "templates": 0,      # starting graphs, as text; imports nothing
     # 1 — what the document means, and where the bytes live.
     "storage": 1,        # bytes, wherever they live
     "rules": 1,          # domain / range / requires / by

@@ -21,6 +21,25 @@ def main(argv=None) -> int:
     # metavar keeps the usage line from becoming a wall of command names
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
+    p_init = sub.add_parser(
+        "init",
+        help="write a starting graph, so the first thing you see is not an empty file",
+    )
+    p_init.add_argument("file", nargs="?", help="where to write it, e.g. graph.yaml")
+    p_init.add_argument(
+        "-t", "--template", default="agent-memory", metavar="NAME",
+        help="which starting graph to write (default: agent-memory). "
+             "Use --list to see them all",
+    )
+    p_init.add_argument(
+        "--list", dest="list_only", action="store_true",
+        help="list the available templates and exit",
+    )
+    p_init.add_argument(
+        "-f", "--force", action="store_true",
+        help="overwrite the file if it already exists",
+    )
+
     p_query = sub.add_parser("query", help="match graph patterns with ?variables")
     p_query.add_argument("file")
     p_query.add_argument(
@@ -284,6 +303,47 @@ def main(argv=None) -> int:
         # trikedb broke instead. Anything not listed here is a bug in
         # trikedb, and for those the traceback is the useful answer.
         raise SystemExit(f"error: {exc}")
+
+
+def _cmd_init(args) -> int:
+    """Write a starting graph.
+
+    The blank page is the real barrier to adopting a knowledge graph —
+    `triples: []` says nothing about what belongs in it. Each template is
+    a complete small graph of a shape people actually build, meant to be
+    edited down and replaced.
+    """
+    from . import templates
+
+    if args.list_only:
+        width = max(len(n) for n in templates.names())
+        for name in templates.names():
+            print(f"{name.ljust(width)}  {templates.summary(name)}")
+        return 0
+    if not args.file:
+        print("error: init needs a file to write, e.g. `trikedb init graph.yaml` "
+              "(or --list to see the templates)", file=sys.stderr)
+        return 2
+
+    body = templates.render(args.template)
+    path = Path(args.file)
+    # Never quietly replace a graph somebody has been adding to: the file is
+    # the database, so an overwrite here is the whole database.
+    if path.exists() and not args.force:
+        print(f"error: {path} already exists — pass --force to overwrite it",
+              file=sys.stderr)
+        return 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+    db = TrikeDB(str(path), autosave=False)
+    print(f"wrote {path} — {len(db)} triples, {len(db.nodes())} nodes, "
+          f"template {args.template!r}")
+    print("next:")
+    print(f"  trikedb stats {path}          # what is in it")
+    print(f"  trikedb ui {path}             # look at it in a browser")
+    print(f"  trikedb mcp {path}            # hand it to an agent (trikedb[mcp])")
+    return 0
 
 
 def _print_rows(rows, as_json: bool) -> int:
@@ -704,6 +764,7 @@ def _cmd_sql_init(args) -> int:
 
 
 _COMMANDS = {
+    "init": _cmd_init,
     "query": _cmd_query,
     "sparql": _cmd_sparql,
     "search": _cmd_search,
