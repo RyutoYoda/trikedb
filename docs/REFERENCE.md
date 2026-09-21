@@ -1,6 +1,6 @@
-# trikedb Reference
+<b>English</b> · [English](REFERENCE.md) · [日本語](REFERENCE_jp.md) · [简体中文](REFERENCE_zh.md)
 
-[日本語版はこちら / Japanese version](REFERENCE_jp.md)
+# trikedb Reference
 
 Every feature, and how to use it. For the design rationale see
 [ARCHITECTURE.md](ARCHITECTURE.md); for benchmark methodology see
@@ -322,7 +322,7 @@ db.add("tokyo", "HAS_ALIAS", "TYO")     # SELECT ?a WHERE { t:tokyo t:HAS_ALIAS 
 
 Rule of thumb: *metadata about the node itself → property; anything
 shared, counted, or queried → triple.* Node properties are exposed to
-SPARQL too (as literals: `?x t:type \"bot\"`), and since predicates are
+SPARQL too (as literals: `?x t:type "bot"`), and since predicates are
 just names, even a predicate can carry properties
 (`db.set_node("PROVIDES", since="2024")`) — the RDF way.
 
@@ -344,7 +344,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 |---|---|
 | `add(s, p, o, **attrs)` | Upsert a triple (same s,p,o merges attrs — an event also by its time, so two runs of one action stay two facts). Raises `OntologyError` for undeclared predicates, for links that contradict a declared `domain`/`range`, and for actions that contradict a declared `requires`/`by`; absolute-URI predicates are exempt (OWL meta-statements) |
 | `act(s, p, o, state=, by=, at=, **attrs)` | Run an action: stamp the time (`at=` overrides, else now), append the event, and move node `s` to `state` — one write, all of it or none. Appends rather than merges: the same action twice is two records |
-| `history(name, p=None, *, incoming=True)` | Everything that happened to a node, newest first (ties on the day broken by file order). **Both directions**: an event that points *at* a node belongs to that node's record too, which is what lets an action be [promoted to an object](https://github.com/RyutoYoda/trikedb#when-an-event-becomes-an-object) without cutting the things it touched off from their own history. `incoming=False` narrows it to what the node is the subject of |
+| `history(name, p=None, *, incoming=True)` | Everything that happened to a node, newest first (ties on the day broken by file order). **Both directions**: an event that points *at* a node belongs to that node's record too, which is what lets an action be [promoted to an object](#the-file-format) without cutting the things it touched off from their own history. `incoming=False` narrows it to what the node is the subject of |
 | `state(name)` | The state the node is in now: the property `act()` wrote, else the state the node's **own** latest event left behind. Deliberately not the two-way view — an event pointing at a node says something happened to it, not that it took the event's state, so a price change left `applied` does not leave the approver applied |
 | `declare_link(p, domain=, range=, requires=, by=, description=)` | Declare what a predicate connects, when it may run and who may run it, and have it enforced from then on. `requires` takes predicate names, `(s p o)` patterns that join on shared variables (`?s`/`?o` are the action's own ends), or both. Measures the graph it is added to and raises if an existing link or action already contradicts it. A declaration is the whole shape restated, not a patch: what you leave out is withdrawn |
 | `remove(s=, p=, o=)` | Remove all matches; returns count |
@@ -378,6 +378,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 
 | Command | Purpose |
 |---|---|
+| `trikedb init FILE [--template NAME] [--list] [--force]` | Write a starting graph, so the first thing you see is not an empty file |
 | `trikedb add FILE S P O [-a k=v]...` | Add a triple with attributes |
 | `trikedb rm FILE [-s] [-p] [-o]` | Remove matching triples |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | Pattern joins (table or `--json`) |
@@ -402,6 +403,31 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
 URLs (`[remote]` extra), `snowflake://` graphs (`[snowflake]` extra),
 and workspace files.
+
+### Starting from a template
+
+An empty file is a worse starting point than a wrong one: with nothing on the
+screen there is no shape to disagree with. `trikedb init` writes a small graph
+that already has a vocabulary, node types and a few facts in it, so the first
+edit is a correction rather than an invention.
+
+```bash
+trikedb init --list                              # the templates and what each is for
+trikedb init graph.yaml --template agent-memory  # write one
+trikedb init graph.yaml --template minimal --force   # overwrite an existing file
+```
+
+| Template | What it is for |
+|---|---|
+| `agent-memory` | What your agent keeps getting wrong about your systems — jobs, tables, owners, which of two similar things is the live one |
+| `service-map` | Who calls whom, who owns it, and which one is deprecated |
+| `decision-log` | Changes that cannot be recorded unless they were approved first: `requires` and `by` on the action itself |
+| `minimal` | Three facts and nothing else, to build up from |
+
+Without `--force`, `init` refuses to write over a file that already exists. The
+file is the database, so an overwrite here is not a lost draft — it is the whole
+database. Every template loads clean under `trikedb audit`, which also makes them
+the shortest worked examples of a graph that passes its own checks.
 
 ## MCP: the ontology layer for agents
 
