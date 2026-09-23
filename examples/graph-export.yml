@@ -1,0 +1,61 @@
+# Once a day, turn whatever people curated into one pull request.
+#
+# In the repo that holds your graph, copy this file to
+# .github/workflows/graph-export.yml and examples/export_to_git.py to
+# scripts/export_to_git.py, then set the four secrets below. That is the whole
+# deployment. People write through examples/streamlit_app.py, which talks to
+# the warehouse and knows nothing about git; this reads the same graph back
+# and opens the pull request they would otherwise have had to open
+# themselves.
+#
+# Before the first run, two settings that are not in this file:
+#   * Settings -> Actions -> General -> "Allow GitHub Actions to create and
+#     approve pull requests" must be on, or `gh pr create` is refused.
+#   * The table has to exist: `trikedb sql-init snowflake://DB.SCHEMA.TABLE`.
+
+name: graph export
+
+on:
+  schedule:
+    - cron: "0 20 * * *"   # 05:00 JST, after the working day
+  workflow_dispatch:        # and a button, for when someone wants it now
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders. DB.SCHEMA.TABLE is the table sql-init created; the tail
+      # is which graph in it, so several teams can share one table.
+      TRIKEDB_GRAPH: snowflake://DB.SCHEMA.TABLE/sales/crm
+      TRIKEDB_EXPORT: ontology/graph.yaml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      # Key-pair rather than a password: this runs unattended, and a key is
+      # the credential Snowflake expects for that. The connector reads a file,
+      # so the secret is written to one that lives as long as the job.
+      - name: Write the private key
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/snowflake.p8"
+          printf '%s' "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > "$RUNNER_TEMP/snowflake.p8"
+
+      - name: Export the graph and open a pull request
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/snowflake.p8
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "graph export"
+          git config user.email "noreply@github.com"
+          uv run --with 'trikedb[snowflake]' scripts/export_to_git.py
+
+# If nothing was curated that day the script says so and exits 0, so a quiet
+# week costs a quiet log and no empty pull requests.

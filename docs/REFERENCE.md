@@ -760,6 +760,10 @@ There is no local copy and nothing to synchronise — the row *is* the
 graph. The whole document is read on open and written on save, so this
 suits graphs up to a few MB rather than tens.
 
+That also means there is no working tree and no diff before the fact
+lands, so choosing it chooses where review happens too — see
+[Curating it through a screen](#curating-it-through-a-screen).
+
 `doc` holds JSON here, where a file holds YAML. That is the one place the
 stored format differs, and it buys the next section: SQL has no YAML
 parser, so a YAML string in a column would be a graph nothing but trikedb
@@ -1043,11 +1047,73 @@ same core, gets the same ontology check, and produces the same document:
 | MCP `add_triple` / `set_node` | an agent is writing — the usual case |
 | `db.infer(apply=True)` | let OWL-RL materialize what already follows |
 | editing the YAML by hand | reviewing or correcting a small graph; a text editor is a legitimate client |
+| `examples/streamlit_app.py` | someone who knows the business and will never open a diff |
 
 The ontology guard applies to all of them equally, so "an agent wrote it"
 and "a human wrote it" cannot diverge in vocabulary. That is the point of
 having a controlled predicate list at the write boundary rather than a
 linter after the fact.
+
+### Curating it through a screen
+
+The second-to-last row — *editing the YAML by hand* — is honest for
+whoever wrote the ontology and useless for everyone else.
+`examples/streamlit_app.py` is the other end of it: one form, two object
+slots and a relationship between them, in English and Japanese, for
+people who know the business and will never open a diff.
+
+It is short because the guard does the work. There is no validation code
+in it: every write goes through `db.add` / `db.act` / `db.declare_link`,
+and an `OntologyError` is shown as the refusal it already is. The
+screen's only real job is to show what is already declared, so that a
+person picks rather than invents.
+
+It ships as an example rather than as `trikedb.ui.write` deliberately. A
+write surface is where a team's vocabulary shows — the labels, the two or
+three predicates that actually matter, which fields are required, what
+the Japanese should read like — and that belongs to whoever runs the
+graph. A copied file can be edited; a library screen can only be
+configured.
+
+**Where you point it decides where review happens.** `TRIKEDB_GRAPH`
+takes a path or any storage URL, and the form is identical either way;
+only the last section of the page differs:
+
+| `TRIKEDB_GRAPH` | Who can write | Where review happens |
+|---|---|---|
+| `ontology/graph.yaml`, in a clone of the repo | whoever has the repo checked out | the screen shows the diff and pushes a branch — the pull request is the gate, as usual |
+| `snowflake://DB.SCHEMA.TABLE/sales/crm` | anyone who can open the page | the write lands at once; one pull request a day carries the day's work |
+
+The second row is what makes the screen usable by people who do not have
+git, which was the point of building it. What it moves is *when* review
+happens:
+
+```
+a file:      write -> pull request -> review -> the fact is in the graph
+a warehouse: write -> the fact is in the graph -> pull request -> review
+```
+
+The half that catches dangerous mistakes is kept either way, because the
+ontology guard runs at the moment of writing: an undeclared predicate, an
+edge written backwards and an action whose precondition never happened
+are refused at the screen and never reach the store. What the pull
+request adds on top is judgement — *is this true?* — and reading that
+once a day is usually fine for a curated graph. Where a well-formed but
+wrong fact would be expensive (who owns what, which service is live, who
+may read a table), keep that graph on the file path and leave the rest on
+the warehouse.
+
+`examples/export_to_git.py` is the daily job: it reads the warehouse
+graph, `db.save()`s it into the repo as YAML, and opens the pull request —
+or says nothing changed and exits. `examples/graph-export.yml` is the
+GitHub Actions schedule that runs it. Nothing in the library exists for
+their sake; `db.save(path)` already writes YAML wherever the graph was
+read from, which is the whole export.
+
+Running inside Streamlit in Snowflake, the warehouse connection is the
+session the app is already in — `get_active_session()`, passed to
+`TrikeDB(..., connection=)`. No token, no network rule, no secret to
+rotate, and the graph never leaves the account.
 
 ## Where the HTML workbench goes
 
