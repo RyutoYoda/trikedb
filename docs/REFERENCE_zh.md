@@ -328,6 +328,10 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True 是默认值
 | `set_node(name, **props)` / `node(name)` | 节点属性（键数不限；`label`/`type`/`level` 在 UI 上有含义）。在 SPARQL 里作为字面量可查。修改已有的 `type` 会被拒绝（两个同名的东西会悄悄互相覆盖）—— 确实要改就传 `replace=True` |
 | `batch()` | 上下文管理器：随便改，退出时保存一次。否则 `autosave=True` 会在每次变更时重写整个文件，在批量导入下是平方级的 |
 | `import_file(path)` | 从 CSV/TSV（表头为 s,p,o）、Markdown（s/p/o 表格）或另一张 YAML 图合并进来 |
+| `read_file(path)` | 把一个来源文件里的三元组以 dict 返回，但不写进去 —— `import_file` 拆成两半，好让一份来源在合并之前先被判一遍 |
+| `preview(incoming)` | 这些行会对图做什么，但不去做：每行一个判定（`conflict` / `rejected` / `update` / `new` / `same`），带上理由和对应的三元组。跑的是 `add()` 会跑的那些检查，顺序也一样，所以预览过了的写入不会在真写的时候失败 |
+| `extract_prompt(text, relevant_to=, limit=, prompt=)` | 为一份文档生成抽取提示词，从**这张图**里搭出来：它声明的谓词（只能用这些）和它已经有的节点名（要沿用的写法）。`relevant_to` 让候选节点由语义搜索挑，而不是取前 `limit` 个（`[semantic]` extra）；`prompt` 指定 `trikedb.prompts` 里的哪一份 |
+| `extract(text, llm=)` | 同一份提示词，连调用和解析一起。`llm` 是任何"输入提示词、返回文本"的 callable —— 故意不给默认值。只返回候选行，什么都不写；下一步是 `preview()` |
 | `declare(pred, characteristic)` | RDFS/OWL 语义：OWL 的 `transitive` / `symmetric` / `functional` / `inverse_of:X`，或 RDFS 的 `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` —— 以一条可评审的三元组存下来 |
 | `infer(apply=False)` | OWL-RL 物化（RDFS 分类与层级 + OWL 边；rdf/owl 记账噪声已抑制）；`apply=True` 会加入标记为 `inferred: true` 的事实 |
 | `validate(shapes)` | 经 pySHACL 做 SHACL 校验 → `(conforms, report)` |
@@ -356,7 +360,8 @@ API 能做的事，命令行都能做（`pip install trikedb`，或者
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | 模式连接（表格或 `--json`） |
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 读写（写入会落盘） |
 | `trikedb search FILE "query" [-k N]` | 对事实和节点做语义搜索（`[semantic]` extra） |
-| `trikedb import FILE SRC...` | 合并 CSV/TSV/Markdown/YAML 来源 |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | 合并 CSV/TSV/Markdown/YAML 来源。`--dry-run` 只说每行会做什么、什么都不写，有被挡住的就以 1 退出 |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | 打印这份文档的抽取提示词，由这张图自己的谓词和节点搭成。它不调用任何东西 —— 模型是你的 |
 | `trikedb node FILE NAME [-a k=v]...` | 显示一个节点（属性 + 边）或设置属性 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 显示 / 扩展述语词表。`--link INGESTS_TO=job>table` 声明一个形状并即刻生效；任意一侧都可以留空，也可以用 `a\|b` 写多个类型 |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | 记录你做过的事：节点移到新状态，日志留下这次执行 |
@@ -400,9 +405,62 @@ trikedb init graph.yaml --template minimal --force   # 覆盖已有文件
 `trikedb audit` 下都是干净的，这也让它们成了"一张能通过自己检查的图"
 最短的实例。
 
+## 抽取：丢进一份文档，得到审过的事实
+
+往图里填东西的第三种方式：手打事实、让 agent 写，再往下就是直接丢一份文档
+进来。它是适配器而不是内核的一部分 —— `extract` 在 `db` 之上，被调用时才
+import，而且除了 trikedb 自己什么都不 import（有测试盯着）。这里没有任何
+代码会去调模型。模型你已经有了；trikedb 出的是提示词，以及对答案的判定。
+
+```python
+rows = db.extract(text, llm=my_model)      # 或者拿 db.extract_prompt(text) 自己去调
+for f in db.preview(rows):                 # 对着图判定；这时候还什么都没写
+    print(f["verdict"], f["triple"], f["detail"])
+
+db.preview(db.read_file("answer.md"))      # 对手头的文件做同样的判定
+```
+
+提示词是从"它将要写进去的那张图"里搭出来的，这就是全部的诀窍：能用的谓词是
+本体声明过的谓词，给出的实体名是文件里已经有的节点，每个声明过的
+`domain`/`range` 就作为这一行该长什么样进去。一个先猜词表、事后再被纠正的
+抽取器，猜错的那些事实已经花掉了；一个上来就拿到词表的抽取器，根本不会写
+出来。
+
+`llm` 是任何"接提示词、返回文本"的 callable —— 不管哪家 SDK 都能三行包住，
+其中五家写在
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+里。或者把前后两半放到 shell 里跑，中间夹一个人或者一个聊天窗口：
+
+```bash
+trikedb extract graph.yaml report.md -o prompt.txt   # 贴到任何模型里
+trikedb import graph.yaml answer.md --dry-run        # 这份答案会做什么
+trikedb import graph.yaml answer.md                  # 实际做了什么
+```
+
+`--dry-run` 本身就值得用，而且对任何来源都有效。判定按严重程度排，会让它以
+1 退出的是 `conflict` 和 `rejected` 这两个：
+
+| 判定 | 意思 |
+|---|---|
+| `conflict` | 这个谓词被声明为 `functional`，而主语已经持有另一个宾语。这不是相似度打分，是本体能证明的矛盾。它是一个要交给人的问题，不是挑一个了事 |
+| `rejected` | `add()` 会拒绝这一行 —— 未声明的谓词、与 `domain`/`range` 相抵触、缺 `requires`/`by` —— 这里带着理由报出来，而不是抛出来 |
+| `update` | 同一条事实已经在了，只是属性不同；detail 里列出会变的键 |
+| `new` | 还没有。如果图里已经有同样的 s/p/o 只是日期不同，detail 会说出来 —— 在它落到旧行旁边之前值得再看一眼 |
+| `same` | 已经在图里，且没有变化 |
+
+模型写的每一行都在 `prov` 里带一句原文短引用，于是幻觉可以用子串比对来查，
+而不必再叫一个模型来判。
+
+提示词正文作为数据放在 `trikedb.prompts` 里（`names()` / `summary(name)` /
+`render(name, **fields)`），这样抽取准确率的改动就以一份人能读的 diff 出现。
+受约束提示词的对照组、也就是不加约束的基线 `triples-naive`，同样放在它旁边，
+而不是藏在某个脚本里。案例、标准答案和评分器在
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals)；那里一个分数
+都没有提交，因为提交下来的分数只代表某一天的某一个模型。
+
 ## MCP：给 agent 的本体层
 
-十三个工具，一份服务器定义，两种传输方式：
+十六个工具，一份服务器定义，两种传输方式：
 
 | 工具 | 类型 | 说明 |
 |---|---|---|
@@ -416,6 +474,9 @@ trikedb init graph.yaml --template minimal --force   # 覆盖已有文件
 | `add_triple` / `set_node` / `remove_triples` | 写 | 受本体守卫，自动保存 |
 | `act` | 写 | agent 记录自己做了什么：追加事件，并把节点移到新状态 |
 | `import_source` | 写 | 确定性的文件摄取 |
+| `extraction_prompt` | 读 | 丢进去一份文档，拿回该照着做的指令 —— 里面带着这张图的谓词和它已经有的实体名 |
+| `preview_triples` | 读 | 在写任何东西之前，每行给一个判定：抽取和写入之间的那一步 |
+| `add_triples` | 写 | 一次写多条事实，要么全写要么全不写 —— 有一行被拒，就不会留下半截抽取 |
 
 ```bash
 # 本地（stdio）—— 由 agent 会话自己拉起服务器

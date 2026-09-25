@@ -140,9 +140,11 @@ db.act("ORD-25101", "DELIVERED_TO", "Riverside", by="Kai")   # OntologyError: �
 
 ## エージェントに渡す
 
-グラフを MCP サーバーとして登録すると、エージェントは11個のツールを得る——
-読み取りが `sparql` / `match` / `search` / `find` / `get_node` / `ontology` / `stats`、
-書き込みが `add_triple` / `set_node` / `remove_triples` / `import_source`:
+グラフを MCP サーバーとして登録すると、エージェントは16個のツールを得る——
+読み取りが `sparql` / `match` / `search` / `find` / `get_node` / `history` / `ontology` / `stats`、
+書き込みが `add_triple` / `act` / `set_node` / `remove_triples` / `import_source`、
+そして語彙を当て推量せずに文書を事実に変えるための
+`extraction_prompt` / `preview_triples` / `add_triples`:
 
 ```json
 {
@@ -162,6 +164,51 @@ trikedb は検証された書き込み経路**。抽出は柔軟なまま、語�
 
 MCP クライアントが無い? なら統合はエージェントのプロジェクト指示の1行で済む
 ——*「パイプラインに触る作業の前に `graph.yaml` を読むこと」*——あとはファイルが働く。
+
+## 文書を放り込む
+
+モデルはもう持っているはずだ。trikedb はプロンプトを書き、返ってきた答えを裁く。
+あいだの呼び出しはあなたのもので、だから SDK を入れる必要も鍵を預ける必要もない。
+プロンプトは**書き込み先のグラフそのものから**組まれる——宣言済みの述語と、すでに
+ある ノード名。だからモデルは `WORKS_AT` の横に `EMPLOYED_BY` をでっち上げないし、
+ファイルにすでにいる会社にもう一つノードを開いたりしない:
+
+```python
+rows = db.extract(open("press-release.md").read(), llm=my_model)
+
+for f in db.preview(rows):          # まだ何も書かれていない
+    print(f["verdict"], f["triple"], f["detail"])
+
+# new       Acme BASED_IN Osaka
+# new       Sato WORKS_AT Acme
+# conflict  Tanaka WORKS_AT Globex
+#           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
+```
+
+`llm` はプロンプトを受け取ってテキストを返すだけの callable——使っている SDK を
+3行で包めば済む。5つの実例が
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+にある。
+
+API を使わず、あいだに人やチャット窓を挟んで、シェルから二つに分けてもいい:
+
+```bash
+trikedb extract graph.yaml report.md > prompt.txt   # どこに貼ってもいい
+trikedb import graph.yaml answer.md --dry-run       # 何が起きるか
+trikedb import graph.yaml answer.md                 # 何が起きたか
+```
+
+`--dry-run` はそれ単体で価値があり、どのソースにも効く——CSV でも Markdown でも
+別のグラフでも。各行が `new` / `same` / `update` / `rejected` / `conflict` のどれかと
+その理由つきで返り、読み終わるまで何も書かれない。`conflict` は当て推量ではない:
+`functional` と宣言された述語は主語ごとに目的語を一つしか持てないので、二つ目は
+グラフが証明できる矛盾になる。
+
+制約つきプロンプトは実際どれくらい効くのか? 回して確かめてほしい——題材も模範解答も
+採点器も、比較用の無制約ベースラインも
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals) にある。
+スコアはコミットしていない。コミットされたスコアは、あるモデルのある日の数字に
+しかならないからだ。
 
 ## 何を入れているか
 
@@ -194,9 +241,10 @@ Markdown は不正な書き込みを拒否できないし、そこへ書くエ�
 
 ## trikedb ではないもの
 
-- **抽出パイプラインではない。** PDF をグラフにはしてくれない。やりたいなら抽出器と
-  組み合わせて、出てきたものを手入れすること。抽出したグラフはハルシネーションを
-  受け継ぐ。こちらは信頼してよい側であるべきだ。
+- **抽出パイプラインではない。** モデルを呼ばないし、鍵も預からないし、PDF も読まない。
+  やるのは、あなたのオントロジーからプロンプトを書くことと、書き込みの前に全行を
+  それに照らして裁くこと。モデルも判断もあなたのものだ。抽出したグラフは
+  ハルシネーションを受け継ぐ。こちらは、それが着地する前に見えるようにする側だ。
 - **数百万トリプル向けではない。** すべてメモリ上にあり、走査は線形。数百〜数千が、
   手入れされたグラフが成立する範囲。
 - **自前の SPARQL エンジンではない。** 読み取りは Oxigraph、更新と OWL/SHACL は
@@ -210,6 +258,7 @@ Markdown は不正な書き込みを拒否できないし、そこへ書くエ�
 - [docs/ARCHITECTURE_jp.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_jp.md) — レイヤ構成と、新しいコードをどこに置くか
 - [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — 1k / 10k / 100k トリプルでの実測限界
 - [examples/](https://github.com/RyutoYoda/trikedb/tree/main/examples) — デモの裏にあるグラフと、[実行できるノートブック](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb)
+- [evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals) — 抽出の題材・採点器・比較用ベースライン
 - [CONTRIBUTING.md](https://github.com/RyutoYoda/trikedb/blob/main/CONTRIBUTING.md) — テストの回し方と、良いプルリクエストの形
 
 ## ライセンス

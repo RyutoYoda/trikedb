@@ -358,6 +358,10 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals. Changing an existing `type` is refused (two things sharing a name would silently overwrite each other) — pass `replace=True` to mean it |
 | `batch()` | Context manager: mutate freely, save once on exit. `autosave=True` otherwise rewrites the whole file per mutation, which is quadratic over a bulk import |
 | `import_file(path)` | Merge from CSV/TSV (s,p,o header), Markdown (s/p/o tables), or another YAML graph |
+| `read_file(path)` | The triples a source file holds, as dicts, without adding them — `import_file` split in two, so a source can be judged before it is merged |
+| `preview(incoming)` | What those rows would do to the graph, without doing it: one verdict each (`conflict` / `rejected` / `update` / `new` / `same`) with the reason and the triple it is about. The checks `add()` runs, in the order it runs them, so a preview cannot promise a write that then fails |
+| `extract_prompt(text, relevant_to=, limit=, prompt=)` | The extraction prompt for a document, built from *this* graph: the predicates it declares (the only ones allowed) and the node names it already holds (the spellings to reuse). `relevant_to` chooses which nodes are offered by semantic search instead of taking the first `limit` of them (`[semantic]` extra); `prompt` names one of `trikedb.prompts` |
+| `extract(text, llm=)` | The same prompt, called and parsed. `llm` is any callable from prompt to text — there is no default, on purpose. Returns candidate rows and writes nothing; `preview()` comes next |
 | `declare(pred, characteristic)` | RDFS/OWL semantics: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`, or RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — stored as a reviewable triple |
 | `infer(apply=False)` | OWL-RL materialization (RDFS classification + hierarchy and OWL edges; rdf/owl bookkeeping noise suppressed); `apply=True` adds facts tagged `inferred: true` |
 | `validate(shapes)` | SHACL via pySHACL → `(conforms, report)` |
@@ -384,7 +388,8 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | Pattern joins (table or `--json`) |
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 read & write (writes persist) |
 | `trikedb search FILE "query" [-k N]` | Semantic search over facts and nodes (`[semantic]` extra) |
-| `trikedb import FILE SRC...` | Merge CSV/TSV/Markdown/YAML sources |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | Merge CSV/TSV/Markdown/YAML sources. `--dry-run` says what every row would do and writes nothing, exiting 1 if anything is blocked |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | Print the extraction prompt for a document, built from this graph's own predicates and nodes. Calls nothing — the model is yours |
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | Show / extend the predicate vocabulary. `--link INGESTS_TO=job>table` declares a shape and has it enforced; either side may be blank, or `a\|b` for several types |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | Record something you did: the node moves to its new state and the log keeps the run |
@@ -429,9 +434,68 @@ file is the database, so an overwrite here is not a lost draft — it is the who
 database. Every template loads clean under `trikedb audit`, which also makes them
 the shortest worked examples of a graph that passes its own checks.
 
+## Extraction: a document in, reviewed facts out
+
+The third way to fill a graph, after typing the facts and after having an
+agent add them: hand over a document. It is an adapter rather than part of
+the core — `extract` sits above `db`, is imported when it is called, and
+imports nothing outside trikedb itself, which a test enforces. Nothing here
+calls a model. You have one already; what trikedb contributes is the prompt
+and the judgement of the answer.
+
+```python
+rows = db.extract(text, llm=my_model)      # or: db.extract_prompt(text), and call it yourself
+for f in db.preview(rows):                 # judged against the graph; nothing written yet
+    print(f["verdict"], f["triple"], f["detail"])
+
+db.preview(db.read_file("answer.md"))      # the same judgement on a file you already have
+```
+
+The prompt is built from the graph it will be written into, and that is the
+whole of the idea: the predicates offered are the ones the ontology declares,
+the entity names offered are the nodes the file already holds, and each
+declared `domain`/`range` goes in as the shape of the row. An extractor that
+guesses a vocabulary and is corrected afterwards has already spent the facts
+it guessed wrong; one handed the vocabulary up front never writes them.
+
+`llm` is any callable taking the prompt and returning text — three lines
+around whichever SDK you use, and five of them are written out in
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py).
+Or run the two halves from a shell, with a person or a chat window in the
+middle:
+
+```bash
+trikedb extract graph.yaml report.md -o prompt.txt   # paste it into any model
+trikedb import graph.yaml answer.md --dry-run        # what the answer would do
+trikedb import graph.yaml answer.md                  # what it did
+```
+
+`--dry-run` is worth having on its own and works on any source. The verdicts,
+worst first — `conflict` and `rejected` are the two it exits 1 on:
+
+| Verdict | What it means |
+|---|---|
+| `conflict` | the predicate is declared `functional` and the subject already holds a different object. Not a similarity score: a contradiction the ontology can prove. A question for a person, not something to settle by picking one |
+| `rejected` | `add()` would refuse the row — an undeclared predicate, a `domain`/`range` it contradicts, a missing `requires`/`by` — reported with its reason instead of raised |
+| `update` | the same fact is already here with different attributes; the detail lists the keys that would change |
+| `new` | not here yet. The detail names the case where the graph already states the same s/p/o under a different date, which is worth a second look before it lands beside the old row |
+| `same` | already in the graph, unchanged |
+
+Every row the model writes carries a short verbatim quote in `prov`, which
+makes hallucination checkable by substring instead of by another model.
+
+The prompt bodies live in `trikedb.prompts` as data — `names()`,
+`summary(name)`, `render(name, **fields)` — so a change to extraction
+accuracy arrives as a diff someone can read. `triples-naive`, the
+unconstrained baseline the constrained prompt is measured against, is kept
+there beside it rather than in a script. The cases, the answer sheets and the
+scorer are in
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals); no scores are
+committed, because a committed score is one model on one day.
+
 ## MCP: the ontology layer for agents
 
-Thirteen tools, one server definition, two transports:
+Sixteen tools, one server definition, two transports:
 
 | Tool | Kind | Notes |
 |---|---|---|
@@ -445,6 +509,9 @@ Thirteen tools, one server definition, two transports:
 | `add_triple` / `set_node` / `remove_triples` | write | ontology-guarded, autosaved |
 | `act` | write | an agent recording what it did: appends the event and moves the node to its new state |
 | `import_source` | write | deterministic file ingestion |
+| `extraction_prompt` | read | a document in, the task to follow out — carrying this graph's predicates and the entity names it already holds |
+| `preview_triples` | read | one verdict per row before anything is written: the step between extracting and adding |
+| `add_triples` | write | many facts at once, all or nothing — a refused row leaves no half-written extraction behind |
 
 ```bash
 # local (stdio) — the agent session spawns the server

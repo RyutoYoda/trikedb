@@ -137,9 +137,10 @@ db.act("ORD-25101", "DELIVERED_TO", "Riverside", by="Kai")   # OntologyError: �
 
 ## 交给智能体
 
-把图谱注册成 MCP 服务器，智能体就拿到十一个工具——读取用 `sparql`、`match`、
-`search`、`find`、`get_node`、`ontology`、`stats`，写入用 `add_triple`、
-`set_node`、`remove_triples`、`import_source`：
+把图谱注册成 MCP 服务器，智能体就拿到十六个工具——读取用 `sparql`、`match`、
+`search`、`find`、`get_node`、`history`、`ontology`、`stats`，写入用 `add_triple`、
+`act`、`set_node`、`remove_triples`、`import_source`，还有把文档变成事实而不必
+猜测词汇的 `extraction_prompt`、`preview_triples`、`add_triples`：
 
 ```json
 {
@@ -158,6 +159,47 @@ trikedb 负责那条经过校验的写入路径。** 抽取保持灵活，词汇
 
 没有 MCP 客户端？那么整个集成就是智能体项目说明里的一行字——
 *"任何涉及数据管道的任务，先读 `graph.yaml`"*——剩下的交给文件本身。
+
+## 把一份文档丢进去
+
+模型你已经有了。trikedb 负责写提示词、评判回答；中间那次调用是你的，所以没有
+SDK 要装，也没有密钥要交出去。提示词是**从要写入的那张图谱本身**组出来的——它
+声明过的谓词，它已有的节点名。所以模型不会在 `WORKS_AT` 旁边临时造一个
+`EMPLOYED_BY`，也不会给文件里已经存在的公司再开一个节点：
+
+```python
+rows = db.extract(open("press-release.md").read(), llm=my_model)
+
+for f in db.preview(rows):          # 此刻什么都还没写
+    print(f["verdict"], f["triple"], f["detail"])
+
+# new       Acme BASED_IN Osaka
+# new       Sato WORKS_AT Acme
+# conflict  Tanaka WORKS_AT Globex
+#           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
+```
+
+`llm` 就是任何接收提示词、返回文本的可调用对象——把你在用的 SDK 包三行即可，
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+里写好了五个。
+
+也可以完全不碰 API，让一个人或一个聊天窗口站在中间，从命令行分两半跑：
+
+```bash
+trikedb extract graph.yaml report.md > prompt.txt   # 贴到任何地方
+trikedb import graph.yaml answer.md --dry-run       # 它会做什么
+trikedb import graph.yaml answer.md                 # 它做了什么
+```
+
+`--dry-run` 本身就值得拥有，而且对任何来源都有效——CSV、Markdown、另一张图谱。
+每一行都会带着理由回来，标为 `new`、`same`、`update`、`rejected` 或 `conflict`，
+在你读完之前什么都不会写。`conflict` 不是猜的：被声明为 `functional` 的谓词，
+每个主语只能持有一个宾语，所以第二个就是图谱能够证明的矛盾。
+
+那条带约束的提示词到底有多大用？跑一遍就知道——案例、标准答案、评分器，以及
+用来对照的无约束基线，都在
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals)。那里没有提交任何
+分数，因为一个被提交的分数只是某个模型在某一天的数字。
 
 ## 人们往里放什么
 
@@ -186,8 +228,9 @@ trikedb 负责那条经过校验的写入路径。** 抽取保持灵活，词汇
 
 ## trikedb 不是什么
 
-- **不是抽取流水线。** 它不会把你的 PDF 变成图谱。想要的话就配一个抽取器——
-  然后把产出整理干净。被抽取出来的图谱会继承幻觉；这一份应该是你能信的那部分。
+- **不是抽取流水线。** 它不会调用模型、不保管你的密钥、也不解析你的 PDF。它做的是
+  从你的本体写出提示词，并在写入之前拿它去评判每一行——模型和判断都还是你的。
+  被抽取出来的图谱会继承幻觉；这一份是让幻觉在落地之前先被看见的那部分。
 - **不是给几百万条三元组用的。** 一切都在内存里，扫描是线性的。几百到几千，
   才是一个人工维护的图谱得以成立的范围。
 - **不是自己写的 SPARQL 引擎。** 读取跑在 Oxigraph 上，更新和 OWL/SHACL 跑在
@@ -201,6 +244,7 @@ trikedb 负责那条经过校验的写入路径。** 抽取保持灵活，词汇
 - [docs/ARCHITECTURE_zh.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE_zh.md) — 分层结构，以及新代码该放在哪里
 - [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — 1k / 10k / 100k 三元组下的实测边界
 - [examples/](https://github.com/RyutoYoda/trikedb/tree/main/examples) — 演示背后的图谱，以及一个[可运行的 notebook](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb)
+- [evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals) — 抽取案例、评分器，以及用来对照的基线
 - [CONTRIBUTING.md](https://github.com/RyutoYoda/trikedb/blob/main/CONTRIBUTING.md) — 如何跑测试，以及一个好的 pull request 长什么样
 
 ## 许可证

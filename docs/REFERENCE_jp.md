@@ -343,6 +343,10 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 | `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可。既存の `type` の変更は拒否される(同名の別物が黙って上書きし合うため) — 意図的に変えるなら `replace=True` |
 | `batch()` | コンテキストマネージャ。中では自由に変更し、抜けるときに1回だけ保存。`autosave=True` のままだと1変更ごとに全体を書き直すので、大量投入では二次になる |
 | `import_file(path)` | CSV/TSV(s,p,oヘッダ)・Markdown(s/p/o表)・別のYAMLグラフをマージ |
+| `read_file(path)` | ソースファイルが持つトリプルを、追加せずにdictで返す — `import_file` を2つに割ったもの。マージする前に中身を判定できる |
+| `preview(incoming)` | その行がグラフに何をするかを、実際にはせずに返す: 1行につき判定1つ(`conflict` / `rejected` / `update` / `new` / `same`)と、その理由と対象トリプル。`add()` が走らせる検査を、同じ順番で走らせるので、プレビューが通った書き込みが後で落ちることはない |
+| `extract_prompt(text, relevant_to=, limit=, prompt=)` | ドキュメント用の抽出プロンプトを「このグラフ」から組み立てる: 宣言済みの述語(使ってよいのはこれだけ)と、すでにあるノード名(この綴りを再利用する)。`relevant_to` を渡すと、先頭 `limit` 件ではなく意味検索で提示ノードを選ぶ(`[semantic]` extra)。`prompt` は `trikedb.prompts` の名前 |
+| `extract(text, llm=)` | 同じプロンプトを、呼び出しとパースまで込みで。`llm` はプロンプトを受けてテキストを返す任意のcallable — 既定値は意図的に無い。候補行を返すだけで何も書かない。次は `preview()` |
 | `declare(pred, characteristic)` | RDFS/OWL意味論の宣言: OWL `transitive` / `symmetric` / `functional` / `inverse_of:X`、または RDFS `subclass_of:X` / `subproperty_of:X` / `domain:X` / `range:X` — レビュー可能なトリプルとして保存 |
 | `infer(apply=False)` | OWL-RL推論の実体化（RDFSの分類・階層＋OWLエッジを表面化、rdf/owlの内部ノイズは抑制）。`apply=True` で `inferred: true` 付きで追加 |
 | `validate(shapes)` | pySHACLによるSHACL検証 → `(conforms, report)` |
@@ -369,7 +373,8 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | パターン結合(表 or `--json`) |
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1読み書き(書き込みは永続化) |
 | `trikedb search FILE "クエリ" [-k N]` | 意味検索 — 事実とノードを意味でランク付け(`[semantic]` extra) |
-| `trikedb import FILE SRC...` | CSV/TSV/Markdown/YAMLソースをマージ |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | CSV/TSV/Markdown/YAMLソースをマージ。`--dry-run` は各行が何をするかだけ言って何も書かず、止まるものがあればexit 1 |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | このグラフ自身の述語とノードから組み立てた抽出プロンプトを出力する。何も呼び出さない — モデルはあなたのもの |
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 語彙の表示/拡張。`--link INGESTS_TO=job>table` は形を宣言し、以後強制する。どちらの側も空でよく、`a\|b` で複数型 |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | やったことを記録する: ノードは新しい状態に移り、ログには実行が残る |
@@ -414,9 +419,66 @@ trikedb init graph.yaml --template minimal --force   # 既存ファイルを上�
 データベースを丸ごと失うことになる。どのテンプレートも `trikedb audit` を
 きれいに通る。つまり、自分の検査を通るグラフの最短の実例でもある。
 
+## 抽出: ドキュメントを入れて、レビュー済みの事実にする
+
+グラフを埋める3つ目のやり方。手で事実を打つ、エージェントに入れさせる、
+その次がドキュメントをそのまま渡すこと。これはコアの一部ではなくアダプタで、
+`extract` は `db` の上にいて、呼ばれたときに import され、trikedb 自身の外を
+import しない(テストで守られている)。ここでは何もモデルを呼ばない。モデルは
+すでに手元にある。trikedb が出すのはプロンプトと、答えの判定のほうだ。
+
+```python
+rows = db.extract(text, llm=my_model)      # または db.extract_prompt(text) を取って自分で呼ぶ
+for f in db.preview(rows):                 # グラフに照らして判定。まだ何も書かれていない
+    print(f["verdict"], f["triple"], f["detail"])
+
+db.preview(db.read_file("answer.md"))      # 手元のファイルにも同じ判定を
+```
+
+プロンプトは、書き込まれる先のグラフから組み立てられる。それが全部だ。使える
+述語はオントロジーが宣言した述語で、提示されるエンティティ名はファイルがすでに
+持っているノードで、宣言された `domain`/`range` はそのまま行の形として入る。
+語彙を当てずっぽうで作って後から直す抽出器は、間違えた分の事実をもう使い切って
+いる。最初に語彙を渡された抽出器は、そもそも書かない。
+
+`llm` はプロンプトを受け取ってテキストを返すcallableなら何でもいい。どのSDKでも
+3行で包める。5種類を
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+に書き出してある。あるいは前半と後半をシェルから走らせて、あいだに人か
+チャット画面を挟んでもいい:
+
+```bash
+trikedb extract graph.yaml report.md -o prompt.txt   # 好きなモデルに貼る
+trikedb import graph.yaml answer.md --dry-run        # その答えが何をするか
+trikedb import graph.yaml answer.md                  # 実際にやる
+```
+
+`--dry-run` はそれ自体で価値があり、どのソースにも効く。判定は重い順で、
+exit 1 になるのは `conflict` と `rejected` の2つ:
+
+| 判定 | 意味 |
+|---|---|
+| `conflict` | その述語は `functional` と宣言されていて、主語はすでに別の目的語を持っている。類似度スコアではなく、オントロジーが証明できる矛盾。どちらかを選んで片付けるものではなく、人に投げる質問 |
+| `rejected` | `add()` ならその行を拒否する — 未宣言の述語、`domain`/`range` に反する、`requires`/`by` が足りない — それを例外ではなく理由つきで報告する |
+| `update` | 同じ事実がすでにあり、属性だけ違う。変わるキーがdetailに並ぶ |
+| `new` | まだ無い。ただし同じ s/p/o が別の日付で既にある場合はdetailがそう言う。古い行の隣に増える前に、一度見る価値がある |
+| `same` | すでにグラフにあり、変化なし |
+
+モデルが書く行には必ず短い原文引用が `prov` に入る。おかげで幻覚の確認が、
+別のモデルではなく部分文字列一致でできる。
+
+プロンプト本文は `trikedb.prompts` にデータとして置いてある(`names()` /
+`summary(name)` / `render(name, **fields)`)。抽出精度の変更が、人が読める
+diffとして出てくるようにするためだ。制約つきプロンプトの比較対象である
+制約なしのベースライン `triples-naive` も、スクリプトの中ではなくその隣に
+置いてある。ケース・模範解答・採点器は
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals) にある。
+スコアは1つもコミットしていない。コミットされたスコアは、ある1日のある1モデルの
+話でしかないからだ。
+
 ## MCP: エージェントのためのオントロジーレイヤー
 
-ツール13個・サーバー定義は1つ・トランスポートは2つ:
+ツール16個・サーバー定義は1つ・トランスポートは2つ:
 
 | ツール | 種別 | 備考 |
 |---|---|---|
@@ -430,6 +492,9 @@ trikedb init graph.yaml --template minimal --force   # 既存ファイルを上�
 | `add_triple` / `set_node` / `remove_triples` | 書き | オントロジー検証つき・autosave |
 | `act` | 書き | エージェントが「やったこと」を記録する: イベントを追記し、ノードを新しい状態へ移す |
 | `import_source` | 書き | 決定論的ファイル取り込み |
+| `extraction_prompt` | 読み | ドキュメントを渡すと、従うべき指示が返る — このグラフの述語と、すでにあるエンティティ名つき |
+| `preview_triples` | 読み | 何かを書く前に1行ずつ判定する。抽出と追加のあいだの一段 |
+| `add_triples` | 書き | 複数の事実をまとめて、全部か無か — 1行弾かれたら、書きかけの抽出は残らない |
 
 ```bash
 # ローカル(stdio) — エージェントのセッションが子プロセスとして起動
