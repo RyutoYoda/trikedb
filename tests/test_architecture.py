@@ -27,6 +27,7 @@ LAYERS = {
     "storage_sql": 0,    # bytes in a warehouse row
     "oauth": 0,          # tokens; knows nothing about graphs
     "templates": 0,      # starting graphs, as text; imports nothing
+    "prompts": 0,        # extraction prompts, as text; imports nothing
     # 1 — what the document means, and where the bytes live.
     "storage": 1,        # bytes, wherever they live
     "rules": 1,          # domain / range / requires / by
@@ -34,6 +35,7 @@ LAYERS = {
     "reasoning": 1,      # OWL-RL and SHACL over that projection
     # 2 — read the whole document and say something about it.
     "audit": 2,
+    "merge": 2,          # what incoming triples would do
     "persistence": 2,
     # 3 — the store itself. Everything above is someone using it.
     "db": 3,
@@ -42,6 +44,7 @@ LAYERS = {
     #     formats it can be built from, or on an embedding model.
     "html": 4,
     "importers": 4,
+    "extract": 4,        # document -> candidate triples
     "embeddings": 4,
     # 5 — entry points.
     "cli": 5,
@@ -106,6 +109,7 @@ def test_the_core_does_not_import_its_own_presentation():
     assert "html" not in import_time_deps("db")
     assert "embeddings" not in import_time_deps("db")
     assert "importers" not in import_time_deps("db")
+    assert "extract" not in import_time_deps("db")
 
 
 def test_there_are_no_import_cycles():

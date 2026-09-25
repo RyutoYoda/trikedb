@@ -50,6 +50,7 @@ __all__ = ["Triple", "TrikeDB", "OntologyError"]
 # and are imported inside the three methods that use them, so the core
 # never depends on its own presentation or on an adapter it may not need.
 from . import audit as _audit
+from . import merge as _merge
 from . import persistence, rdf, reasoning, rules
 
 
@@ -677,6 +678,26 @@ class TrikeDB:
 
     # ------------------------------------------------------------- imports
 
+    def read_file(self, path: Union[str, Path]) -> list:
+        """The triples a source file holds, as dicts, without adding them.
+
+        Split from import_file so a source can be looked at before it is
+        merged: preview() takes exactly this.
+        """
+        from . import importers
+
+        path = Path(path)
+        suffix = path.suffix.lower()
+        if suffix in (".yaml", ".yml"):
+            return [t.to_dict() for t in TrikeDB(path)]
+        if suffix in (".csv", ".tsv"):
+            return importers.read_csv(path)
+        if suffix in (".md", ".markdown"):
+            return importers.read_markdown(path)
+        raise ValueError(
+            f"unsupported import format {path.suffix!r} (use .yaml/.csv/.tsv/.md)"
+        )
+
     def import_file(self, path: Union[str, Path]) -> int:
         """Merge triples from a YAML graph, CSV/TSV, or Markdown document.
 
@@ -685,20 +706,7 @@ class TrikeDB:
         The ontology, if any, is enforced. Returns how many triples were
         added (upserts of existing triples don't count).
         """
-        from . import importers
-
-        path = Path(path)
-        suffix = path.suffix.lower()
-        if suffix in (".yaml", ".yml"):
-            dicts = [t.to_dict() for t in TrikeDB(path)]
-        elif suffix in (".csv", ".tsv"):
-            dicts = importers.read_csv(path)
-        elif suffix in (".md", ".markdown"):
-            dicts = importers.read_markdown(path)
-        else:
-            raise ValueError(
-                f"unsupported import format {path.suffix!r} (use .yaml/.csv/.tsv/.md)"
-            )
+        dicts = self.read_file(path)
         before = len(self._triples)
         with self.batch():
             for d in dicts:
@@ -856,6 +864,40 @@ class TrikeDB:
     def audit(self) -> list:
         """Health findings for a growing graph; see trikedb.audit.audit()."""
         return _audit.audit(self)
+
+    def preview(self, incoming) -> list:
+        """What these triples would do to the graph, without doing it.
+
+        One finding per row — new, same, update, conflict or rejected —
+        so an import is something you agree to rather than something you
+        read back afterwards. See trikedb.merge.preview().
+        """
+        return _merge.preview(self, incoming)
+
+    def extract_prompt(self, text: str, **kwargs) -> str:
+        """The extraction prompt for `text`, built from this graph's own
+        declared predicates and existing nodes. See trikedb.extract.
+
+        Send it to any model you like; `extract()` is the same thing with
+        the call and the parse attached.
+        """
+        from .extract import prompt_for
+
+        return prompt_for(self, text, **kwargs)
+
+    def extract(self, text: str, *, llm, **kwargs) -> list:
+        """Candidate triples from `text`, using the `llm` callable you pass.
+
+        Returns rows; writes nothing. Feed them to preview() to see what
+        they would do, then import_file() or add() to keep them.
+
+        Imported here rather than at the top for the same reason as
+        to_html: a graph that is never extracted into should not carry
+        the extractor.
+        """
+        from .extract import extract
+
+        return extract(text, llm=llm, db=self, **kwargs)
 
     def to_jsonld(self, base: str = "urn:trikedb:") -> dict:
         """Best-effort JSON-LD export for interop with real RDF tooling."""

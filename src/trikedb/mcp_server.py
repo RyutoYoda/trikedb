@@ -200,8 +200,10 @@ def build_server(
             f"Knowledge graph stored in {path}. Read with sparql/match/get_node, "
             "write with add_triple/set_node/import_source. Call ontology() before "
             "adding facts: predicates outside the declared ontology are rejected. "
-            "When extracting facts from documents, add each as a triple and put "
-            "supporting detail (URLs, dates, notes) in attrs/props."
+            "To get facts out of a document, call extraction_prompt(text) and "
+            "follow what it returns, then preview_triples(rows) to see what they "
+            "would do, then add_triples(rows). Put supporting detail (URLs, dates, "
+            "a quote in prov) in attrs/props."
         ),
     )
 
@@ -363,6 +365,62 @@ def build_server(
                 p: sum(1 for _ in db.triples(p=p)) for p in db.predicates()
             },
         }
+
+    @server.tool()
+    @serialized
+    def extraction_prompt(text: str, relevant_to: Optional[str] = None) -> str:
+        """Turn a document into the extraction task for *this* graph.
+
+        Pass the document text; you get back the instructions to follow,
+        carrying this graph's declared predicates (the only ones you may
+        use) and the names of the entities it already holds (the spellings
+        you must reuse). Follow them, then hand the rows you produce to
+        `preview_triples` before writing anything.
+
+        Use this instead of extracting from the document directly. Working
+        from the graph's own vocabulary is what keeps a second predicate
+        for the same relation, and a second node for the same company, out
+        of the file — neither of which can be fully repaired afterwards.
+
+        `relevant_to` (a sentence describing the document) narrows which
+        existing entities are offered, for a graph too large to list;
+        it needs the [semantic] extra."""
+        return db.extract_prompt(text, relevant_to=relevant_to)
+
+    @server.tool()
+    @serialized
+    def preview_triples(triples: list) -> list:
+        """What these triples would do to the graph. Writes nothing.
+
+        Takes rows as [{"s","p","o", ...attrs}] and returns one verdict
+        each: `new`, `same` (already here), `update` (attributes would
+        change), `conflict` (the predicate is declared functional and the
+        subject already holds a different object) or `rejected` (the write
+        would be refused, with the reason).
+
+        Call this after any extraction, and before `add_triples`. A
+        `conflict` is a question for the human, not something to resolve
+        by picking one — the graph is saying the document disagrees with
+        what it already records."""
+        return db.preview(triples)
+
+    @server.tool()
+    @serialized
+    def add_triples(triples: list) -> dict:
+        """Add many facts at once, all or nothing.
+
+        Takes the same rows as `preview_triples` — run that first. If any
+        row is refused, none of them are written, so a rejected predicate
+        cannot leave half an extraction in the file."""
+        def apply():
+            before = len(db)
+            with db.batch():
+                for row in triples:
+                    d = dict(row)
+                    db.add(d.pop("s"), d.pop("p"), d.pop("o"), **d)
+            return {"added": len(db) - before, "total": len(db)}
+
+        return write(apply)
 
     @server.tool()
     @serialized
