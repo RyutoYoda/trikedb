@@ -1,0 +1,9 @@
+ontology:
+  SUPPLIES: {description: which part a vendor supplies, domain: vendor, range: part}
+  BASED_IN: {description: where a vendor is, domain: vendor, range: place}
+nodes:
+  Tamaki Metals: {type: vendor}
+  frames: {type: part}
+  Osaka: {type: place}
+triples:
+- {s: Tamaki Metals, p: SUPPLIES, o: frames, prov: the 2025 contract}

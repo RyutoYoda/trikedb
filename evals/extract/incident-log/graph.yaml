@@ -1,0 +1,11 @@
+ontology:
+  AFFECTED_BY: {description: what happened to a system, domain: system, range: event}
+  OWNED_BY: {description: which team owns a system, domain: system, range: team}
+  DEPENDS_ON: {description: what a system needs to work, domain: system, range: system}
+nodes:
+  ingest: {type: system, note: the loader, called "the ingest job" in writing}
+  warehouse: {type: system}
+  platform: {type: team}
+triples:
+- {s: ingest, p: OWNED_BY, o: platform, prov: the on-call rota}
+- {s: OWNED_BY, p: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', o: 'http://www.w3.org/2002/07/owl#FunctionalProperty'}
