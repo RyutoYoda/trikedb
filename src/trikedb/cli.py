@@ -120,6 +120,33 @@ def main(argv=None) -> int:
     )
     p_import.add_argument("file", help="the graph YAML to merge into (created if missing)")
     p_import.add_argument("sources", nargs="+", help=".csv/.tsv/.md/.yaml files to import")
+    p_import.add_argument(
+        "-n", "--dry-run", action="store_true",
+        help="say what each row would do (new/same/update/conflict/rejected) "
+             "and write nothing; exits 1 if anything is blocked",
+    )
+    p_import.add_argument("--json", action="store_true",
+                          help="with --dry-run, output the findings as JSON")
+
+    p_extract = sub.add_parser(
+        "extract",
+        help="print the extraction prompt for a document, built from this "
+             "graph's own predicates and nodes",
+    )
+    p_extract.add_argument(
+        "file", help="the graph whose vocabulary constrains the extraction")
+    p_extract.add_argument("document", help="the document to extract from")
+    p_extract.add_argument("-o", "--out", default=None,
+                           help="write the prompt here instead of stdout")
+    p_extract.add_argument(
+        "--relevant-to", default=None, metavar="TEXT",
+        help="offer only the nodes this text recalls, rather than the first "
+             "--limit of them ([semantic] extra). Describe the document.",
+    )
+    p_extract.add_argument(
+        "--limit", type=int, default=None, metavar="N",
+        help="how many existing node names to offer (default 200)",
+    )
 
     p_node = sub.add_parser(
         "node", help="show a node (props + edges), or set properties with -a"
@@ -453,6 +480,8 @@ def _cmd_search(args) -> int:
 
 
 def _cmd_import(args) -> int:
+    if args.dry_run:
+        return _preview_import(args)
     db = TrikeDB(args.file)
     added = 0
     for source in args.sources:
@@ -461,6 +490,64 @@ def _cmd_import(args) -> int:
         print(f"{source}: +{n}")
     db.save()
     print(f"added {added} triple(s) — {len(db)} total in {args.file}")
+    return 0
+
+
+def _preview_import(args) -> int:
+    """`import --dry-run`: what the sources would do, without doing it."""
+    from . import merge
+
+    db = TrikeDB(args.file, read_only=True)
+    report, blocked = {}, 0
+    for source in args.sources:
+        findings = db.preview(db.read_file(source))
+        report[source] = findings
+        blocked += len(merge.blocking(findings))
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        return 1 if blocked else 0
+    for source, findings in report.items():
+        print(f"{source}: {len(findings)} row(s)")
+        _print_findings(findings)
+    print("nothing written" + (f" — {blocked} row(s) need a decision first"
+                               if blocked else ""))
+    return 1 if blocked else 0
+
+
+def _print_findings(findings) -> None:
+    from . import merge
+
+    for verdict in merge.ORDER:
+        for f in (x for x in findings if x["verdict"] == verdict):
+            t = f["triple"]
+            print(f"  {verdict:9} {t.get('s')} {t.get('p')} {t.get('o')}")
+            # "new fact" says nothing the verdict did not; anything else a
+            # new row has to say is the reason to look at it twice.
+            if f["detail"] != "new fact":
+                print(f"  {'':9} └ {f['detail']}")
+    tally = merge.counts(findings)
+    print("  " + (", ".join(f"{n} {v}" for v, n in tally.items()) or "no rows"))
+
+
+def _cmd_extract(args) -> int:
+    """Print the prompt. The model is yours; this is the part that is ours.
+
+    Nothing here calls out to anything: the graph's declared predicates
+    and existing node names go into a prompt, and the answer comes back
+    through `import --dry-run` like any other source.
+    """
+    db = TrikeDB(args.file, read_only=True)
+    kwargs = {"relevant_to": args.relevant_to}
+    if args.limit is not None:
+        kwargs["limit"] = args.limit
+    prompt = db.extract_prompt(
+        Path(args.document).read_text(encoding="utf-8"), **kwargs)
+    if args.out:
+        Path(args.out).write_text(prompt, encoding="utf-8")
+        print(f"wrote {args.out} — send it to any model, save the table it "
+              f"answers with, then: trikedb import {args.file} <table>.md --dry-run")
+        return 0
+    print(prompt)
     return 0
 
 
@@ -770,6 +857,7 @@ _COMMANDS = {
     "search": _cmd_search,
     "find": _cmd_find,
     "import": _cmd_import,
+    "extract": _cmd_extract,
     "add": _cmd_add,
     "act": _cmd_act,
     "history": _cmd_history,

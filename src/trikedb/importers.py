@@ -72,7 +72,18 @@ def read_csv(path: Union[str, Path]) -> List[dict]:
 
 def read_markdown(path: Union[str, Path]) -> List[dict]:
     """Read triples from every s/p/o table in a Markdown document."""
-    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    return parse_markdown(Path(path).read_text(encoding="utf-8"))
+
+
+def parse_markdown(text: str) -> List[dict]:
+    """Triples from every s/p/o table in a Markdown string.
+
+    Split out from read_markdown because the tables worth reading do not
+    all arrive as files — an extractor hands back the same Markdown a
+    design doc contains, and there is no reason for a second parser to
+    exist for it.
+    """
+    lines = text.splitlines()
     triples: List[dict] = []
     i = 0
     fenced = False
