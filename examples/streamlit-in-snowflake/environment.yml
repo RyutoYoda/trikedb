@@ -1,0 +1,21 @@
+name: streamlit_env
+channels:
+  - snowflake
+dependencies:
+  # The version is pinned. Left unpinned, Streamlit in Snowflake resolves
+  # to "the latest supported version at that moment", so the screen can
+  # change behaviour on a day you changed nothing. `DESCRIBE STREAMLIT`
+  # does not report the resolved version either, so there is no way to find
+  # out afterwards which one you were running.
+  #
+  # 1.47 or later matters: that is where `accept_new_options` arrived, which
+  # collapses "pick an existing one" and "type a new one" into a single
+  # field. Before it you had to put two widgets side by side, and people
+  # reasonably asked why there were two.
+  - streamlit=1.52.2
+  - snowflake-snowpark-python
+  # trikedb needs only these two, and both are in Snowflake's Anaconda
+  # channel. trikedb itself is not, so it is staged as a vendored copy --
+  # see snowflake.yml.
+  - pyyaml
+  - rdflib
