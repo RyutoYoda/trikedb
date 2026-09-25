@@ -456,13 +456,25 @@ def _cmd_rm(args) -> int:
     return 0
 
 
+def _needs_semantic(exc: ImportError) -> int:
+    """Name the extra, not the module.
+
+    Semantic search is the one dependency the CLI reaches for without
+    being asked, and `No module named 'numpy'` names a package the
+    reader never chose to leave out. The extra is the thing installed,
+    so the extra is the thing to say.
+    """
+    print(f"error: {exc} — this needs the semantic extra: "
+          f"pip install 'trikedb[semantic]'", file=sys.stderr)
+    return 2
+
+
 def _cmd_search(args) -> int:
     db = TrikeDB(args.file)
     try:
         rows = db.search(args.query, k=args.k, model=args.model)
     except ImportError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return _needs_semantic(exc)
     if args.json:
         return _print_rows(rows, True)
     display = []
@@ -540,8 +552,11 @@ def _cmd_extract(args) -> int:
     kwargs = {"relevant_to": args.relevant_to}
     if args.limit is not None:
         kwargs["limit"] = args.limit
-    prompt = db.extract_prompt(
-        Path(args.document).read_text(encoding="utf-8"), **kwargs)
+    try:
+        prompt = db.extract_prompt(
+            Path(args.document).read_text(encoding="utf-8"), **kwargs)
+    except ImportError as exc:
+        return _needs_semantic(exc)
     if args.out:
         Path(args.out).write_text(prompt, encoding="utf-8")
         print(f"wrote {args.out} — send it to any model, save the table it "
@@ -586,8 +601,7 @@ def _cmd_find(args) -> int:
     try:
         hits = db.find(args.query, where=where, k=args.k, model=args.model)
     except ImportError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return _needs_semantic(exc)
     if args.json:
         return _print_rows(hits, True)
     if not hits:

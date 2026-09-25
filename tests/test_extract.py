@@ -251,6 +251,29 @@ def test_cli_extract_writes_the_prompt_and_says_what_to_do_next(graph, capsys, t
     assert "--dry-run" in capsys.readouterr().out
 
 
+def test_cli_extract_names_the_extra_when_semantic_search_is_missing(
+        graph, monkeypatch, capsys):
+    """The failure that only appears on a graph worth using.
+
+    `--relevant-to` reaches for the vector index only when the graph
+    holds more nodes than the prompt will list, so an install without
+    the extra works on the graph someone tries first and breaks on the
+    one they meant. A traceback would be the second surprise; naming
+    the extra is the whole answer.
+    """
+    import sys
+
+    from trikedb.cli import main
+
+    monkeypatch.setitem(sys.modules, "numpy", None)
+    code = main(["extract", str(graph.path), _doc(graph),
+                 "--relevant-to", "who works where", "--limit", "1"])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "pip install 'trikedb[semantic]'" in err
+    assert "Traceback" not in err
+
+
 def test_cli_import_dry_run_writes_nothing_and_fails_on_a_conflict(graph, capsys, tmp_path):
     from trikedb.cli import main
 
@@ -428,6 +451,18 @@ def test_folding_a_name_drops_the_legal_form_and_nothing_else():
     assert fold("グロベックス社") == fold("グロベックス")
     assert fold("Acme Inc.") == fold("acme")
     assert fold("田中 亮") != fold("田中")     # a surname is not a person
+
+
+def test_the_scorer_fails_when_it_scored_nothing(tmp_path, capsys):
+    """An eval that measures nothing must not report success.
+
+    `--answers DIR` skips a case whose file is not there, and skipping
+    every case used to print an empty table and exit 0 — green in CI,
+    having checked nothing. That is the one outcome this file exists to
+    make impossible.
+    """
+    assert _scorer().main(["--answers", str(tmp_path)]) == 2
+    assert "nothing was measured" in capsys.readouterr().err
 
 
 def test_the_baseline_prompt_supplies_no_vocabulary():

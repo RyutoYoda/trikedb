@@ -307,6 +307,14 @@ def main(argv=None) -> int:
                       s["precision"], s["recall"], s["f1"], s["invented"],
                       s["split"], s["unquotable"], s["blocked"]))
 
+    if not results:
+        # Every case was skipped. An empty table and a zero exit is the one
+        # outcome an eval must never produce: it reads as "nothing wrong"
+        # from CI while having measured nothing at all.
+        print(f"scored no cases of {len(chosen)} — nothing was measured",
+              file=sys.stderr)
+        return 2
+
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
         return 0
