@@ -106,9 +106,9 @@ S3使用条件单次PUT（ETag/If-Match或不存在时创建），SQL使用versi
 
 ## 模块与分层
 
-`model` 定义事实本身。`rules` / `rdf` / `reasoning` 说明文档的含义，`storage` / `persistence` 负责读写，`audit` 读取成品文档。`db` 是它们合起来的那个存储——它的方法都在向这些模块委派，而模块把存储当第一个参数收下，不会反过来 import `db`。`html` / `importers` / `embeddings` 放在核心**之上**：图谱不该依赖画它的那张页面，不该依赖它可以从哪些文件格式构建，也不该依赖一个未必装了的嵌入模型。`cli` / `mcp_server` / `serve` 是最上层的入口。
+`model` 定义事实本身。`rules` / `rdf` / `reasoning` 说明文档的含义，`storage` / `persistence` 负责读写，`audit` 读取成品文档，`merge` 说明一批将要写入的三元组会对它做什么。`db` 是它们合起来的那个存储——它的方法都在向这些模块委派，而模块把存储当第一个参数收下，不会反过来 import `db`。`html` / `importers` / `extract` / `embeddings` 放在核心**之上**：图谱不该依赖画它的那张页面，不该依赖它可以从哪些文件格式构建，不该依赖一个抽取器，也不该依赖一个未必装了的嵌入模型。`prompts` 和 `templates` 一起放在最底层——提示词是数据，所以抽取精度的改动会以一份人能读的 diff 送达。`cli` / `mcp_server` / `serve` 是最上层的入口。
 
-import 只能从高层指向严格更低的层，单向。函数内部的 import 是让可选适配器保持可选的手段，因此不算依赖——`db.to_html()` 在被调用时才 import `html`。`tests/test_architecture.py` 声明了这些层，代码一旦对不上就让构建失败，包括新增模块却没有给它定层的情况。**声明出来，并且强制执行**——这正是这个库对本体所主张的那件事，用在了仓库自己身上。
+import 只能从高层指向严格更低的层，单向。函数内部的 import 是让可选适配器保持可选的手段，因此不算依赖——`db.to_html()` 在被调用时才 import `html`，`db.extract()` 才 import `extract`。另有一个回归测试会解析 `extract.py`，一旦它 import 了标准库和 trikedb 自身以外的东西就失败：不捆绑模型厂商正是这里的功能，而一个没人检查的保证，只能算是保证到有人加一行 import 为止。`tests/test_architecture.py` 声明了这些层，代码一旦对不上就让构建失败，包括新增模块却没有给它定层的情况。**声明出来，并且强制执行**——这正是这个库对本体所主张的那件事，用在了仓库自己身上。
 
 ## 查询与边界
 

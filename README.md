@@ -140,9 +140,11 @@ db.act("ORD-25101", "DELIVERED_TO", "Riverside", by="Kai")   # OntologyError: ne
 
 ## Hand it to an agent
 
-Register the graph as an MCP server and the agent gets eleven tools —
-`sparql`, `match`, `search`, `find`, `get_node`, `ontology`, `stats` to read,
-`add_triple`, `set_node`, `remove_triples`, `import_source` to write:
+Register the graph as an MCP server and the agent gets sixteen tools —
+`sparql`, `match`, `search`, `find`, `get_node`, `history`, `ontology`, `stats`
+to read, `add_triple`, `act`, `set_node`, `remove_triples`, `import_source` to
+write, and `extraction_prompt`, `preview_triples`, `add_triples` to turn a
+document into facts without guessing at the vocabulary:
 
 ```json
 {
@@ -163,6 +165,52 @@ the validated write path.** Extraction stays flexible; the vocabulary does not.
 No MCP client? Then the whole integration is one line in your agent's project
 instructions — *"before any task touching the pipeline, read `graph.yaml`"* —
 and the file does the rest.
+
+## Point it at a document
+
+You have a model already. trikedb writes the prompt and judges the answer;
+the call in between is yours, so there is no SDK to install and no key to hand
+over. The prompt is built **from the graph being written into** — its declared
+predicates, its existing node names — which is why the model does not invent
+`EMPLOYED_BY` beside `WORKS_AT`, or open a second node for a company already in
+the file:
+
+```python
+rows = db.extract(open("press-release.md").read(), llm=my_model)
+
+for f in db.preview(rows):          # nothing is written yet
+    print(f["verdict"], f["triple"], f["detail"])
+
+# new       Acme BASED_IN Osaka
+# new       Sato WORKS_AT Acme
+# conflict  Tanaka WORKS_AT Globex
+#           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
+```
+
+`llm` is any callable taking the prompt and returning text — three lines around
+whichever SDK you use, and five of them are written out in
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py).
+
+Or skip the API entirely and run the two halves from a shell, with a person or
+a chat window in the middle:
+
+```bash
+trikedb extract graph.yaml report.md > prompt.txt   # paste it anywhere
+trikedb import graph.yaml answer.md --dry-run       # what it would do
+trikedb import graph.yaml answer.md                 # what it did
+```
+
+`--dry-run` is worth having on its own, and works on any source — CSV, Markdown,
+another graph. Every row comes back as `new`, `same`, `update`, `rejected` or
+`conflict`, with the reason, and nothing is written until you have read them.
+A `conflict` is not a guess: a predicate declared `functional` may hold one
+object per subject, so a second one is a contradiction the graph can prove.
+
+How well does the constrained prompt actually do? Run it and see — the cases,
+the answer sheets and the scorer are in
+[evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals), along with the
+unconstrained baseline to compare against. No scores are committed there,
+because a committed score is one model on one day.
 
 ## What people put in it
 
@@ -196,9 +244,11 @@ trikedb graph as context** — Hits@1 over 300 questions, paired McNemar p = 9e-
 
 ## What trikedb is not
 
-- **Not an extraction pipeline.** It will not turn your PDFs into a graph. Pair
-  it with an extractor — then curate what comes out. Extracted graphs inherit
-  hallucinations; this one is meant to be the part you can trust.
+- **Not an extraction pipeline.** It will not call a model, hold your key, or
+  parse your PDFs. It writes the prompt from your ontology and judges every row
+  against it before the write — the model and the decision stay yours.
+  Extracted graphs inherit hallucinations; this is the part that makes them
+  visible before they land.
 - **Not for millions of triples.** Everything is in memory and scans are linear.
   Hundreds to thousands is the range where a curated graph is even possible.
 - **Not its own SPARQL engine.** Reads run on Oxigraph, updates and OWL/SHACL on
@@ -212,6 +262,7 @@ trikedb graph as context** — Hits@1 over 300 questions, paired McNemar p = 9e-
 - [docs/ARCHITECTURE.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/ARCHITECTURE.md) — the layering, and where new code goes
 - [docs/SCALING.md](https://github.com/RyutoYoda/trikedb/blob/main/docs/SCALING.md) — measured limits at 1k / 10k / 100k triples
 - [examples/](https://github.com/RyutoYoda/trikedb/tree/main/examples) — the graphs behind the demos, plus a [runnable notebook](https://github.com/RyutoYoda/trikedb/blob/main/examples/trikedb_quickstart.ipynb)
+- [evals/](https://github.com/RyutoYoda/trikedb/tree/main/evals) — extraction cases, the scorer, and the baseline to measure against
 - [CONTRIBUTING.md](https://github.com/RyutoYoda/trikedb/blob/main/CONTRIBUTING.md) — how to run the tests and what a good pull request looks like
 
 ## License
