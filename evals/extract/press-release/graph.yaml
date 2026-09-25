@@ -1,0 +1,14 @@
+ontology:
+  WORKS_AT: {description: 人がどの会社に所属しているか, domain: person, range: company}
+  FOUNDED_IN: 会社が創業した場所
+  HEADQUARTERED_IN: {description: 会社の本社所在地, domain: company, range: place}
+  LEADS: 人が率いている部署
+  PART_OF: {description: 部署が属する会社, domain: team, range: company}
+nodes:
+  アクメ: {type: company}
+  グロベックス: {type: company}
+  東京: {type: place}
+triples:
+- {s: アクメ, p: FOUNDED_IN, o: 東京, prov: 既存の事実}
+- {s: WORKS_AT, p: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', o: 'http://www.w3.org/2002/07/owl#FunctionalProperty'}
+- {s: HEADQUARTERED_IN, p: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', o: 'http://www.w3.org/2002/07/owl#FunctionalProperty'}
