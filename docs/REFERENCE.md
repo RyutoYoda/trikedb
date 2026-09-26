@@ -1090,6 +1090,20 @@ Two things make a big graph feel slow that are not the graph's fault:
 - **Encoding for semantic search.** 27.5k sentences take ~10s to embed the
   first time, ~0.1s after — see below.
 
+### The embedding model
+
+The first `search()` or `find()` **downloads the model** — about 1 GB, from
+Hugging Face — and caches it. Every search after that needs no network. This
+is the only place any part of trikedb reaches the network on its own, and it
+happens inside an extra you chose to install; the base package fetches
+nothing.
+
+`TRIKEDB_EMBED_MODEL` points it somewhere else: a local directory holding the
+model, or the same model's name on a mirror you can reach. Set it on a
+machine that cannot reach `huggingface.co`, or anywhere a 1 GB fetch is
+something somebody has to approve first. A load that fails names the model it
+wanted and what to set instead of failing as if the feature were broken.
+
 ### Embedding cache
 
 `search()` and `find()` embed the graph, and the vectors are cached so they
@@ -1302,7 +1316,7 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | `[bigquery]` | `bigquery://` graphs | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
-| `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy |
+| `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy — **first use downloads ~1 GB**, see [The embedding model](#the-embedding-model) |
 | `[networkx]` | `to_networkx` (property-graph projection) | networkx |
 | `[oxigraph]` | nothing — pyoxigraph is a core dependency | pyoxigraph |
 

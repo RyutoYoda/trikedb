@@ -248,11 +248,13 @@ trikedb graph as context** — Hits@1 over 300 questions, paired McNemar p = 9e-
 
 ## What trikedb is not
 
-- **Not an extraction pipeline.** It will not call a model, hold your key, or
-  parse your PDFs. It writes the prompt from your ontology and judges every row
-  against it before the write — the model and the decision stay yours.
-  Extracted graphs inherit hallucinations; this is the part that makes them
-  visible before they land.
+- **Not an extraction pipeline.** It will not call a language model, hold your
+  key, or parse your PDFs. It writes the prompt from your ontology and judges
+  every row against it before the write — the model and the decision stay
+  yours. Extracted graphs inherit hallucinations; this is the part that makes
+  them visible before they land. The only model trikedb ever runs itself is
+  the small embedding one behind the optional `[semantic]` search, fetched
+  once and then run locally.
 - **Not for millions of triples.** Everything is in memory and scans are linear.
   Hundreds to thousands is the range where a curated graph is even possible.
 - **Not its own SPARQL engine.** Reads run on Oxigraph, updates and OWL/SHACL on

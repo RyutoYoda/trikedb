@@ -3,6 +3,27 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## Unreleased
+
+- **The embedding model's download is stated where it happens.** `[semantic]`
+  fetches about a gigabyte from Hugging Face the first time anybody searches,
+  and nothing said so: not the extras table, not the reference, not the error
+  when the fetch failed. On a network that cannot reach `huggingface.co` the
+  feature simply broke, with a traceback about a repository rather than a
+  sentence about what to do — and a gigabyte arriving unannounced is not
+  something a person can be asked to approve after the fact. The size and the
+  source are now in the extras table and in a section of their own in all
+  three references, `TRIKEDB_EMBED_MODEL` points the load at a local directory
+  or a reachable mirror, and a load that fails names the model it wanted, the
+  reason it failed, and the variable to set.
+
+- **"trikedb never opens a socket" was too broad a claim.** It is true of the
+  extraction path, which is where it was written, but it was written with
+  trikedb as its subject — and `[semantic]` does reach the network, once. The
+  claim is now scoped to extraction in `examples/extract_providers.py`, and
+  the three READMEs say which single model trikedb ever runs itself rather
+  than implying it runs none.
+
 ## 0.43.0
 
 - **The document itself is not one of the facts.** A document's title is the

@@ -3,9 +3,12 @@
 `db.extract(text, llm=...)` takes a callable: prompt in, text out. That is
 the whole contract, and it is the reason this file lives in `examples/`
 rather than in `src/`. trikedb never imports a vendor SDK, never reads an
-API key, and never opens a socket; installing it does not pull in an HTTP
-client, and no release of it can break because a provider renamed a
-keyword argument. You already have a model you pay for — bring it.
+API key, and never calls a model: the extraction path opens no socket at
+all, and no release of it can break because a provider renamed a keyword
+argument. (One optional extra does reach the network — `[semantic]` fetches
+its embedding model the first time you search, about 1 GB. It is documented
+under "The embedding model" in docs/REFERENCE.md, and nothing on this page
+uses it.) You already have a model you pay for — bring it.
 
 Each function below is the adapter for one provider, and each is three
 lines of real work. Copy the one you use into your own code; there is

@@ -974,6 +974,17 @@ rdflib，而不是直接失败。
 - **为语义搜索做编码。** 27.5k 个句子第一次嵌入约 10 秒，之后约 0.1 秒
   —— 见下文。
 
+### 嵌入模型
+
+第一次 `search()` / `find()` 会**下载模型** —— 从 Hugging Face，约 1 GB —— 然后
+缓存下来，之后的每次搜索都不需要网络。这是 trikedb 唯一一处自己去访问网络的地方，
+而且只发生在你主动安装的 extra 里；主包不会去取任何东西。
+
+`TRIKEDB_EMBED_MODEL` 可以改取模型的地方：放着模型的本地目录，或者你能访问到的
+镜像上同一个模型的名字。在访问不了 `huggingface.co` 的机器上，或者 1 GB 的下载
+需要有人先批准的环境里，设置它。加载失败时会说出它想要哪个模型、以及该设置什么，
+而不是像功能坏了一样报错。
+
 ### 嵌入缓存
 
 `search()` 和 `find()` 会把图嵌入成向量，而这些向量会被缓存，所以只算一次。
@@ -1156,7 +1167,7 @@ flowchart LR
 | `[bigquery]` | `bigquery://` 图 | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
-| `[semantic]` | `search`（嵌入，多语言，不需要 torch） | model2vec, numpy |
+| `[semantic]` | `search`（嵌入，多语言，不需要 torch） | model2vec, numpy —— **首次使用会下载约 1 GB**，见上面的「嵌入模型」 |
 | `[networkx]` | `to_networkx`（属性图投影） | networkx |
 | `[oxigraph]` | 什么都不加 —— pyoxigraph 本来就是核心依赖 | pyoxigraph |
 

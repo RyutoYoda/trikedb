@@ -1029,6 +1029,19 @@ boolean に一致しなければならない。`TrikeDB(..., sparql_engine="rdfl
   約1時間。同じ投入を `with db.batch():` の中でやれば秒で終わる。
 - **意味検索のエンコード**。27.5k文で初回約10秒、以降0.1秒 — 下記。
 
+### 埋め込みモデル
+
+最初の `search()` / `find()` で**モデルがダウンロードされる** — Hugging Face
+から約1GB — 以降はキャッシュから読むので、2回目からはネットワークを使わない。
+trikedb が自分からネットワークに出るのはここだけで、しかも自分で入れた extra
+の中だけ。本体は何も取りに行かない。
+
+`TRIKEDB_EMBED_MODEL` で取得元を差し替えられる — モデルを置いたローカルの
+ディレクトリか、到達できるミラー上の同じモデル名。`huggingface.co` に出られない
+マシンや、1GBの取得に誰かの承認が要る環境ではこれを設定する。読み込みに失敗した
+ときは、機能が壊れているかのように落ちるのではなく、どのモデルを取りに行ったかと
+何を設定すればよいかを言う。
+
 ### 埋め込みキャッシュ
 
 `search()` と `find()` はグラフを埋め込む。そのベクトルはキャッシュされ、
@@ -1226,7 +1239,7 @@ flowchart LR
 | `[bigquery]` | `bigquery://` グラフ | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
-| `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy |
+| `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy — **初回に約1GB取得**、上の「埋め込みモデル」 |
 | `[networkx]` | `to_networkx`(プロパティグラフ投影) | networkx |
 | `[oxigraph]` | 何も追加しない（pyoxigraphはコア依存） | pyoxigraph |
 

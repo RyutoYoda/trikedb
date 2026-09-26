@@ -6,6 +6,11 @@ single word). Embeddings are static (model2vec) — no torch, no GPU, and
 nothing to build ahead of time: the vectors are a cache keyed by sentence,
 so a graph that grew by one fact costs one sentence to re-encode, and a
 graph that did not change costs none.
+
+What it does cost is stated where it happens, below: the first search
+fetches the model from Hugging Face — about 1 GB — and caches it. That is
+the only time any part of trikedb reaches the network on its own, and
+TRIKEDB_EMBED_MODEL is how you point it somewhere else.
 """
 
 from __future__ import annotations
@@ -15,8 +20,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-#: multilingual by default — graphs mix English identifiers and Japanese notes
-DEFAULT_MODEL = "minishlab/potion-multilingual-128M"
+#: Multilingual by default — graphs mix English identifiers and Japanese
+#: notes. **The first search downloads it** (about 1 GB, from Hugging Face)
+#: and caches it under the same directory as the vectors; every search after
+#: that needs no network. Set TRIKEDB_EMBED_MODEL to a local directory, or to
+#: the name of the same model on a mirror, for a machine that cannot reach
+#: huggingface.co — a fetch nobody was told about is worse than a missing
+#: feature on a network where somebody has to approve it.
+DEFAULT_MODEL = (os.environ.get("TRIKEDB_EMBED_MODEL")
+                 or "minishlab/potion-multilingual-128M")
 MAX_CHUNK_CHARS = 2000
 
 _MODELS: dict = {}
@@ -30,7 +42,17 @@ def _load_model(name: str):
             "semantic search requires model2vec - pip install 'trikedb[semantic]'"
         ) from exc
     if name not in _MODELS:
-        _MODELS[name] = StaticModel.from_pretrained(name)
+        try:
+            _MODELS[name] = StaticModel.from_pretrained(name)
+        except Exception as exc:  # noqa: BLE001 - offline, mirror, typo, disk
+            raise RuntimeError(
+                f"could not load the embedding model {name!r}: {exc}. The "
+                f"first search fetches it from Hugging Face (about 1 GB) and "
+                f"caches it; searches after that need no network. On a machine "
+                f"that cannot reach huggingface.co, fetch it once somewhere "
+                f"that can and set TRIKEDB_EMBED_MODEL to the directory, or "
+                f"to the same model's name on a mirror you can reach."
+            ) from exc
     return _MODELS[name]
 
 

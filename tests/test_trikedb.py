@@ -2674,6 +2674,42 @@ def test_semantic_sentences_shape(tmp_path):
     assert kinds == {"triple", "node"}
 
 
+def test_embedding_model_can_be_pointed_somewhere_else(monkeypatch):
+    """The model is fetched from Hugging Face on first search. A machine that
+    cannot reach it still has to be able to say where the model is."""
+    import importlib
+
+    from trikedb import embeddings as semantic
+
+    monkeypatch.setenv("TRIKEDB_EMBED_MODEL", "/opt/models/potion")
+    try:
+        assert importlib.reload(semantic).DEFAULT_MODEL == "/opt/models/potion"
+    finally:
+        monkeypatch.delenv("TRIKEDB_EMBED_MODEL")
+        importlib.reload(semantic)
+
+
+def test_a_model_that_will_not_load_says_what_to_set(monkeypatch):
+    """~1GB arrives over the network the first time somebody searches. A
+    network that blocks it must not read as a broken feature."""
+    model2vec = pytest.importorskip("model2vec")
+
+    from trikedb import embeddings as semantic
+
+    def refuse(name, *args, **kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(model2vec.StaticModel, "from_pretrained",
+                        staticmethod(refuse))
+    semantic._MODELS.clear()
+    with pytest.raises(RuntimeError) as err:
+        semantic._load_model("minishlab/potion-multilingual-128M")
+    message = str(err.value)
+    assert "minishlab/potion-multilingual-128M" in message   # which model
+    assert "TRIKEDB_EMBED_MODEL" in message                  # what to set
+    assert "connection refused" in message                   # why it failed
+
+
 def test_semantic_sentences_chunk_long_node(tmp_path):
     from trikedb import embeddings as semantic
     db = TrikeDB(tmp_path / "g.yaml", autosave=False)
