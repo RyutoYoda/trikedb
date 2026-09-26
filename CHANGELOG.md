@@ -5,6 +5,41 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## 0.43.0
 
+- **The document itself is not one of the facts.** A document's title is the
+  most prominent string in it, so a model hands it back as an entity, and the
+  graph grows a node for a *file* standing among the people and systems the
+  file is about — the one kind of row nothing downstream can repair, because
+  no later pass can tell which nodes are paper and which are world. The
+  extraction prompt now rules it out by name: no row may take the title, a
+  heading, a section number, a figure or table caption, 「本書」, 「当資料」 or
+  "this document" as its subject or its object, and the same question decides
+  events — 「2026-09-20 に権限を剥奪した」 is one, 「改訂履歴 1.2 2026-04-01
+  初版」 is the document keeping track of itself. A revision table looks
+  exactly like an event table and is not one.
+
+- **The head of a document is read out of it and named in the prompt.**
+  "Do not extract the title" is advice; "the title is X, do not extract X" is
+  a check a model can run, which is the difference between the rule working on
+  a document whose head is an ordinary noun phrase (「人事異動のお知らせ」) and
+  it only working on documents that look like paperwork.
+  `trikedb.importers.document_title(text)` is where the head comes from, and
+  it reads the shapes documents actually arrive in: Markdown headings at any
+  level, Setext underlines, YAML and TOML front matter, a forwarded mail's
+  `Subject:`, a BOM, CRLF, letterhead and date lines above the title, fenced
+  code that is not a heading. It answers `""` rather than guessing when the
+  first line is a sentence, a bullet, a table row or a salutation — a document
+  with no head still gets the rule, just without the name. Thirty-four
+  document shapes are fixed as tests.
+
+- **`trikedb extract` says which string it is protecting.** It prints the head
+  it found and the filename that head would make (`graph_filename`), so "it
+  did not extract the title" is something a person can check rather than a
+  silence — and so the name is there if you keep this document's facts in a
+  graph of their own. Non-ASCII is kept: a graph of Japanese documents whose
+  files are named `jinji-idou-no-oshirase.yaml` is a graph nobody can find a
+  file in. Only the characters that are illegal in a filename or that would
+  redirect the write are removed.
+
 - **A Word file is a document trikedb can read.** `trikedb extract
   graph.yaml notice.docx` works, and so does
   `trikedb.importers.read_document(path)` — a `.docx` is a zip holding

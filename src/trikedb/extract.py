@@ -43,23 +43,34 @@ DEFAULT_NODE_LIMIT = 200
 def build_prompt(text: str, *, ontology: Optional[dict] = None,
                  predicate_rules: Optional[dict] = None,
                  nodes: Iterable = (), node_types: Optional[dict] = None,
+                 title: Optional[str] = None,
                  prompt: str = "triples") -> str:
     """The extraction prompt for `text`, constrained by a vocabulary.
 
     Takes plain data rather than a graph so it can be tested, diffed and
     used against a vocabulary that is not in a graph yet.
+
+    `title` is the document's own head, which is named in the prompt so
+    the model can recognise and skip it. It is read out of `text` by
+    default; pass `""` for a fragment that has no head of its own.
     """
+    from . import importers        # same layer: imported where it is used
+
     ontology, predicate_rules = ontology or {}, predicate_rules or {}
+    if title is None:
+        title = importers.document_title(text)
     return prompts.render(
         prompt,
         predicates=_predicate_block(ontology, predicate_rules),
         nodes=_node_block(_entities(nodes, ontology), node_types or {}),
+        container=_container_block(title),
         text=text,
     )
 
 
 def prompt_for(db, text: str, *, relevant_to: Optional[str] = None,
-               limit: int = DEFAULT_NODE_LIMIT, prompt: str = "triples") -> str:
+               limit: int = DEFAULT_NODE_LIMIT, title: Optional[str] = None,
+               prompt: str = "triples") -> str:
     """The extraction prompt for `text`, built from `db`'s own vocabulary.
 
     `relevant_to` narrows the offered nodes by semantic search (the
@@ -87,6 +98,7 @@ def prompt_for(db, text: str, *, relevant_to: Optional[str] = None,
         nodes = keep or nodes
     return build_prompt(
         text,
+        title=title,
         ontology=db.ontology,
         predicate_rules=db.predicate_rules,
         nodes=nodes[:limit],
@@ -127,6 +139,24 @@ def extract(text: str, *, llm: Callable[[str], str], db=None, **kwargs) -> List[
 
 
 # ----------------------------------------------------------------- blocks
+
+
+def _container_block(title: str) -> str:
+    """Name the document's head, so the model has something to refuse.
+
+    "Do not extract the title" is advice; "the title is X, do not extract
+    X" is a check the model can actually run, and it is the difference
+    between the rule working on a document whose head is an ordinary
+    noun phrase («人事異動のお知らせ») and only working on documents that
+    look like paperwork.
+    """
+    if not title:
+        return ("This document has no head of its own — judge each candidate "
+                "by the rule above.")
+    return (f"The head of this document is 「{title}」. That is the name of "
+            f"the file these rows are written into, not a thing in the "
+            f"world: it must not appear as a subject or as an object in "
+            f"any row. Everything the document *says* still counts.")
 
 
 def _predicate_block(ontology: dict, predicate_rules: dict) -> str:

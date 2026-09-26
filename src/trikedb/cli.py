@@ -556,18 +556,29 @@ def _cmd_extract(args) -> int:
     kwargs = {"relevant_to": args.relevant_to}
     if args.limit is not None:
         kwargs["limit"] = args.limit
-    from .importers import read_document
+    from .importers import document_title, graph_filename, read_document
 
+    text = read_document(args.document)
     try:
-        prompt = db.extract_prompt(read_document(args.document), **kwargs)
+        prompt = db.extract_prompt(text, **kwargs)
     except ImportError as exc:
         return _needs_semantic(exc)
-    if args.out:
-        Path(args.out).write_text(prompt, encoding="utf-8")
-        print(f"wrote {args.out} — send it to any model, save the table it "
-              f"answers with, then: trikedb import {args.file} <table>.md --dry-run")
+    if not args.out:
+        print(prompt)
         return 0
-    print(prompt)
+    Path(args.out).write_text(prompt, encoding="utf-8")
+    print(f"wrote {args.out} — send it to any model, save the table it "
+          f"answers with, then: trikedb import {args.file} <table>.md --dry-run")
+    # The head is the one string in the document that is guaranteed not to
+    # be a fact, and the prompt now says so. Saying it out here too is what
+    # turns "it did not extract the title" from a silence into something
+    # the person can check — and it is the name they will want if they keep
+    # this document's facts in a graph of their own.
+    title = document_title(text)
+    if title:
+        print(f"  the head 「{title}」 is named in the prompt as the one "
+              f"thing not to extract; to keep this document's facts in a "
+              f"graph of their own, {graph_filename(title)} is its name")
     return 0
 
 

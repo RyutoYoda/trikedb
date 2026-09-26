@@ -14,6 +14,7 @@ import pytest
 
 from trikedb import OntologyError, TrikeDB
 from trikedb import extract as extract_mod
+from trikedb import importers as importers_mod
 from trikedb import merge
 
 
@@ -718,3 +719,111 @@ def test_a_document_becomes_reviewed_facts_in_the_file(tmp_path):
     assert warning["kind"] == "unchecked-link" and "'Sato' has no type" in warning["detail"]
     on_disk.set_node("Sato", type="person")
     assert on_disk.audit() == []
+
+
+# --------------------------------------------- the document is not a fact
+
+
+#: The shapes a document actually arrives in. This is the accuracy claim:
+#: head detection is only worth having if it survives the formats people
+#: are already holding — a Word export that starts at Heading2, an
+#: Obsidian note whose title is in front matter, a mail forwarded with its
+#: headers, a letter that opens by addressing the reader. Each row that
+#: fails names the format it fails on, which is the only way this stays
+#: honest as formats get added.
+DOCUMENT_SHAPES = [
+    ("markdown h1",           "# 取り込み設計\n\n本文。", "取り込み設計"),
+    ("starts at h2",          "## 仕様概要\n\n### 前提\n\n本文。", "仕様概要"),
+    ("setext ===",            "設計メモ\n========\n\n本文。", "設計メモ"),
+    ("setext ---",            "Design Note\n-----------\n\nbody.", "Design Note"),
+    ("yaml front matter",     "---\ntitle: 取り込み設計\ntags: [a]\n---\n\n本文。",
+                              "取り込み設計"),
+    ("front matter quoted",   '---\ntitle: "Q3 Review"\n---\n\nbody.', "Q3 Review"),
+    ("toml front matter",     '+++\ntitle = "Runbook"\n+++\n\nbody.', "Runbook"),
+    ("front matter no title", "---\ntags: [a]\n---\n\n# 実物\n\n本文。", "実物"),
+    ("mail headers",          "From: a@b.c\nTo: all@b.c\nSubject: 【連絡】席替え\n\n各位",
+                              "【連絡】席替え"),
+    ("mail, subject first",   "Subject: Weekly report\nFrom: a@b.c\n\nbody",
+                              "Weekly report"),
+    ("plain txt title line",  "四半期レビュー\n\n本文が続く。", "四半期レビュー"),
+    ("numbered heading",      "# 1. はじめに\n\n本文。", "1. はじめに"),
+    ("closed atx",            "# Q3 Review #\n\nbody", "Q3 Review"),
+    ("fence before heading",  "```yaml\nkey: v\n```\n\n# 実物\n\n本文。", "実物"),
+    ("heading only in fence", "```\n# not a heading\n```\n\n本文が長々と続きます。", ""),
+    ("leading blank lines",   "\n\n\n# 通知\n\n本文。", "通知"),
+    ("crlf",                  "# 通知\r\n\r\n本文。\r\n", "通知"),
+    ("byte order mark",       "\ufeff# 通知\n\n本文。", "通知"),
+    ("chinese",               "# 数据平台部成立通知\n\n正文。", "数据平台部成立通知"),
+    ("english plain",         "Acme Announces Division\n\nTOKYO — today.",
+                              "Acme Announces Division"),
+    ("title with colon",      "# 設計メモ: 取り込み\n\n本文。", "設計メモ: 取り込み"),
+    ("company letterhead",    "株式会社アクメ\n\n# 人事異動のお知らせ\n\n本文。",
+                              "人事異動のお知らせ"),
+    ("date line then title",  "2026-09-20\n\n# 障害報告\n\n本文。", "障害報告"),
+    ("hr then heading",       "---\n\n# 実物\n\n本文。", "実物"),
+    # A head it cannot honestly name is an empty answer, not a guess: the
+    # caller still has the file's own name, and a wrong head would be
+    # written into the prompt as a thing not to extract.
+    ("empty",                 "", ""),
+    ("whitespace only",       "   \n\n  \n", ""),
+    ("one long paragraph",    "本書は取り込み方針について述べるものである。\n\n次。", ""),
+    ("bullet first",          "- 田中 亮\n- 佐藤 美咲\n", ""),
+    ("table first",           "| a | b |\n|---|---|\n| 1 | 2 |\n", ""),
+    ("blockquote first",      "> 引用です\n\n本文。", ""),
+    ("over-long first line",  "あ" * 120 + "\n\n本文。", ""),
+    ("ends mid-sentence",     "これは文です。\n\n本文。", ""),
+    ("salutation opener",     "各位\n\nお疲れ様です。異動の連絡です。", ""),
+    ("greeting opener",       "お疲れ様です\n\n総務です。連絡します。", ""),
+]
+
+
+@pytest.mark.parametrize("shape,text,expected",
+                         DOCUMENT_SHAPES,
+                         ids=[s[0] for s in DOCUMENT_SHAPES])
+def test_the_head_of_a_document_is_the_line_that_names_it(shape, text, expected):
+    assert importers_mod.document_title(text) == expected
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("人事異動のお知らせ", "人事異動のお知らせ.yaml"),
+    ("Acme Announces A Division", "acme-announces-a-division.yaml"),
+    ("設計メモ: 取り込み/パイプライン", "設計メモ-取り込み-パイプライン.yaml"),
+    # A dash between words is a separator like a space is, and leaving it in
+    # produces `q3-—-torikomi.yaml`: two hyphens around a character that is
+    # doing nothing but separating.
+    ("Q3 — 取り込み見直し", "q3-取り込み見直し.yaml"),
+    ("", ""),
+    ("...", ""),
+])
+def test_a_head_becomes_a_filename_without_being_romanised(title, expected):
+    # Stripping the Japanese would produce a name nobody can find a file by,
+    # and every filesystem trikedb runs on has taken these bytes for years.
+    assert importers_mod.graph_filename(title) == expected
+
+
+def test_a_filename_from_a_head_cannot_redirect_the_write():
+    for hostile in ("../../etc/passwd", "a/b", "C:\\x", "x\x00y"):
+        name = importers_mod.graph_filename(hostile)
+        assert "/" not in name and "\\" not in name and "\x00" not in name
+        assert not name.startswith(".")
+
+
+def test_the_prompt_names_the_head_so_the_model_can_refuse_it():
+    prompt = extract_mod.build_prompt("# 人事異動のお知らせ\n\n高橋 舞 が異動する。",
+                                  ontology={"BELONGS_TO": "所属"})
+    assert "「人事異動のお知らせ」" in prompt
+    # The rule has to reach the other two places a document leaks in.
+    assert "as a subject or as an object" in prompt
+    assert "改訂履歴" in prompt
+
+
+def test_a_document_with_no_head_still_gets_the_rule():
+    prompt = extract_mod.build_prompt("高橋 舞 が異動する。", ontology={"X": "y"})
+    assert "no head of its own" in prompt
+    assert "{{" not in prompt
+
+
+def test_an_explicit_title_overrides_what_the_text_looks_like():
+    prompt = extract_mod.build_prompt("# 見出し\n\n本文", title="", ontology={"X": "y"})
+    assert "no head of its own" in prompt
+    assert "「見出し」" not in prompt

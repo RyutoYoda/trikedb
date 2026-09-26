@@ -98,6 +98,29 @@ row you write.
   that supports the row. Every row needs one. If you cannot quote a
   passage that says it, you are inferring — drop the row.
 
+## The document is not one of the facts
+
+A document has a name, headings, sections, a revision history and
+sentences about itself. None of that is a fact about the world — it is
+the paper the facts are written on. It is also the most prominent text
+in the file, which is why it gets extracted, and the row it produces is
+the one kind nothing downstream can repair: the graph grows a node for a
+*file*, standing among the people and systems the file is about, and no
+later pass can tell which is which.
+
+So no row may take the document's title, a heading, a section number, a
+figure or table caption, 「本書」, 「当資料」, "this document" or the
+file's name as its subject or as its object. Drop the row entirely — do
+not rewrite it onto some other subject.
+
+Events are decided by the same question. An event is something that
+happened in the world, not something that happened to the paper:
+「2026-09-20 に権限を剥奪した」 is an event, and
+「改訂履歴 1.2 2026-04-01 初版」 is the document keeping track of itself.
+A revision table looks exactly like an event table and is not one.
+
+{{CONTAINER}}
+
 ## Output
 
 A single Markdown table and nothing else. No preamble, no explanation, no

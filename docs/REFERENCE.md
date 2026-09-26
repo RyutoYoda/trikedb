@@ -488,6 +488,23 @@ is refused rather than decoded by guesswork: a wrong guess turns a document
 into plausible nonsense, which is worse than an error. The error names the
 file and the `iconv` line that converts it.
 
+**The document itself is not one of the facts.** A document's head is the
+most prominent string in the file, so it is the first thing a model hands
+back as an entity — and that row is the one kind nothing downstream can
+repair, because the graph grows a node for a *file* standing among the
+people and systems the file is about. The prompt therefore names the head
+and says not to write it, and applies the same rule to headings, section
+numbers, captions, 「本書」, and to events: a revision history looks exactly
+like an event table and is not one. The head is read from the shapes
+documents actually arrive in — a Markdown or Word heading at any level, a
+Setext underline, YAML or TOML front matter, a forwarded mail's
+`Subject:`. When it cannot name one honestly it says nothing rather than
+guess. On the Python side that detector is
+`trikedb.importers.document_title(text)`, and `graph_filename(title)` is
+the YAML name that head becomes — which is where this document's facts
+belong if you keep them in a graph of their own, rather than inside the
+graph as a node. `trikedb extract` prints both.
+
 `--dry-run` is worth having on its own and works on any source. The verdicts,
 worst first — `conflict` and `rejected` are the two it exits 1 on:
 
