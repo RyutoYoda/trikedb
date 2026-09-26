@@ -144,7 +144,37 @@ def read_document(path: Union[str, Path]) -> str:
             f"{path.name}: .doc is the old binary Word format, which cannot "
             "be read without a converter — save it as .docx"
         )
-    return path.read_text(encoding="utf-8")
+    return _text(path)
+
+
+#: A byte order mark is a file saying what it is. Reading one is not guessing.
+_BOMS = ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"),
+         (b"\xfe\xff", "utf-16"))
+
+
+def _text(path: Path) -> str:
+    """The file as text, and a sentence worth reading when it is not.
+
+    Encodings are not detected here: anything past a byte order mark is
+    a guess, and a guess that lands on the wrong one turns a document
+    into plausible nonsense rather than into an error — the one outcome
+    worse than refusing. What a Windows-exported .txt gets instead is
+    the name of the file, the word UTF-8, and the command that converts
+    it, because "'utf-8' codec can't decode byte 0x93 in position 0"
+    names neither the file nor anything the reader can act on.
+    """
+    blob = path.read_bytes()
+    for mark, encoding in _BOMS:
+        if blob.startswith(mark):
+            return blob.decode(encoding)
+    try:
+        return blob.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"{path.name} is not UTF-8 ({exc.reason} at byte {exc.start}) — "
+            f"a text file saved on Windows is usually cp932 or latin-1. "
+            f"Convert it first: iconv -f cp932 -t utf-8 {path.name} > utf8.txt"
+        ) from None
 
 
 def docx_text(blob: bytes) -> str:
@@ -184,7 +214,15 @@ def docx_text(blob: bytes) -> str:
             block = _docx_table(node)
         else:
             continue
-        if block:
+        if not block:
+            continue
+        # Consecutive bullets are one list, not a run of paragraphs. A blank
+        # line between them nearly doubles the length of a document that is
+        # mostly a list — minutes, a weekly report — and every line of that
+        # is something the model is handed and pays for.
+        if blocks and block.startswith("- ") and blocks[-1].startswith("- "):
+            blocks[-1] += "\n" + block
+        else:
             blocks.append(block)
     return "\n\n".join(blocks) + "\n" if blocks else ""
 

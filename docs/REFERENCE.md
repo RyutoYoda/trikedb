@@ -481,6 +481,13 @@ Markdown directly (File → Download → Markdown), so it needs none of this. On
 the Python side the same reader is `trikedb.importers.read_document(path)`,
 which returns the text to hand to `extract_prompt`.
 
+A text file is read as UTF-8, or as whatever its byte order mark says it is —
+Excel and Notepad both write one, so the files a person is most likely to have
+been handed already declare themselves. A file with no mark that is not UTF-8
+is refused rather than decoded by guesswork: a wrong guess turns a document
+into plausible nonsense, which is worse than an error. The error names the
+file and the `iconv` line that converts it.
+
 `--dry-run` is worth having on its own and works on any source. The verdicts,
 worst first — `conflict` and `rejected` are the two it exits 1 on:
 

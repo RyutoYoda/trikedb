@@ -22,6 +22,21 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   broken text. PDF is deliberately not here — it needs a real dependency
   and loses the layout that carries the meaning.
 
+- **A text file that is not UTF-8 says which file and what to do.** A .txt
+  saved on Windows is cp932, and the answer was `'utf-8' codec can't decode
+  byte 0x93 in position 0` — which names neither the file nor anything to act
+  on, and arrives only after the person has already pointed the command at the
+  document they meant. It now names the file and the `iconv` line that
+  converts it. A byte order mark is honoured, because a file carrying one has
+  said what it is and Excel and Notepad both write one; nothing past that is
+  detected, since a wrong guess turns a document into plausible nonsense
+  rather than into an error.
+
+- **A run of bullets in a .docx arrives as one list.** Word marks every item
+  as its own paragraph, so each one was separated by a blank line: minutes and
+  a weekly report are mostly list, and their line count nearly doubled for
+  nothing the model could use.
+
 - **`extract --relevant-to` offers both ends of a matching triple, once
   each.** Search ranks triples, and a triple is about the thing it points
   at as much as the thing it points from — but only the subject was

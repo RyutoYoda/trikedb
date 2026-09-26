@@ -462,6 +462,12 @@ trikedb import graph.yaml answer.md                  # 実際にやる
 Python 側では同じリーダーが `trikedb.importers.read_document(path)` で、
 `extract_prompt` に渡すテキストを返す。
 
+テキストファイルは UTF-8 として読む。BOM があればそれが宣言している符号化で読む —
+Excel も メモ帳 も BOM を書くので、人が渡されがちなファイルは自分で名乗っている。
+BOM が無くて UTF-8 でもないファイルは、推測で復号せず断る: 外した推測は文書を
+「それらしい別物」に変えてしまい、エラーより悪い。エラーはファイル名と、変換する
+`iconv` の1行を出す。
+
 `--dry-run` はそれ自体で価値があり、どのソースにも効く。判定は重い順で、
 exit 1 になるのは `conflict` と `rejected` の2つ:
 

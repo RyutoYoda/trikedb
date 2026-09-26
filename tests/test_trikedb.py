@@ -4432,6 +4432,39 @@ def test_a_docx_arrives_as_markdown_with_its_shape_intact(tmp_path):
     )
 
 
+def test_a_run_of_bullets_arrives_as_one_list_not_as_loose_paragraphs(tmp_path):
+    """A blank line between every bullet costs a line per fact.
+
+    Word marks each item of a list as its own paragraph, so the naive
+    reading separates them the way it separates prose. Minutes and a
+    weekly report are mostly list, and doubling their line count doubles
+    what the extractor is handed for nothing: the items were already one
+    list, and Markdown can say so.
+    """
+    from trikedb.importers import read_document
+
+    def item(text):
+        return ('<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/></w:numPr></w:pPr>'
+                f"<w:r><w:t>{text}</w:t></w:r></w:p>")
+
+    path = tmp_path / "minutes.docx"
+    path.write_bytes(_docx(
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+        "<w:r><w:t>決定事項</w:t></w:r></w:p>"
+        + item("一つ目") + item("二つ目") + item("三つ目")
+        + "<w:p><w:r><w:t>以上。</w:t></w:r></w:p>"))
+
+    assert read_document(path) == (
+        "# 決定事項\n"
+        "\n"
+        "- 一つ目\n"
+        "- 二つ目\n"
+        "- 三つ目\n"
+        "\n"
+        "以上。\n"
+    )
+
+
 def test_a_docx_says_what_the_document_says_now(tmp_path):
     """Deleted text is not a fact; an accepted insertion is.
 
@@ -4478,6 +4511,51 @@ def test_a_text_document_is_still_just_read(tmp_path):
     md = tmp_path / "doc.md"
     md.write_text("# 見出し\n\n本文\n", encoding="utf-8")
     assert read_document(md) == "# 見出し\n\n本文\n"
+
+
+def test_a_text_file_that_is_not_utf8_says_which_file_and_what_to_do(tmp_path):
+    """The failure a Japanese document hits first, and its useless message.
+
+    A .txt saved by Windows is cp932, and `read_text` answers that with
+    "'utf-8' codec can't decode byte 0x93 in position 0" — which names
+    neither the file nor anything to do about it, and arrives after the
+    person has already pointed the command at the document they meant.
+    Detecting the encoding instead would be worse: a wrong guess turns a
+    document into plausible nonsense rather than into an error.
+    """
+    from trikedb.importers import read_document
+
+    path = tmp_path / "shift_jis.txt"
+    path.write_bytes("田中 亮 は アクメ に勤務している。\n".encode("cp932"))
+
+    with pytest.raises(ValueError) as caught:
+        read_document(path)
+    message = str(caught.value)
+    assert "shift_jis.txt" in message and "not UTF-8" in message
+    assert "iconv -f cp932" in message
+
+
+@pytest.mark.parametrize("encoding, mark", [
+    ("utf-8", b"\xef\xbb\xbf"),          # what Excel writes
+    ("utf-16-le", b"\xff\xfe"),           # what Notepad calls "Unicode"
+    ("utf-16-be", b"\xfe\xff"),           # the other byte order
+])
+def test_a_byte_order_mark_is_the_file_saying_what_it_is(tmp_path, encoding,
+                                                         mark):
+    """Honouring a BOM is not guessing — it is reading the declaration.
+
+    Excel and Notepad both write one, so the files that carry a mark are
+    exactly the files a person is most likely to have been handed, and
+    refusing them would be refusing on a technicality: the file already
+    said what it was.
+    """
+    from trikedb.importers import read_document
+
+    path = tmp_path / "notice.txt"
+    path.write_bytes(mark + "# 組織変更\n\nアクメ は データ基盤部 を新設する。\n"
+                     .encode(encoding))
+    assert read_document(path) == (
+        "# 組織変更\n\nアクメ は データ基盤部 を新設する。\n")
 
 
 def test_audit_does_not_flag_properties_on_a_predicate():

@@ -546,6 +546,119 @@ def test_the_baseline_prompt_supplies_no_vocabulary():
 # -------------------------------------------------------------------- e2e
 
 
+def _as_docx(path, body: str) -> None:
+    """Write a .docx whose body is exactly this WordprocessingML.
+
+    Built rather than committed as a binary for the reason the reader
+    exists at all: a .docx is legible, and a fixture you can read in the
+    diff keeps the parser honest about which parts of the format it
+    actually depends on.
+    """
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/'
+            'wordprocessingml/2006/main"><w:body>' + body + "</w:body></w:document>")
+    path.write_bytes(buf.getvalue())
+
+
+def _w_p(text: str, *, style: str = "", bullet: bool = False) -> str:
+    pr = (f'<w:pStyle w:val="{style}"/>' if style else "") + (
+        '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+        if bullet else "")
+    return (f"<w:p>{f'<w:pPr>{pr}</w:pPr>' if pr else ''}"
+            f"<w:r><w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p>")
+
+
+@pytest.mark.parametrize("suffix", [".md", ".txt", ".docx"])
+def test_the_same_facts_arrive_whatever_file_the_document_is_in(
+        graph, tmp_path, suffix, capsys):
+    """A file format is packaging. Changing it must not change the facts.
+
+    This is the whole path a person actually walks — a file on disk,
+    `extract`, a model, `import` — run once per format the command
+    accepts, against one document that says the same three things in
+    each. A regression here is the failure that matters most and is
+    hardest to see: the Word file still reads, still produces a prompt,
+    and quietly carries less of the document than the Markdown did.
+    """
+    from trikedb.cli import main
+
+    lines = ["Notes on the reorganisation",
+             "Sato joined Acme in 2026.",
+             "Acme is based in Osaka.",
+             "Tanaka has left for Globex."]
+
+    document = tmp_path / ("doc" + suffix)
+    if suffix == ".docx":
+        _as_docx(document, _w_p(lines[0], style="Heading1")
+                 + "".join(_w_p(line, bullet=True) for line in lines[1:]))
+    else:
+        document.write_text("# " + lines[0] + "\n\n"
+                            + "\n".join("- " + line for line in lines[1:])
+                            + "\n", encoding="utf-8")
+
+    prompt_file = tmp_path / "prompt.txt"
+    assert main(["extract", str(graph.path), str(document),
+                 "-o", str(prompt_file)]) == 0
+    prompt = prompt_file.read_text(encoding="utf-8")
+
+    # Every sentence of the document reached the model, in every format.
+    for line in lines:
+        assert line in prompt
+    assert "`WORKS_AT`" in prompt and "- Acme  (company)" in prompt
+
+    table = tmp_path / "rows.md"
+    table.write_text(
+        "| s | p | o | at | prov |\n|---|---|---|---|---|\n"
+        "| Sato | WORKS_AT | Acme | 2026-01-01 | Sato joined Acme |\n"
+        "| Acme | BASED_IN | Osaka | | Acme is based in Osaka |\n",
+        encoding="utf-8")
+    assert main(["import", str(graph.path), str(table)]) == 0
+
+    on_disk = TrikeDB(graph.path)
+    assert ("Sato", "WORKS_AT", "Acme") in on_disk
+    assert ("Acme", "BASED_IN", "Osaka") in on_disk
+
+
+def test_a_table_in_a_word_file_reaches_the_model_as_a_table(graph, tmp_path,
+                                                             capsys):
+    """The reason converting a .docx is worth more than reading its text.
+
+    A roster is a table, and a table is one fact per row. Flattened into
+    a run of words — "Name Team Tanaka Data Platform Sato Data Platform"
+    — the rows lose their edges and the column headings stop labelling
+    anything, which is the point at which a model starts guessing who
+    belongs to what. Arriving as Markdown, the shape the document had is
+    the shape the model reads.
+    """
+    from trikedb.cli import main
+
+    def cell(text):
+        return f"<w:tc>{_w_p(text)}</w:tc>"
+
+    def row(*cells):
+        return "<w:tr>" + "".join(cell(c) for c in cells) + "</w:tr>"
+
+    document = tmp_path / "roster.docx"
+    _as_docx(document,
+             _w_p("Roster", style="Heading1")
+             + "<w:tbl>" + row("Name", "Employer")
+             + row("Tanaka", "Acme") + row("Sato", "Globex") + "</w:tbl>")
+
+    assert main(["extract", str(graph.path), str(document)]) == 0
+    prompt = capsys.readouterr().out
+
+    assert "| Name | Employer |" in prompt
+    assert "| Tanaka | Acme |" in prompt
+    assert "| Sato | Globex |" in prompt
+
+
 def test_a_document_becomes_reviewed_facts_in_the_file(tmp_path):
     """The whole path, with the model standing in for itself.
 

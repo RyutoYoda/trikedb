@@ -444,6 +444,11 @@ trikedb import graph.yaml answer.md                  # 实际做了什么
 （文件 → 下载 → Markdown），那条路根本用不上这些。Python 侧同一个读取器是
 `trikedb.importers.read_document(path)`，它返回交给 `extract_prompt` 的文本。
 
+文本文件按 UTF-8 读；带字节序标记的，就按它自己声明的编码读 —— Excel 和记事本都会
+写这个标记，所以一个人最可能拿到的文件其实已经自报了家门。既没有标记又不是 UTF-8
+的文件会被拒绝，而不是靠猜去解码：猜错会把文档变成「看着像那么回事」的另一份东西，
+比报错更糟。错误信息会给出文件名，以及转换它的那行 `iconv`。
+
 `--dry-run` 本身就值得用，而且对任何来源都有效。判定按严重程度排，会让它以
 1 退出的是 `conflict` 和 `rejected` 这两个：
 
