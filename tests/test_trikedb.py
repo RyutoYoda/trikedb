@@ -4513,6 +4513,61 @@ def test_a_text_document_is_still_just_read(tmp_path):
     assert read_document(md) == "# 見出し\n\n本文\n"
 
 
+def test_a_line_break_inside_a_paragraph_is_not_welded_shut(tmp_path):
+    """Found in a real Word file: `w:br` holds no text and was skipped.
+
+    An author who ends a line and starts another inside one paragraph
+    produces a `w:br` between two runs. Joining the runs across it welds
+    the last word of one line to the first of the next — "…である。次に"
+    — which is unreadable and, worse, is a sentence the document never
+    contained. A tab is the same thing in a row.
+    """
+    from trikedb.importers import read_document
+
+    path = tmp_path / "spec.docx"
+    path.write_bytes(_docx(
+        "<w:p><w:r><w:t>一行目である。</w:t></w:r>"
+        "<w:r><w:br/></w:r>"
+        "<w:r><w:t>二行目である。</w:t></w:r>"
+        "<w:r><w:tab/></w:r>"
+        "<w:r><w:t>タブの先。</w:t></w:r></w:p>"))
+
+    assert read_document(path) == "一行目である。\n二行目である。 タブの先。\n"
+
+
+def test_a_merged_cell_keeps_the_columns_it_spans(tmp_path):
+    """Found in a real Word file: the way a table is wrong without looking it.
+
+    Word writes a cell merged across two columns as one `w:tc` carrying
+    `w:gridSpan`, so the row holds fewer cells than the header has
+    columns. Padding the row at its end keeps the column *count* right
+    and puts every value after the merge one column to the left — under
+    a heading that belongs to something else. Nothing downstream can see
+    that, because the table still looks square.
+    """
+    from trikedb.importers import read_document
+
+    def cell(text, span=1):
+        pr = (f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>'
+              if span > 1 else "")
+        return f"<w:tc>{pr}<w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:tc>"
+
+    path = tmp_path / "spec.docx"
+    path.write_bytes(_docx(
+        "<w:tbl>"
+        "<w:tr>" + cell("環境") + cell("DB") + cell("ロール") + cell("備考")
+        + "</w:tr>"
+        # "共通" covers 環境 and DB; "ADMIN" then belongs under ロール.
+        "<w:tr>" + cell("共通", span=2) + cell("ADMIN") + cell("なし")
+        + "</w:tr></w:tbl>"))
+
+    assert read_document(path) == (
+        "| 環境 | DB | ロール | 備考 |\n"
+        "|---|---|---|---|\n"
+        "| 共通 |  | ADMIN | なし |\n"
+    )
+
+
 def test_a_text_file_that_is_not_utf8_says_which_file_and_what_to_do(tmp_path):
     """The failure a Japanese document hits first, and its useless message.
 

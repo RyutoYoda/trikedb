@@ -22,6 +22,19 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   broken text. PDF is deliberately not here — it needs a real dependency
   and loses the layout that carries the meaning.
 
+- **A merged table cell keeps the columns it covers.** Word writes a cell
+  merged across two columns as one `w:tc` with `w:gridSpan`, so the row holds
+  fewer cells than the header has columns; padding the row at its end kept the
+  column count right and slid every value after the merge one column to the
+  left, under a heading belonging to something else. The table still looked
+  square, so nothing downstream could see it. Found in a real Word file, where
+  seven of sixty rows were affected.
+
+- **A line break inside a paragraph is a line break.** `w:br` and `w:tab` hold
+  no text and were skipped, welding the last word of one line to the first of
+  the next — a sentence the document never contained. Found in the same file,
+  nineteen times.
+
 - **A text file that is not UTF-8 says which file and what to do.** A .txt
   saved on Windows is cp932, and the answer was `'utf-8' codec can't decode
   byte 0x93 in position 0` — which names neither the file nor anything to act

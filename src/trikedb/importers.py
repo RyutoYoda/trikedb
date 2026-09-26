@@ -228,7 +228,7 @@ def docx_text(blob: bytes) -> str:
 
 
 def _docx_paragraph(node) -> str:
-    text = _docx_runs(node)
+    text = _docx_runs(node).strip()
     if not text:
         return ""
     props = node.find(f"{_W}pPr")
@@ -255,10 +255,18 @@ def _docx_table(node) -> str:
     for tr in node.findall(f"{_W}tr"):
         cells = []
         for tc in tr.findall(f"{_W}tc"):
-            # Paragraphs inside one cell are one cell; runs inside one
-            # paragraph split mid-word, which is why they join with nothing.
-            parts = [_docx_runs(p) for p in tc.iter(f"{_W}p")]
-            cells.append(" ".join(p for p in parts if p).replace("|", "\\|"))
+            # Paragraphs inside one cell are one cell, and a Markdown row
+            # is one line, so whatever shape the cell had collapses here.
+            # Runs inside one paragraph split mid-word, which is why the
+            # runs themselves join with nothing.
+            text = " ".join(" ".join(_docx_runs(p) for p in tc.iter(f"{_W}p"))
+                            .split())
+            cells.append(text.replace("|", "\\|"))
+            # A merged cell covers the columns it spans. Written as one
+            # cell and padded at the end of the row, every value after it
+            # slides left and ends up under someone else's heading — the
+            # one way a table can be wrong without looking wrong.
+            cells += [""] * (_span(tc) - 1)
         if cells:
             rows.append(cells)
     if not rows:
@@ -269,13 +277,35 @@ def _docx_table(node) -> str:
     return "\n".join(out)
 
 
+def _span(cell) -> int:
+    """How many columns a table cell covers (`w:gridSpan`), at least one."""
+    grid = cell.find(f"{_W}tcPr/{_W}gridSpan")
+    try:
+        return max(1, int(grid.get(f"{_W}val"))) if grid is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _docx_runs(node) -> str:
     """Every run of text under a node, joined as written.
 
     `w:t` is the only tag holding text a reader sees; deleted text is
     `w:delText` and is therefore skipped by not being looked for.
+
+    A break and a tab hold no text but are not nothing: they are where
+    the author ended one line and started another. Joining across them
+    welds the last word of one line to the first of the next, which is
+    both unreadable and a fact the document never stated.
     """
-    return "".join(t.text or "" for t in node.iter(f"{_W}t"))
+    out = []
+    for element in node.iter():
+        if element.tag == f"{_W}t":
+            out.append(element.text or "")
+        elif element.tag == f"{_W}br":
+            out.append("\n")
+        elif element.tag == f"{_W}tab":
+            out.append(" ")
+    return "".join(out)
 
 
 def _heading_level(style: str) -> int:
