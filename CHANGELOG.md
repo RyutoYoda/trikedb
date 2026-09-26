@@ -3,7 +3,7 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
-## Unreleased
+## 0.44.0
 
 - **Extraction led with the route that needs the most.** "Point it at a
   document" opened with `db.extract(text, llm=my_model)` — a name defined
