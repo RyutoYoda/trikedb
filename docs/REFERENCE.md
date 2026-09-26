@@ -440,11 +440,12 @@ The third way to fill a graph, after typing the facts and after having an
 agent add them: hand over a document. It is an adapter rather than part of
 the core — `extract` sits above `db`, is imported when it is called, and
 imports nothing outside trikedb itself, which a test enforces. Nothing here
-calls a model. You have one already; what trikedb contributes is the prompt
+calls a model. Who makes the call is you, the agent you are already talking
+to, or a chat window you paste into; what trikedb contributes is the prompt
 and the judgement of the answer.
 
 ```python
-rows = db.extract(text, llm=my_model)      # or: db.extract_prompt(text), and call it yourself
+rows = db.extract(text, llm=anthropic())   # or: db.extract_prompt(text), and call it yourself
 for f in db.preview(rows):                 # judged against the graph; nothing written yet
     print(f["verdict"], f["triple"], f["detail"])
 

@@ -424,11 +424,12 @@ trikedb init graph.yaml --template minimal --force   # 既存ファイルを上�
 グラフを埋める3つ目のやり方。手で事実を打つ、エージェントに入れさせる、
 その次がドキュメントをそのまま渡すこと。これはコアの一部ではなくアダプタで、
 `extract` は `db` の上にいて、呼ばれたときに import され、trikedb 自身の外を
-import しない(テストで守られている)。ここでは何もモデルを呼ばない。モデルは
-すでに手元にある。trikedb が出すのはプロンプトと、答えの判定のほうだ。
+import しない(テストで守られている)。ここでは何もモデルを呼ばない。呼ぶのは
+あなたか、いま話しているエージェントか、貼り付ける先のチャット窓だ。trikedb が
+出すのはプロンプトと、答えの判定のほうだ。
 
 ```python
-rows = db.extract(text, llm=my_model)      # または db.extract_prompt(text) を取って自分で呼ぶ
+rows = db.extract(text, llm=anthropic())   # または db.extract_prompt(text) を取って自分で呼ぶ
 for f in db.preview(rows):                 # グラフに照らして判定。まだ何も書かれていない
     print(f["verdict"], f["triple"], f["detail"])
 

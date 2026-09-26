@@ -167,15 +167,42 @@ MCP クライアントが無い? なら統合はエージェントのプロジ�
 
 ## 文書を放り込む
 
-モデルはもう持っているはずだ。trikedb はプロンプトを書き、返ってきた答えを裁く。
-あいだの呼び出しはあなたのもので、だから SDK を入れる必要も鍵を預ける必要もない。
-プロンプトは**書き込み先のグラフそのものから**組まれる——宣言済みの述語と、すでに
-ある ノード名。だからモデルは `WORKS_AT` の横に `EMPLOYED_BY` をでっち上げないし、
-ファイルにすでにいる会社にもう一つノードを開いたりしない:
+trikedb はモデルを持たない。書くのはプロンプト、裁くのは答えで、あいだの一回を
+誰が埋めるかは三通りある。プロンプトは**書き込み先のグラフそのものから**組まれる
+——宣言済みの述語と、すでにある ノード名。だから答える側は `WORKS_AT` の横に
+`EMPLOYED_BY` をでっち上げないし、ファイルにすでにいる会社にもう一つノードを
+開いたりしない。
+
+**一番用意するものが少ないのは、シェルで二つに分ける形だ。** 鍵も SDK も要らない。
+あいだに立つのは人と、いつも開いているチャット窓でいい:
+
+```bash
+trikedb extract graph.yaml report.docx > prompt.txt # どこに貼ってもいい
+trikedb import graph.yaml answer.md --dry-run       # 何が起きるか
+trikedb import graph.yaml answer.md                 # 何が起きたか
+```
+
+**エージェントを使っているなら、貼る手間も要らない。**
+[MCP サーバーとして登録すれば](#エージェントに渡す)、`extraction_prompt` →
+`preview_triples` → `add_triples` の三つが同じ道をたどる。モデルはもう目の前に
+いるので、用意するものは何もない。
+
+**すでに従量課金のモデルがあって、スクリプトに組み込みたいなら**、あいだの一回を
+自分で呼べばいい。`llm` はプロンプトを受け取ってテキストを返すだけの callable で、
+使っている SDK を3行で包めば済む。5つの実例が
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+にある:
 
 ```python
-rows = db.extract(open("press-release.md").read(), llm=my_model)
+from extract_providers import anthropic      # examples/extract_providers.py
 
+rows = db.extract(open("press-release.md").read(), llm=anthropic())
+```
+
+どの経路を通っても、最後の門は同じだ——`--dry-run`、`preview_triples`、
+`db.preview` は同じ判定を返す。書かれる前に、一行ずつ:
+
+```python
 for f in db.preview(rows):          # まだ何も書かれていない
     print(f["verdict"], f["triple"], f["detail"])
 
@@ -183,19 +210,6 @@ for f in db.preview(rows):          # まだ何も書かれていない
 # new       Sato WORKS_AT Acme
 # conflict  Tanaka WORKS_AT Globex
 #           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
-```
-
-`llm` はプロンプトを受け取ってテキストを返すだけの callable——使っている SDK を
-3行で包めば済む。5つの実例が
-[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
-にある。
-
-API を使わず、あいだに人やチャット窓を挟んで、シェルから二つに分けてもいい:
-
-```bash
-trikedb extract graph.yaml report.docx > prompt.txt # どこに貼ってもいい
-trikedb import graph.yaml answer.md --dry-run       # 何が起きるか
-trikedb import graph.yaml answer.md                 # 何が起きたか
 ```
 
 Word ファイルはそのまま入る: `.docx` の正体は XML を収めた zip なので、読むのに

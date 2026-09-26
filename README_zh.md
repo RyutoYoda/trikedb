@@ -162,14 +162,39 @@ trikedb 负责那条经过校验的写入路径。** 抽取保持灵活，词汇
 
 ## 把一份文档丢进去
 
-模型你已经有了。trikedb 负责写提示词、评判回答；中间那次调用是你的，所以没有
-SDK 要装，也没有密钥要交出去。提示词是**从要写入的那张图谱本身**组出来的——它
-声明过的谓词，它已有的节点名。所以模型不会在 `WORKS_AT` 旁边临时造一个
-`EMPLOYED_BY`，也不会给文件里已经存在的公司再开一个节点：
+trikedb 自己不持有模型。它负责写提示词、评判回答；中间那一次调用由谁来完成，有三
+条路可选。提示词是**从要写入的那张图谱本身**组出来的——它声明过的谓词，它已有的
+节点名。所以回答的一方不会在 `WORKS_AT` 旁边临时造一个 `EMPLOYED_BY`，也不会给
+文件里已经存在的公司再开一个节点。
+
+**需要准备的东西最少的，是在命令行分成两半。** 没有密钥，没有 SDK。站在中间的，
+是一个人和那个本来就开着的聊天窗口：
+
+```bash
+trikedb extract graph.yaml report.docx > prompt.txt # 贴到任何地方
+trikedb import graph.yaml answer.md --dry-run       # 它会做什么
+trikedb import graph.yaml answer.md                 # 它做了什么
+```
+
+**如果你本来就在用智能体，连贴都不用贴。**
+[把图谱注册成 MCP 服务器](#交给智能体)，`extraction_prompt` → `preview_triples` →
+`add_triples` 走的是同一条路。模型就在你眼前，什么都不用准备。
+
+**如果你已经在为某个模型付费，并且想把这一步放进脚本里**，那就自己发那一次调用。
+`llm` 就是任何接收提示词、返回文本的可调用对象——把你在用的 SDK 包三行即可，
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
+里写好了五个：
 
 ```python
-rows = db.extract(open("press-release.md").read(), llm=my_model)
+from extract_providers import anthropic      # examples/extract_providers.py
 
+rows = db.extract(open("press-release.md").read(), llm=anthropic())
+```
+
+不管走哪条路，最后那道门都是同一道——`--dry-run`、`preview_triples` 和
+`db.preview` 返回同样的判定。在写入之前，一行一行地：
+
+```python
 for f in db.preview(rows):          # 此刻什么都还没写
     print(f["verdict"], f["triple"], f["detail"])
 
@@ -177,18 +202,6 @@ for f in db.preview(rows):          # 此刻什么都还没写
 # new       Sato WORKS_AT Acme
 # conflict  Tanaka WORKS_AT Globex
 #           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
-```
-
-`llm` 就是任何接收提示词、返回文本的可调用对象——把你在用的 SDK 包三行即可，
-[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py)
-里写好了五个。
-
-也可以完全不碰 API，让一个人或一个聊天窗口站在中间，从命令行分两半跑：
-
-```bash
-trikedb extract graph.yaml report.docx > prompt.txt # 贴到任何地方
-trikedb import graph.yaml answer.md --dry-run       # 它会做什么
-trikedb import graph.yaml answer.md                 # 它做了什么
 ```
 
 Word 文件直接丢进来就行：`.docx` 本质是一个装着 XML 文档的 zip，读它不需要任何依赖。

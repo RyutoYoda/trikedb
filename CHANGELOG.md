@@ -5,6 +5,17 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+- **Extraction led with the route that needs the most.** "Point it at a
+  document" opened with `db.extract(text, llm=my_model)` — a name defined
+  nowhere in the repository — and buried the two routes that need no model of
+  your own at the bottom of the section: the shell split in two, where a chat
+  window stands in the middle, and the MCP tools, where the agent reading the
+  page is already the model. Nothing about the code changed; the three routes
+  are now ordered by how much you have to bring, least first, and `llm=` is
+  last and named `anthropic()` from `examples/extract_providers.py` so the
+  example points at code that exists. The same in all three READMEs and
+  references.
+
 - **The embedding model's download is stated where it happens.** `[semantic]`
   fetches about a gigabyte from Hugging Face the first time anybody searches,
   and nothing said so: not the extras table, not the reference, not the error

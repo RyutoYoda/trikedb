@@ -410,10 +410,11 @@ trikedb init graph.yaml --template minimal --force   # 覆盖已有文件
 往图里填东西的第三种方式：手打事实、让 agent 写，再往下就是直接丢一份文档
 进来。它是适配器而不是内核的一部分 —— `extract` 在 `db` 之上，被调用时才
 import，而且除了 trikedb 自己什么都不 import（有测试盯着）。这里没有任何
-代码会去调模型。模型你已经有了；trikedb 出的是提示词，以及对答案的判定。
+代码会去调模型。发那次调用的是你，或者你正在对话的智能体，或者你粘贴进去的那个
+聊天窗口；trikedb 出的是提示词，以及对答案的判定。
 
 ```python
-rows = db.extract(text, llm=my_model)      # 或者拿 db.extract_prompt(text) 自己去调
+rows = db.extract(text, llm=anthropic())   # 或者拿 db.extract_prompt(text) 自己去调
 for f in db.preview(rows):                 # 对着图判定；这时候还什么都没写
     print(f["verdict"], f["triple"], f["detail"])
 

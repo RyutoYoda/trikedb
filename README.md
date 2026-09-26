@@ -168,16 +168,43 @@ and the file does the rest.
 
 ## Point it at a document
 
-You have a model already. trikedb writes the prompt and judges the answer;
-the call in between is yours, so there is no SDK to install and no key to hand
-over. The prompt is built **from the graph being written into** — its declared
-predicates, its existing node names — which is why the model does not invent
+trikedb holds no model. It writes the prompt and judges the answer; who makes
+the one call in between is up to you, and there are three ways to do it. The
+prompt is built **from the graph being written into** — its declared predicates,
+its existing node names — which is why whoever answers does not invent
 `EMPLOYED_BY` beside `WORKS_AT`, or open a second node for a company already in
-the file:
+the file.
+
+**The route that needs least is the shell, split in two.** No key, no SDK. What
+stands in the middle is a person and whichever chat window is already open:
+
+```bash
+trikedb extract graph.yaml report.docx > prompt.txt # paste it anywhere
+trikedb import graph.yaml answer.md --dry-run       # what it would do
+trikedb import graph.yaml answer.md                 # what it did
+```
+
+**If you work through an agent, you don't even paste.**
+[Register the graph as an MCP server](#hand-it-to-an-agent) and
+`extraction_prompt` → `preview_triples` → `add_triples` walk the same path. The
+model is already sitting in front of you; there is nothing to set up.
+
+**If you already pay for a model and want this inside a script**, make that one
+call yourself. `llm` is any callable taking the prompt and returning text —
+three lines around whichever SDK you use, and five of them are written out in
+[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py):
 
 ```python
-rows = db.extract(open("press-release.md").read(), llm=my_model)
+from extract_providers import anthropic      # examples/extract_providers.py
 
+rows = db.extract(open("press-release.md").read(), llm=anthropic())
+```
+
+Whichever route you take, the last gate is the same one — `--dry-run`,
+`preview_triples` and `db.preview` return the same verdicts. Before anything is
+written, one row at a time:
+
+```python
 for f in db.preview(rows):          # nothing is written yet
     print(f["verdict"], f["triple"], f["detail"])
 
@@ -185,19 +212,6 @@ for f in db.preview(rows):          # nothing is written yet
 # new       Sato WORKS_AT Acme
 # conflict  Tanaka WORKS_AT Globex
 #           └ WORKS_AT is declared functional and Tanaka already holds 'Acme'
-```
-
-`llm` is any callable taking the prompt and returning text — three lines around
-whichever SDK you use, and five of them are written out in
-[examples/extract_providers.py](https://github.com/RyutoYoda/trikedb/blob/main/examples/extract_providers.py).
-
-Or skip the API entirely and run the two halves from a shell, with a person or
-a chat window in the middle:
-
-```bash
-trikedb extract graph.yaml report.docx > prompt.txt # paste it anywhere
-trikedb import graph.yaml answer.md --dry-run       # what it would do
-trikedb import graph.yaml answer.md                 # what it did
 ```
 
 A Word file goes in as it is: a `.docx` is a zip with an XML document inside,
