@@ -135,7 +135,11 @@ def main(argv=None) -> int:
     )
     p_extract.add_argument(
         "file", help="the graph whose vocabulary constrains the extraction")
-    p_extract.add_argument("document", help="the document to extract from")
+    p_extract.add_argument(
+        "document",
+        help="the document to extract from — .docx, or any text file "
+             "(.md, .txt). Google Docs exports Markdown directly",
+    )
     p_extract.add_argument("-o", "--out", default=None,
                            help="write the prompt here instead of stdout")
     p_extract.add_argument(
@@ -552,9 +556,10 @@ def _cmd_extract(args) -> int:
     kwargs = {"relevant_to": args.relevant_to}
     if args.limit is not None:
         kwargs["limit"] = args.limit
+    from .importers import read_document
+
     try:
-        prompt = db.extract_prompt(
-            Path(args.document).read_text(encoding="utf-8"), **kwargs)
+        prompt = db.extract_prompt(read_document(args.document), **kwargs)
     except ImportError as exc:
         return _needs_semantic(exc)
     if args.out:

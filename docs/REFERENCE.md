@@ -389,7 +389,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 read & write (writes persist) |
 | `trikedb search FILE "query" [-k N]` | Semantic search over facts and nodes (`[semantic]` extra) |
 | `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | Merge CSV/TSV/Markdown/YAML sources. `--dry-run` says what every row would do and writes nothing, exiting 1 if anything is blocked |
-| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | Print the extraction prompt for a document, built from this graph's own predicates and nodes. Calls nothing — the model is yours |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | Print the extraction prompt for a document, built from this graph's own predicates and nodes. Calls nothing — the model is yours. `DOC` is a `.docx` or any text file; a `.docx` is read by opening the zip, so it adds no dependency, and its headings, list items and tables survive as Markdown |
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | Show / extend the predicate vocabulary. `--link INGESTS_TO=job>table` declares a shape and has it enforced; either side may be blank, or `a\|b` for several types |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | Record something you did: the node moves to its new state and the log keeps the run |
@@ -465,10 +465,21 @@ Or run the two halves from a shell, with a person or a chat window in the
 middle:
 
 ```bash
-trikedb extract graph.yaml report.md -o prompt.txt   # paste it into any model
+trikedb extract graph.yaml report.docx -o prompt.txt # paste it into any model
 trikedb import graph.yaml answer.md --dry-run        # what the answer would do
 trikedb import graph.yaml answer.md                  # what it did
 ```
+
+`report.docx` is not a special case: the document argument takes a `.docx` or
+any text file, and a `.docx` is read by opening the zip and reading the XML
+inside it, so nothing is installed for it. Headings, list items and tables
+come through as Markdown, because which section a fact came from and which
+rows are separate facts is most of what the extractor has to work with.
+Comments and footnotes are left out — a remark in the margin should not
+become a triple without a person deciding that it should. Google Docs exports
+Markdown directly (File → Download → Markdown), so it needs none of this. On
+the Python side the same reader is `trikedb.importers.read_document(path)`,
+which returns the text to hand to `extract_prompt`.
 
 `--dry-run` is worth having on its own and works on any source. The verdicts,
 worst first — `conflict` and `rejected` are the two it exits 1 on:

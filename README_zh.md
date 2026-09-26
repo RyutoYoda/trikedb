@@ -186,10 +186,13 @@ for f in db.preview(rows):          # 此刻什么都还没写
 也可以完全不碰 API，让一个人或一个聊天窗口站在中间，从命令行分两半跑：
 
 ```bash
-trikedb extract graph.yaml report.md > prompt.txt   # 贴到任何地方
+trikedb extract graph.yaml report.docx > prompt.txt # 贴到任何地方
 trikedb import graph.yaml answer.md --dry-run       # 它会做什么
 trikedb import graph.yaml answer.md                 # 它做了什么
 ```
+
+Word 文件直接丢进来就行：`.docx` 本质是一个装着 XML 文档的 zip，读它不需要任何依赖。
+Google Docs 可以直接导出 Markdown（文件 → 下载 → Markdown），那种本来就能读。
 
 `--dry-run` 本身就值得拥有，而且对任何来源都有效——CSV、Markdown、另一张图谱。
 每一行都会带着理由回来，标为 `new`、`same`、`update`、`rejected` 或 `conflict`，

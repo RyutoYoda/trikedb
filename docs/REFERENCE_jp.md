@@ -374,7 +374,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1読み書き(書き込みは永続化) |
 | `trikedb search FILE "クエリ" [-k N]` | 意味検索 — 事実とノードを意味でランク付け(`[semantic]` extra) |
 | `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | CSV/TSV/Markdown/YAMLソースをマージ。`--dry-run` は各行が何をするかだけ言って何も書かず、止まるものがあればexit 1 |
-| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | このグラフ自身の述語とノードから組み立てた抽出プロンプトを出力する。何も呼び出さない — モデルはあなたのもの |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | このグラフ自身の述語とノードから組み立てた抽出プロンプトを出力する。何も呼び出さない — モデルはあなたのもの。`DOC` は `.docx` かテキストファイル。`.docx` は zip を開いて読むだけなので依存は増えず、見出し・箇条書き・表は Markdown として残る |
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 語彙の表示/拡張。`--link INGESTS_TO=job>table` は形を宣言し、以後強制する。どちらの側も空でよく、`a\|b` で複数型 |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | やったことを記録する: ノードは新しい状態に移り、ログには実行が残る |
@@ -448,10 +448,19 @@ db.preview(db.read_file("answer.md"))      # 手元のファイルにも同じ�
 チャット画面を挟んでもいい:
 
 ```bash
-trikedb extract graph.yaml report.md -o prompt.txt   # 好きなモデルに貼る
+trikedb extract graph.yaml report.docx -o prompt.txt # 好きなモデルに貼る
 trikedb import graph.yaml answer.md --dry-run        # その答えが何をするか
 trikedb import graph.yaml answer.md                  # 実際にやる
 ```
+
+`report.docx` は特別扱いではない: ドキュメント引数は `.docx` かテキストファイルを
+取り、`.docx` は zip を開いて中の XML を読むだけなので、何もインストールしない。
+見出し・箇条書き・表は Markdown として残る。どの節の事実か、どの行が別々の事実かは、
+抽出器が手にできる情報のほとんどだからだ。コメントと脚注は落とす — 余白の書き込みは、
+人が決めないうちにトリプルになってはいけない。Google ドキュメントは Markdown で直接
+書き出せる(ファイル → ダウンロード → Markdown)ので、そもそもこれは要らない。
+Python 側では同じリーダーが `trikedb.importers.read_document(path)` で、
+`extract_prompt` に渡すテキストを返す。
 
 `--dry-run` はそれ自体で価値があり、どのソースにも効く。判定は重い順で、
 exit 1 になるのは `conflict` と `rejected` の2つ:

@@ -6,6 +6,12 @@ format) is a triple source when its header contains s/p/o columns
 attribute. Markdown files may contain any amount of prose around the
 tables; non-triple tables are simply ignored, so ordinary design docs
 can double as graph sources.
+
+`read_document` answers a different question from the rest of this
+module: not "what triples does this file already state" but "what does
+this file say", which is where an extraction starts. It is here anyway
+because both questions are about turning a file somebody else wrote
+into something the graph can look at.
 """
 
 from __future__ import annotations
@@ -111,6 +117,136 @@ def parse_markdown(text: str) -> List[dict]:
         else:
             i += 1
     return triples
+
+
+#: WordprocessingML, the only namespace a .docx body uses
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def read_document(path: Union[str, Path]) -> str:
+    """A document's text, for handing to an extractor.
+
+    The document people actually have is rarely a Markdown file — it is
+    a Word file somebody emailed, or a Google Doc. Google Docs exports
+    Markdown directly and needs nothing from us; .docx is a zip with an
+    XML document inside it, so reading one costs no dependency either.
+    That is the whole reason this is worth having: the format that keeps
+    documents out of the graph is not a hard format, it is just one
+    nobody bothered to open.
+    """
+    path = Path(path)
+    suffix = path.suffix.lower()
+    if suffix == ".docx":
+        return docx_text(path.read_bytes())
+    if suffix == ".doc":
+        # Saying "not utf-8" about a binary Word file helps nobody.
+        raise ValueError(
+            f"{path.name}: .doc is the old binary Word format, which cannot "
+            "be read without a converter — save it as .docx"
+        )
+    return path.read_text(encoding="utf-8")
+
+
+def docx_text(blob: bytes) -> str:
+    """The body of a .docx, as Markdown.
+
+    Markdown rather than flat text because the shape of a document is
+    part of what it says: a heading tells a reader — and a model —
+    which section a fact came from, and a table's rows are separate
+    facts even when the prose around them is one paragraph.
+
+    Comments and footnotes live in other parts of the zip and are not
+    read: a remark in the margin is somebody's second thought, and it
+    should not become a fact without a person deciding that it is one.
+    Deleted text is skipped for the same reason; text marked as an
+    insertion is kept, because that is what the document now says.
+    """
+    # Imported here so that reading a CSV does not also load an XML parser.
+    import io
+    import zipfile
+    from xml.etree import ElementTree
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            xml = archive.read("word/document.xml")
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        raise ValueError(
+            f"not a readable .docx ({type(exc).__name__}: {exc}) — a .docx is "
+            "a zip holding word/document.xml"
+        ) from None
+
+    body = ElementTree.fromstring(xml).find(f"{_W}body")
+    blocks = []
+    for node in body if body is not None else []:
+        if node.tag == f"{_W}p":
+            block = _docx_paragraph(node)
+        elif node.tag == f"{_W}tbl":
+            block = _docx_table(node)
+        else:
+            continue
+        if block:
+            blocks.append(block)
+    return "\n\n".join(blocks) + "\n" if blocks else ""
+
+
+def _docx_paragraph(node) -> str:
+    text = _docx_runs(node)
+    if not text:
+        return ""
+    props = node.find(f"{_W}pPr")
+    if props is None:
+        return text
+    style = props.find(f"{_W}pStyle")
+    level = _heading_level(style.get(f"{_W}val", "") if style is not None else "")
+    if level:
+        return "#" * level + " " + text
+    if props.find(f"{_W}numPr") is not None:
+        return "- " + text
+    return text
+
+
+def _docx_table(node) -> str:
+    """A table as Markdown, with the first row taken as the header.
+
+    Word does not mark which row is the header — `w:tblHeader` is
+    optional and usually absent — and a Markdown table has to have one.
+    The first row is what a reader treats as the header, so it is what
+    this does, rather than dropping the shape entirely.
+    """
+    rows = []
+    for tr in node.findall(f"{_W}tr"):
+        cells = []
+        for tc in tr.findall(f"{_W}tc"):
+            # Paragraphs inside one cell are one cell; runs inside one
+            # paragraph split mid-word, which is why they join with nothing.
+            parts = [_docx_runs(p) for p in tc.iter(f"{_W}p")]
+            cells.append(" ".join(p for p in parts if p).replace("|", "\\|"))
+        if cells:
+            rows.append(cells)
+    if not rows:
+        return ""
+    width = max(len(r) for r in rows)
+    out = ["| " + " | ".join(r + [""] * (width - len(r))) + " |" for r in rows]
+    out.insert(1, "|" + "|".join(["---"] * width) + "|")
+    return "\n".join(out)
+
+
+def _docx_runs(node) -> str:
+    """Every run of text under a node, joined as written.
+
+    `w:t` is the only tag holding text a reader sees; deleted text is
+    `w:delText` and is therefore skipped by not being looked for.
+    """
+    return "".join(t.text or "" for t in node.iter(f"{_W}t"))
+
+
+def _heading_level(style: str) -> int:
+    """The heading depth a paragraph style names, or 0 for body text."""
+    name = "".join(style.split()).replace("-", "").lower()
+    for prefix in ("heading", "見出し"):
+        if name.startswith(prefix) and name[len(prefix):].isdigit():
+            return min(int(name[len(prefix):]), 6)
+    return 1 if name == "title" else 0
 
 
 def _is_table_row(line: str) -> bool:

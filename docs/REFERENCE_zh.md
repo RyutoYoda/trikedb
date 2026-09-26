@@ -361,7 +361,7 @@ API 能做的事，命令行都能做（`pip install trikedb`，或者
 | `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 读写（写入会落盘） |
 | `trikedb search FILE "query" [-k N]` | 对事实和节点做语义搜索（`[semantic]` extra） |
 | `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | 合并 CSV/TSV/Markdown/YAML 来源。`--dry-run` 只说每行会做什么、什么都不写，有被挡住的就以 1 退出 |
-| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | 打印这份文档的抽取提示词，由这张图自己的谓词和节点搭成。它不调用任何东西 —— 模型是你的 |
+| `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | 打印这份文档的抽取提示词，由这张图自己的谓词和节点搭成。它不调用任何东西 —— 模型是你的。`DOC` 可以是 `.docx` 或任意文本文件；读 `.docx` 只是打开那个 zip，不引入依赖，标题、列表项和表格会作为 Markdown 保留 |
 | `trikedb node FILE NAME [-a k=v]...` | 显示一个节点（属性 + 边）或设置属性 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 显示 / 扩展述语词表。`--link INGESTS_TO=job>table` 声明一个形状并即刻生效；任意一侧都可以留空，也可以用 `a\|b` 写多个类型 |
 | `trike act FILE S P O [--state] [--by] [--at] [-a k=v]...` | 记录你做过的事：节点移到新状态，日志留下这次执行 |
@@ -432,10 +432,17 @@ db.preview(db.read_file("answer.md"))      # 对手头的文件做同样的判�
 里。或者把前后两半放到 shell 里跑，中间夹一个人或者一个聊天窗口：
 
 ```bash
-trikedb extract graph.yaml report.md -o prompt.txt   # 贴到任何模型里
+trikedb extract graph.yaml report.docx -o prompt.txt # 贴到任何模型里
 trikedb import graph.yaml answer.md --dry-run        # 这份答案会做什么
 trikedb import graph.yaml answer.md                  # 实际做了什么
 ```
+
+`report.docx` 不是特例：文档参数接受 `.docx` 或任意文本文件，而读 `.docx` 只是打开
+那个 zip、读里面的 XML，不会装任何东西。标题、列表项和表格会作为 Markdown 保留 ——
+一条事实出自哪一节、哪些行是彼此独立的事实，是抽取器能拿到的大部分信息。批注和脚注
+不读：页边的一句话，在有人拍板之前不该变成三元组。Google Docs 可以直接导出 Markdown
+（文件 → 下载 → Markdown），那条路根本用不上这些。Python 侧同一个读取器是
+`trikedb.importers.read_document(path)`，它返回交给 `extract_prompt` 的文本。
 
 `--dry-run` 本身就值得用，而且对任何来源都有效。判定按严重程度排，会让它以
 1 退出的是 `conflict` 和 `rejected` 这两个：

@@ -4366,6 +4366,120 @@ def test_markdown_import_ignores_fenced_examples(tmp_path):
     assert read_markdown(doc) == [{"s": "a", "p": "P", "o": "b"}]
 
 
+def _docx(body: str) -> bytes:
+    """A .docx holding exactly this body XML.
+
+    Built rather than committed as a binary because the point of reading
+    .docx without a dependency is that the format is legible: a fixture
+    you can read in the diff keeps it that way, and a fixture nobody can
+    read is how a parser quietly starts depending on one writer's quirks.
+    """
+    import io
+    import zipfile
+
+    document = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/'
+        'wordprocessingml/2006/main"><w:body>' + body + "</w:body></w:document>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("word/document.xml", document)
+    return buf.getvalue()
+
+
+def test_a_docx_arrives_as_markdown_with_its_shape_intact(tmp_path):
+    """Headings, list items and tables survive the trip out of Word.
+
+    A .docx flattened to one wall of text loses what tells a reader
+    which section a fact belongs to and which rows are separate facts.
+    The shape is not decoration here — it is most of what the extractor
+    has to work with.
+    """
+    from trikedb.importers import read_document
+
+    path = tmp_path / "notice.docx"
+    path.write_bytes(_docx(
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+        '<w:r><w:t>組織変更</w:t></w:r></w:p>'
+        # Word splits a word across runs whenever anything changes mid-word.
+        '<w:p><w:r><w:t>アク</w:t></w:r><w:r><w:t>メ</w:t></w:r>'
+        '<w:r><w:t> は データ基盤部 を新設する。</w:t></w:r></w:p>'
+        '<w:p><w:pPr><w:pStyle w:val="Heading 2"/></w:pPr>'
+        '<w:r><w:t>異動</w:t></w:r></w:p>'
+        '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/></w:numPr></w:pPr>'
+        '<w:r><w:t>田中 亮</w:t></w:r></w:p>'
+        '<w:tbl>'
+        '<w:tr><w:tc><w:p><w:r><w:t>氏名</w:t></w:r></w:p></w:tc>'
+        '<w:tc><w:p><w:r><w:t>新しい所属</w:t></w:r></w:p></w:tc></w:tr>'
+        '<w:tr><w:tc><w:p><w:r><w:t>佐藤 美咲</w:t></w:r></w:p></w:tc>'
+        '<w:tc><w:p><w:r><w:t>データ | 基盤部</w:t></w:r></w:p></w:tc></w:tr>'
+        '</w:tbl>'
+    ))
+
+    assert read_document(path) == (
+        "# 組織変更\n"
+        "\n"
+        "アクメ は データ基盤部 を新設する。\n"
+        "\n"
+        "## 異動\n"
+        "\n"
+        "- 田中 亮\n"
+        "\n"
+        "| 氏名 | 新しい所属 |\n"
+        "|---|---|\n"
+        "| 佐藤 美咲 | データ \\| 基盤部 |\n"
+    )
+
+
+def test_a_docx_says_what_the_document_says_now(tmp_path):
+    """Deleted text is not a fact; an accepted insertion is.
+
+    A document with tracked changes still reads as one thing to the
+    person who sent it. Extracting the struck-through version would put
+    a fact into the graph that the author already took back.
+    """
+    from trikedb.importers import read_document
+
+    path = tmp_path / "revised.docx"
+    path.write_bytes(_docx(
+        '<w:p>'
+        '<w:del><w:r><w:delText>グロベックス</w:delText></w:r></w:del>'
+        '<w:ins><w:r><w:t>アクメ</w:t></w:r></w:ins>'
+        '<w:r><w:t> に移る</w:t></w:r>'
+        '</w:p>'
+    ))
+    assert read_document(path) == "アクメ に移る\n"
+
+
+def test_an_empty_or_unreadable_docx_says_which_it_is(tmp_path):
+    """The two ways this fails should not read like the same failure."""
+    from trikedb.importers import read_document
+
+    empty = tmp_path / "empty.docx"
+    empty.write_bytes(_docx(""))
+    assert read_document(empty) == ""
+
+    broken = tmp_path / "broken.docx"
+    broken.write_bytes(b"this is not a zip")
+    with pytest.raises(ValueError, match="word/document.xml"):
+        read_document(broken)
+
+    old = tmp_path / "legacy.doc"
+    old.write_bytes(b"\xd0\xcf\x11\xe0")      # the OLE2 magic a .doc starts with
+    with pytest.raises(ValueError, match="save it as .docx"):
+        read_document(old)
+
+
+def test_a_text_document_is_still_just_read(tmp_path):
+    """The path that was there before must not have grown a special case."""
+    from trikedb.importers import read_document
+
+    md = tmp_path / "doc.md"
+    md.write_text("# 見出し\n\n本文\n", encoding="utf-8")
+    assert read_document(md) == "# 見出し\n\n本文\n"
+
+
 def test_audit_does_not_flag_properties_on_a_predicate():
     """Attaching properties to a predicate is a documented pattern.
 

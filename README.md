@@ -195,10 +195,14 @@ Or skip the API entirely and run the two halves from a shell, with a person or
 a chat window in the middle:
 
 ```bash
-trikedb extract graph.yaml report.md > prompt.txt   # paste it anywhere
+trikedb extract graph.yaml report.docx > prompt.txt # paste it anywhere
 trikedb import graph.yaml answer.md --dry-run       # what it would do
 trikedb import graph.yaml answer.md                 # what it did
 ```
+
+A Word file goes in as it is: a `.docx` is a zip with an XML document inside,
+so reading one costs no dependency. Google Docs exports Markdown directly
+(File → Download → Markdown), which trikedb already reads.
 
 `--dry-run` is worth having on its own, and works on any source — CSV, Markdown,
 another graph. Every row comes back as `new`, `same`, `update`, `rejected` or

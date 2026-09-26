@@ -3,7 +3,71 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
-## Unreleased
+## 0.43.0
+
+- **A Word file is a document trikedb can read.** `trikedb extract
+  graph.yaml notice.docx` works, and so does
+  `trikedb.importers.read_document(path)` — a `.docx` is a zip holding
+  `word/document.xml`, so reading one costs `zipfile` and
+  `xml.etree.ElementTree` and no dependency at all. Headings, list items
+  and tables come out as Markdown rather than as one wall of text,
+  because which section a fact came from and which rows are separate
+  facts is most of what the extractor has to work with. Comments,
+  footnotes and deleted text are left out: a remark in the margin, and a
+  sentence the author already struck, should not become a fact without a
+  person deciding that they should. Google Docs exports Markdown
+  directly, which was always readable; the format that kept documents
+  out of the graph was the one people receive, not the one they write.
+  A `.doc` says to save it as `.docx` instead of failing as if it were
+  broken text. PDF is deliberately not here — it needs a real dependency
+  and loses the layout that carries the meaning.
+
+## 0.42.1
+
+- **`extract --relevant-to` named the extra instead of dumping a
+  traceback.** Without `trikedb[semantic]` it raised
+  `ModuleNotFoundError: No module named 'numpy'` in full, and only on a
+  graph holding more nodes than the prompt lists — so an install worked
+  on the graph someone tried first and broke on the one they meant.
+  `search` and `find` caught it and printed the module's name, which
+  still does not say what to install. All three now say
+  `pip install 'trikedb[semantic]'`.
+- **An eval that scored nothing no longer passes.** `evals/score.py
+  --answers DIR` skips a case whose answer file is absent; skipping every
+  case printed an empty table and exited 0, which in CI reads as "nothing
+  wrong" while having measured nothing.
+
+## 0.42.0
+
+A document is the third way to fill a graph, after typing the facts and
+after letting an agent add them — and the one that was missing.
+
+- **Extraction constrained by the graph it writes into.** `db.extract(text,
+  llm=...)` and `trikedb extract` build the prompt from the target graph:
+  the predicates the ontology declares are the only ones offered, the node
+  names already in the file are the spellings to reuse, and each
+  `domain`/`range` goes in as the shape of the row. An extractor corrected
+  after the fact has already spent the facts it guessed wrong. `llm` is any
+  callable from prompt to text with **no default** — a test reads
+  `extract.py` with `ast` and fails if it ever imports a vendor SDK, so
+  `pip install trikedb` does not grow by a byte. Five providers are written
+  out in `examples/extract_providers.py` as documents, not dependencies.
+- **`preview()` and `import --dry-run`, which help without a model at all.**
+  Every incoming row is judged before anything is written — `conflict`,
+  `rejected`, `update`, `new`, `same`, worst first — by the checks `add()`
+  runs, in the order it runs them, so a preview cannot promise a write that
+  then fails. A `conflict` is decidable rather than guessed: a predicate
+  declared `functional` may hold one object per subject. Hand-typed adds,
+  CSVs and agent writes all go through it.
+- **`prov` is a verbatim quote, so hallucination is checked by substring.**
+  No judge model, no threshold. `evals/` ships three adversarial cases with
+  their graphs, documents and hand-written gold answers, plus the
+  unconstrained baseline prompt in the repository where a diff can be read.
+  No numbers are committed — a number is one model on one day — but a test
+  guarantees the gold answers score a perfect 1.0, so the ceiling is known
+  to exist.
+- **Three MCP tools, taking it to sixteen.** `extraction_prompt`,
+  `preview_triples` and `add_triples`, the last all-or-nothing.
 
 The library was fine and the front door was not. A README of 876 lines
 answered every question except the first one — *what do I write, and why

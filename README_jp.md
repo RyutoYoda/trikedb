@@ -193,10 +193,14 @@ for f in db.preview(rows):          # まだ何も書かれていない
 API を使わず、あいだに人やチャット窓を挟んで、シェルから二つに分けてもいい:
 
 ```bash
-trikedb extract graph.yaml report.md > prompt.txt   # どこに貼ってもいい
+trikedb extract graph.yaml report.docx > prompt.txt # どこに貼ってもいい
 trikedb import graph.yaml answer.md --dry-run       # 何が起きるか
 trikedb import graph.yaml answer.md                 # 何が起きたか
 ```
+
+Word ファイルはそのまま入る: `.docx` の正体は XML を収めた zip なので、読むのに
+依存は要らない。Google ドキュメントは Markdown で直接書き出せる
+(ファイル → ダウンロード → Markdown)ので、そちらは元から読める。
 
 `--dry-run` はそれ単体で価値があり、どのソースにも効く——CSV でも Markdown でも
 別のグラフでも。各行が `new` / `same` / `update` / `rejected` / `conflict` のどれかと

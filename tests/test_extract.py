@@ -251,6 +251,36 @@ def test_cli_extract_writes_the_prompt_and_says_what_to_do_next(graph, capsys, t
     assert "--dry-run" in capsys.readouterr().out
 
 
+def test_cli_extract_reads_a_word_file_without_being_told_to(graph, capsys, tmp_path):
+    """The document people have is a .docx, not a Markdown file.
+
+    Downloading a doc and pointing at it is the whole interaction; a
+    step where the human converts the file first is where the path
+    stops being used. The dispatch is on the suffix, so nothing about
+    the command changes.
+    """
+    import io
+    import zipfile
+
+    from trikedb.cli import main
+
+    path = tmp_path / "notice.docx"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/'
+            'wordprocessingml/2006/main"><w:body><w:p><w:r>'
+            "<w:t>Sato joined Globex in April.</w:t>"
+            "</w:r></w:p></w:body></w:document>")
+    path.write_bytes(buf.getvalue())
+
+    assert main(["extract", str(graph.path), str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "Sato joined Globex in April." in out     # the document went in
+    assert "`WORKS_AT`" in out                       # the graph still built it
+
+
 def test_cli_extract_names_the_extra_when_semantic_search_is_missing(
         graph, monkeypatch, capsys):
     """The failure that only appears on a graph worth using.
