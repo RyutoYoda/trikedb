@@ -281,6 +281,41 @@ def test_cli_extract_reads_a_word_file_without_being_told_to(graph, capsys, tmp_
     assert "`WORKS_AT`" in out                       # the graph still built it
 
 
+def test_relevance_offers_both_ends_of_a_matching_triple_once_each(tmp_path):
+    """The two ways `limit` slots used to be wasted or misspent.
+
+    Search ranks triples, and a triple is about both of its ends. Taking
+    only the subject meant the top hit could offer the department and
+    never the company it belongs to; and two triples sharing a subject
+    spent two slots on one name. `limit` promises a number of names to
+    offer, so it has to count names.
+    """
+    db = TrikeDB(tmp_path / "g.yaml", ontology={
+        "BELONGS_TO": "which organisation something is part of",
+        "LIKES": "what someone likes",
+    })
+    db.add("Data Platform", "BELONGS_TO", "Acme")
+    db.add("Suzuki", "BELONGS_TO", "Data Platform")
+    db.add("Kobayashi", "LIKES", "Ramen")
+    db.add("Kobayashi", "LIKES", "Kyoto")
+
+    db.search = lambda query, k=10: [
+        {"kind": "triple", "s": "Data Platform", "p": "BELONGS_TO", "o": "Acme"},
+        {"kind": "triple", "s": "Kobayashi", "p": "LIKES", "o": "Ramen"},
+        {"kind": "triple", "s": "Kobayashi", "p": "LIKES", "o": "Kyoto"},
+    ][:k]
+
+    prompt = extract_mod.prompt_for(db, "a reorganisation",
+                                    relevant_to="a reorganisation", limit=3)
+    section = prompt.split("## Entities")[1].split("If something")[0]
+    offered = [line[2:] for line in section.splitlines()
+               if line.startswith("- ")]
+
+    # Acme is the object of the best hit and a subject of nothing.
+    assert offered == ["Data Platform", "Acme", "Kobayashi"]
+    assert len(offered) == len(set(offered))
+
+
 def test_cli_extract_names_the_extra_when_semantic_search_is_missing(
         graph, monkeypatch, capsys):
     """The failure that only appears on a graph worth using.

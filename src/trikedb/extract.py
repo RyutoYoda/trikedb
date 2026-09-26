@@ -71,9 +71,19 @@ def prompt_for(db, text: str, *, relevant_to: Optional[str] = None,
     # bookkeeping nodes an OWL declaration leaves behind.
     nodes = _entities(db.nodes(), db.ontology)
     if relevant_to is not None and len(nodes) > limit:
-        ranked = [hit.get("node") or hit.get("s") for hit in
-                  db.search(relevant_to, k=limit)]
-        keep = [n for n in ranked if n in set(nodes)]
+        # A triple that matches is about *both* of its ends. Taking only
+        # the subject loses the entity the sentence is usually pointing
+        # at — a document about a new department matches "データ基盤部
+        # BELONGS_TO アクメ" first, and would then be offered the
+        # department but never the company. Both ends, in score order,
+        # and deduplicated: two triples sharing a subject would otherwise
+        # spend two of the slots that `limit` promises on one name.
+        ranked = []
+        for hit in db.search(relevant_to, k=limit):
+            ranked += ([hit["node"]] if "node" in hit
+                       else [hit["s"], hit["o"]])
+        known = set(nodes)
+        keep = [n for n in dict.fromkeys(ranked) if n in known]
         nodes = keep or nodes
     return build_prompt(
         text,

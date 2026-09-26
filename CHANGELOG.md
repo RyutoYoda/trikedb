@@ -22,6 +22,18 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   broken text. PDF is deliberately not here — it needs a real dependency
   and loses the layout that carries the meaning.
 
+- **`extract --relevant-to` offers both ends of a matching triple, once
+  each.** Search ranks triples, and a triple is about the thing it points
+  at as much as the thing it points from — but only the subject was
+  taken. A notice about a new department matched
+  `データ基盤部 BELONGS_TO アクメ` as its best hit and was then offered the
+  department and never the company, so a model reading it had no listed
+  spelling for アクメ and had to invent one: exactly the collision the
+  entity list exists to prevent. Two triples sharing a subject also spent
+  two slots on one name, and `--limit` is a promise about names. On a
+  197-node graph with a real Word notice, the seven nodes the document is
+  about now fill the first seven slots.
+
 ## 0.42.1
 
 - **`extract --relevant-to` named the extra instead of dumping a
