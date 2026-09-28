@@ -293,7 +293,7 @@ MIT. Copyright (c) 2026 Ryuto Yoda.
 
 One third-party dataset is shipped, and one is not:
 
-- **Freebase** — the `examples/freebase_*.yaml` graphs are a small extract of the
+- **Freebase** — the `examples/graphs/freebase/*.yaml` graphs are a small extract of the
   Freebase dump, licensed [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/).
   They are in the repository so the demo pages can be rebuilt from their source.
 - **WebQSP** — the benchmark questions and gold answers come from

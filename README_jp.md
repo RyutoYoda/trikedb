@@ -289,7 +289,7 @@ MIT. Copyright (c) 2026 Ryuto Yoda.
 
 同梱してある第三者データセットは1つ、してないものが1つある:
 
-- **Freebase** — `examples/freebase_*.yaml` は Freebase ダンプからの小さな抜粋で、
+- **Freebase** — `examples/graphs/freebase/*.yaml` は Freebase ダンプからの小さな抜粋で、
   [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/) ライセンス。デモページを
   元データから作り直せるように、リポジトリに入れてある。
 - **WebQSP** — ベンチマークの質問と正解は

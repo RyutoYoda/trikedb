@@ -273,7 +273,7 @@ MIT. Copyright (c) 2026 Ryuto Yoda.
 
 随附的第三方数据集只有一个，另一个没有随附：
 
-- **Freebase** — `examples/freebase_*.yaml` 是 Freebase 转储的一小段摘录，
+- **Freebase** — `examples/graphs/freebase/*.yaml` 是 Freebase 转储的一小段摘录，
   采用 [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/) 许可。
   它留在仓库里，是为了让演示页面能从源数据重新生成。
 - **WebQSP** — 基准测试的问题与标准答案来自

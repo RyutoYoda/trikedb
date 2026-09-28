@@ -1,5 +1,5 @@
 # freebase demo workspace — a read-only union of the domain graphs
-# regenerate the page: trikedb html examples/freebase_workspace.yaml -o docs/workspace.html
+# regenerate the page: trikedb html examples/graphs/freebase/freebase_workspace.yaml -o docs/workspace.html
 graphs:
   film: freebase_film.yaml
   music: freebase_music.yaml

@@ -3,6 +3,20 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## Unreleased
+
+- **`examples/` was 23 loose files, 17 of which were not examples.** The
+  freebase, trike and acme graphs are what the examples *read*, not things to
+  read, so a newcomer opening the directory could not tell which four files
+  were the point. They now sit under `examples/graphs/{trike,freebase,acme}/`,
+  which is also how `streamlit-in-snowflake/` was already arranged. The
+  entry points — `extract_providers.py`, `export_to_git.py`,
+  `streamlit_app.py`, `trikedb_quickstart.ipynb` — did **not** move: the
+  published PyPI description of every earlier release links to them by path
+  and cannot be edited, so moving those would 404 permanently. The workspace
+  unions name their members by relative path and travelled with them
+  untouched.
+
 ## 0.44.0
 
 - **Extraction led with the route that needs the most.** "Point it at a

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Emit the trike goods demo: five member graphs + a workspace.
 
-    python examples/generate_trike_demo.py [output directory]
+    python examples/graphs/trike/generate_trike_demo.py [output directory]
 
 Deterministic: same input, same bytes. The point of the demo is an ontology
 actually in use — declared shapes, typed objects, properties on the objects,
@@ -696,7 +696,7 @@ open(os.path.join(OUT, "trike_workspace.yaml"), "w").write("""\
 # without anybody merging the files.
 #
 # regenerate the page:
-#   trikedb ui generate examples/trike_workspace.yaml -o docs/index.html \\
+#   trikedb ui generate examples/graphs/trike/trike_workspace.yaml -o docs/index.html \\
 #       --title "trike goods · operations ontology"
 graphs:
   catalog: trike_catalog.yaml

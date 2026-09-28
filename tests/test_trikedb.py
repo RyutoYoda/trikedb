@@ -688,8 +688,8 @@ def test_an_event_can_be_promoted_to_an_object():
 def test_examples_load_and_query():
     from pathlib import Path
 
-    examples = Path(__file__).resolve().parent.parent / "examples"
-    acme = TrikeDB(examples / "acme_pipeline.yaml")
+    examples = Path(__file__).resolve().parent.parent / "examples" / "graphs"
+    acme = TrikeDB(examples / "acme" / "acme_pipeline.yaml")
     assert set(acme.ontology) == {"PROVIDES", "INGESTS_TO", "AFFECTED_BY",
                                   "RESTARTED", "SUPPLEMENTS", "MIGRATED_TO"}
     rows = acme.query(["?v PROVIDES ?j", "?j INGESTS_TO ?t"])
@@ -727,8 +727,8 @@ def test_trike_demo_describes_a_company_that_could_exist():
     read it — does each thing happen after the thing that makes it possible."""
     from pathlib import Path
 
-    ws = TrikeDB(Path(__file__).resolve().parent.parent / "examples"
-                 / "trike_workspace.yaml")
+    ws = TrikeDB(Path(__file__).resolve().parent.parent / "examples" / "graphs"
+                 / "trike" / "trike_workspace.yaml")
     triples = list(ws)
     kind = {n: (ws.nodes_meta.get(n) or {}).get("type") for n in ws.nodes_meta}
 
@@ -796,7 +796,7 @@ def test_the_demo_still_comes_out_of_its_own_generator(tmp_path):
     import sys
     from pathlib import Path
 
-    examples = Path(__file__).resolve().parent.parent / "examples"
+    examples = Path(__file__).resolve().parent.parent / "examples" / "graphs" / "trike"
     out = subprocess.run([sys.executable, str(examples / "generate_trike_demo.py"), str(tmp_path)],
                          capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
@@ -804,7 +804,7 @@ def test_the_demo_still_comes_out_of_its_own_generator(tmp_path):
     assert written == sorted(p.name for p in examples.glob("trike_*.yaml")), written
     for name in written:
         assert (tmp_path / name).read_bytes() == (examples / name).read_bytes(), (
-            f"{name} differs from what examples/generate_trike_demo.py emits — "
+            f"{name} differs from what examples/graphs/trike/generate_trike_demo.py emits — "
             "edit the generator and regenerate, do not edit the YAML by hand")
 
 
@@ -816,7 +816,7 @@ def test_trike_demo_is_an_ontology_actually_in_use():
     from events in two different member graphs instead of written down once."""
     from pathlib import Path
 
-    examples = Path(__file__).resolve().parent.parent / "examples"
+    examples = Path(__file__).resolve().parent.parent / "examples" / "graphs" / "trike"
     members = ["catalog", "commerce", "fulfilment", "org", "incidents"]
     ws = TrikeDB(examples / "trike_workspace.yaml")
     assert sorted(ws.workspace) == sorted(members)
@@ -1077,7 +1077,7 @@ def test_import_yaml_merge(tmp_path):
 def test_import_example_files():
     from pathlib import Path
 
-    examples = Path(__file__).resolve().parent.parent / "examples"
+    examples = Path(__file__).resolve().parent.parent / "examples" / "graphs" / "acme"
     # autosaveがデフォルトなので、実サンプルを汚さないよう明示的にopt-out
     db = TrikeDB(examples / "acme_pipeline.yaml", autosave=False)
     added = db.import_file(examples / "acme_new_vendors.csv")

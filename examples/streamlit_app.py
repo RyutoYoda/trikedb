@@ -61,7 +61,7 @@ import streamlit as st
 from trikedb import OntologyError, TrikeDB
 from trikedb import storage
 
-TARGET = os.environ.get("TRIKEDB_GRAPH", "examples/acme_pipeline.yaml")
+TARGET = os.environ.get("TRIKEDB_GRAPH", "examples/graphs/acme/acme_pipeline.yaml")
 
 #: A URL means the graph is a row in a warehouse or an object in a bucket.
 #: The only thing that follows from it here is that there is no working tree
