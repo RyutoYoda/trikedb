@@ -49,6 +49,17 @@ python3 tools/embed_graph.py path/to/your/graphs
 uv run pywrangler deploy
 ```
 
+To move to a newer trikedb, regenerate the lock file as well.
+`pywrangler` resolves from `pylock.toml`, not from `uv.lock`, so bumping
+the version with `uv lock` alone deploys the old wheel and looks like the
+upgrade silently did nothing:
+
+```bash
+uv lock --upgrade-package trikedb
+uv export --format pylock.toml --no-emit-project -o pylock.toml
+uv run pywrangler deploy
+```
+
 ## Connecting a client
 
 ```bash
@@ -102,6 +113,7 @@ matching and trust a near-miss.
 | `ModuleNotFoundError: No module named 'workers'` | `npx wrangler deploy` reads neither `requirements.txt` nor `pyproject.toml`, so nothing is bundled | Use `uv run pywrangler deploy`, which resolves dependencies into `python_modules/` and attaches them. Needs `workers-py >= 1.9` |
 | `OSError: Randomness is not allowed while a Worker is starting` | Cloudflare executes the entry module at deploy time and snapshots WASM memory, so a random value drawn at startup would be identical across every instance. rdflib's SPARQL parser builds a throwaway `Graph` for its namespace manager, and an unnamed rdflib `Graph` takes a `uuid4` for its identifier | `_warm_up()` swaps `os.urandom` for a counter while it runs the first query, then puts it back. Nothing generated there leaves the process. Dropping the warm-up entirely also works, at the cost of building the graph on the first request after each cold start |
 | `pyoxigraph` will not resolve | It is a core dependency, not an extra | The `override-dependencies` line above |
+| A new trikedb release does not take effect | `pywrangler` bundles from `pylock.toml`; `uv lock` writes `uv.lock` | Re-export after locking: `uv export --format pylock.toml --no-emit-project -o pylock.toml` |
 | Empty answers from `search` | It is substring matching, not semantic | Confirm with `match` or `sparql`; see above |
 
 ## Measurements
