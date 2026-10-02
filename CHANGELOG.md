@@ -3,7 +3,7 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
-## Unreleased
+## 0.44.1
 
 - **A graph had nowhere free to be published.** `mcp/ecs/` runs the real
   server against S3, which is right for a graph a team writes to and heavy
