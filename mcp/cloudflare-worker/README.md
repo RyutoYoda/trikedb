@@ -141,3 +141,16 @@ It is read-only. trikedb's own MCP server exposes `add_triple`, `act`,
 is immutable — a write would land in the in-memory filesystem and vanish
 at the end of the request. A graph that people write to wants
 [`mcp/ecs/`](../ecs/) or a local `trikedb serve`.
+
+It does not scale by growing the graph. The whole graph is built once,
+at deploy time, into the snapshot — which is why a request pays
+milliseconds instead of rebuilding anything. The cost moves to startup,
+and startup is paid in full on every deploy whether or not anyone calls
+the server. So the limit that arrives first is not query speed but the
+snapshot: a graph large enough to stretch startup past what the host
+allows takes the deploy down, while per-request CPU is still
+comfortable. At that point the answer is not a faster query engine —
+`pyoxigraph` cannot load here anyway — it is to stop building the whole
+graph at startup, which is a different server than this one. Keep that
+threshold in mind rather than discovering it, and measure startup time
+on each deploy; it is the number that moves.
