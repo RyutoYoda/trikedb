@@ -342,12 +342,28 @@ JSON_HEADERS = {
 
 class Default(WorkerEntrypoint):
     def _authorized(self, request):
+        # Open only when you say so, out loud. An earlier version treated
+        # an unset AUTH_TOKEN as "open", which is convenient in dev and
+        # fails open in the one situation that matters: the moment you put
+        # a proxy in front and delete the token, the graph is public until
+        # the next deploy. Requiring an explicit flag turns that same
+        # mistake into an outage instead.
+        if getattr(self.env, "DEV_OPEN", None) == "1":
+            return True
+
+        # Cloudflare Access, if it is in front, strips this header from the
+        # client and sets it itself on requests it admitted -- so its
+        # presence means someone passed the policy. See AUTH.md. Trusting
+        # it is sound only while no route reaches this Worker without
+        # passing the proxy, which is what workers_dev = false buys.
+        email = request.headers.get("cf-access-authenticated-user-email")
+        if email:
+            allowed = getattr(self.env, "ALLOWED_EMAIL", None)
+            return not allowed or email.strip().lower() == allowed.strip().lower()
+
         token = getattr(self.env, "AUTH_TOKEN", None)
         if not token:
-            # Unset means open. That is right for `pywrangler dev` against
-            # a sample graph and wrong for anything you deploy -- set the
-            # secret before you publish a graph you care about.
-            return True
+            return False
         header = request.headers.get("authorization") or ""
         if header.strip() == f"Bearer {token}":
             return True
@@ -361,6 +377,14 @@ class Default(WorkerEntrypoint):
         if request.method == "OPTIONS":
             return Response("", status=204, headers=JSON_HEADERS)
 
+        # Authorize before answering anything, the health check included.
+        # A triple count is small, but it is exactly the thing that leaks
+        # first when the proxy comes off -- so it should not be the one
+        # response that skips the check.
+        if not self._authorized(request):
+            return Response(json.dumps({"error": "unauthorized"}),
+                            status=401, headers=JSON_HEADERS)
+
         if request.method == "GET":
             # A health check: enough to see the Worker is alive and the
             # graph loaded, and nothing about what is in it.
@@ -372,10 +396,6 @@ class Default(WorkerEntrypoint):
                            ensure_ascii=False),
                 headers=JSON_HEADERS,
             )
-
-        if not self._authorized(request):
-            return Response(json.dumps({"error": "unauthorized"}),
-                            status=401, headers=JSON_HEADERS)
 
         try:
             message = json.loads(await request.text())

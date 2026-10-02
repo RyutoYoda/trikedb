@@ -25,6 +25,7 @@ Needs a Cloudflare account, [`uv`](https://docs.astral.sh/uv/), and
 ```bash
 python3 tools/embed_graph.py     # bundles examples/graphs/trike by default
 uv run pywrangler deploy
+npx wrangler secret put AUTH_TOKEN     # reads from stdin
 ```
 
 That publishes the demo graph — a fictional homeware retailer, 567
@@ -32,11 +33,22 @@ triples across five member graphs — at
 `https://trikedb-mcp.<your-subdomain>.workers.dev`. `GET /` returns a
 health check with the triple count; MCP itself is the `POST`.
 
-Then put a token on it, because the deployed default is open:
+The token is not an optional third step. With neither `AUTH_TOKEN` nor
+`DEV_OPEN` set, every request is refused with 401, health check included
+— the server fails closed rather than treating "not configured yet" as
+"open to everyone". To run it open on purpose, say so out loud:
 
 ```bash
-npx wrangler secret put AUTH_TOKEN     # reads from stdin
+npx wrangler secret put DEV_OPEN       # the value "1"
 ```
+
+A shared token is the right size for a graph you would not mind losing,
+and it is the wrong size twice over: a secret in a header is fine, but
+ChatGPT's custom connectors will not accept one at all — they require
+OAuth 2.1 with dynamic client registration. For a graph with anything
+private in it, or any client that insists on OAuth, see
+[AUTH.md](AUTH.md), which puts Cloudflare Access in front of this Worker
+and leaves authorization out of the code entirely. It is still free.
 
 To serve your own graph instead, point the embed script at it and
 redeploy. If your entry file is not named `trike_workspace.yaml`, change
@@ -73,7 +85,9 @@ also accepts the token inside the path
 (`https://.../<AUTH_TOKEN>/mcp`). It is a real downgrade — the secret
 ends up in URL bars, history and logs — so prefer the header, treat a
 path token as rotatable, and delete that branch if no client you use
-needs it.
+needs it. The clients that cannot send a header are mostly
+the ones that can do OAuth instead, so [AUTH.md](AUTH.md) removes the
+reason this branch exists.
 
 ## Why it works at all
 

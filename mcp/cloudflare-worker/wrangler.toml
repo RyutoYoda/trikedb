@@ -2,3 +2,16 @@ name = "trikedb-mcp"
 main = "src/entry.py"
 compatibility_flags = ["python_workers"]
 compatibility_date = "2026-09-01"
+
+# Uncomment both of these when you put Cloudflare Access in front of this
+# Worker (see AUTH.md). *.workers.dev cannot sit behind Access, so leaving
+# it reachable leaves a permanent route around the proxy -- and a proxy you
+# can route around authorizes nothing. They are commented out here only
+# because the quick start above has no custom domain to publish to; with
+# workers_dev = false and no route, the Worker deploys with no URL at all.
+#
+# workers_dev = false
+#
+# [[routes]]
+# pattern = "mcp.example.com"
+# custom_domain = true
