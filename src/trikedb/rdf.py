@@ -35,8 +35,16 @@ def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
           ?st rdf:subject ?s ; rdf:predicate t:AFFECTED_BY ;
               rdf:object ?o ; t:note ?note }
     """
-    from rdflib import Graph
-    g = Graph()
+    from rdflib import Graph, URIRef
+    # Name the graph instead of letting rdflib mint a BNode identifier for
+    # it. That BNode costs a uuid4 -- os.urandom -- on a value nothing ever
+    # reads: it names the in-memory graph object and appears in no
+    # serialization (nt, turtle, json-ld and xml are byte-identical either
+    # way). Hosts that forbid randomness while a module is loading, such as
+    # Cloudflare Workers snapshotting a Python Worker at deploy time, refuse
+    # the call outright, so building a graph at import time fails there for
+    # no reason at all.
+    g = Graph(identifier=URIRef(base))
     g.bind("t", base)
     for triple in statements(db, base, node_props, edge_attrs):
         g.add(triple)

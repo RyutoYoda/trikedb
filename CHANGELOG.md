@@ -5,6 +5,17 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+- **`to_rdflib()` drew a random number to name a graph nobody reads.** An
+  rdflib `Graph()` with no identifier mints a BNode for itself, which costs
+  a `uuid4` — `os.urandom` — on a value that names an in-memory object and
+  appears in no serialization: nt, turtle, json-ld and xml are byte-identical
+  with the identifier set. Hosts that forbid randomness while a module is
+  loading refuse the call outright, so building a graph at import time failed
+  there for no reason. The graph is now named after its base IRI. This does
+  not make such a host trouble-free on its own — rdflib's own SPARQL parser
+  builds an unnamed `Graph` for its namespace manager and reaches
+  `os.urandom` too — but it removes trikedb's half of it.
+
 - **`examples/` was 23 loose files, 17 of which were not examples.** The
   freebase, trike and acme graphs are what the examples *read*, not things to
   read, so a newcomer opening the directory could not tell which four files
