@@ -1,0 +1,15 @@
+[project]
+name = "trikedb-worker"
+version = "0.1.0"
+requires-python = "==3.13.*"
+dependencies = [
+    "trikedb>=0.44.0",
+    "workers-py>=1.9",
+]
+
+[tool.uv]
+# pyoxigraph is a Rust extension and will not load on Pyodide. trikedb
+# treats it as optional at runtime -- it catches the ImportError and
+# falls back to rdflib -- but it is declared as a core dependency, so
+# resolution has to be told to skip it. Everything left is pure Python.
+override-dependencies = ["pyoxigraph; sys_platform == 'never'"]

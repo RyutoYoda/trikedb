@@ -6,4 +6,4 @@ recursive-include benchmarks *.py *.json *.md
 recursive-include docs *.md
 global-exclude __pycache__ *.pyc
 
-prune deploy
+prune mcp

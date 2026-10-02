@@ -5,6 +5,29 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+- **A graph had nowhere free to be published.** `mcp/ecs/` runs the real
+  server against S3, which is right for a graph a team writes to and heavy
+  for a graph you only want to hand to a model. `mcp/cloudflare-worker/`
+  is the other end: one Python file on a free Workers account, the graph
+  embedded in the bundle, read-only, no database and no container. Three
+  things about that host are not obvious and are documented there rather
+  than discovered — pyoxigraph is a Rust extension and has to be dropped
+  from resolution (trikedb already falls back to rdflib on its own), the MCP
+  SDK cannot load without sockets so the JSON-RPC is answered by hand, and
+  `npx wrangler deploy` silently bundles no dependencies at all where
+  `uv run pywrangler deploy` works. Derived from a deployment that has been
+  serving a real graph to a browser connector.
+
+- **`deploy/` became `mcp/`, and says what is in it.** It held exactly one
+  thing, an MCP deployment, and was named after the verb instead — so a
+  second one arriving made the directory read as a junk drawer. Both are
+  servers that put a graph in front of a model, so they sit under `mcp/`
+  now, with an index that says which trade each one makes. Neither was
+  reachable from any documentation before; `docs/REFERENCE.md` links them
+  from the section about deploying the server, where somebody looking for
+  them would actually be. `MANIFEST.in` prunes the new path, so the PyPI
+  package is unchanged.
+
 - **`to_rdflib()` drew a random number to name a graph nobody reads.** An
   rdflib `Graph()` with no identifier mints a BNode for itself, which costs
   a `uuid4` — `os.urandom` — on a value that names an in-memory object and

@@ -729,6 +729,17 @@ Three things to get right, all of which fail confusingly:
   writes are last-write-lands, so route them through a single replica or
   keep them in git-reviewed batches.
 
+Two complete deployments live in
+[`mcp/`](https://github.com/RyutoYoda/trikedb/tree/main/mcp) rather than
+being described here:
+[`mcp/ecs/`](https://github.com/RyutoYoda/trikedb/tree/main/mcp/ecs) is
+this Dockerfile grown up — ECS, a graph in S3, OAuth, Terraform — and
+[`mcp/cloudflare-worker/`](https://github.com/RyutoYoda/trikedb/tree/main/mcp/cloudflare-worker)
+is the opposite trade: a read-only graph embedded in a free Cloudflare
+Worker, no container and no store, answering JSON-RPC without the MCP SDK
+because that host cannot load it. They ship on GitHub only; `MANIFEST.in`
+keeps them out of the PyPI package.
+
 #### `--stateless`
 
 By default the MCP transport issues an `Mcp-Session-Id` on the first

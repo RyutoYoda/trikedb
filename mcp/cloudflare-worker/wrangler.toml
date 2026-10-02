@@ -1,0 +1,4 @@
+name = "trikedb-mcp"
+main = "src/entry.py"
+compatibility_flags = ["python_workers"]
+compatibility_date = "2026-09-01"
