@@ -285,13 +285,13 @@ def run():
         for name, typ in (("Warehouse", "platform"), ("dbt", "tool"),
                           ("dbt model", "dbt_model"), ("CRM", "saas"),
                           ("customer records", "table"),
+                          ("customer analytics table", "table"),
                           ("access directory", "table"), ("data team", "team")):
             mixed.set_node(name, type=typ)
-        mixed.add("正規化", "RUNS_ON", "Warehouse")
         mixed.add("正規化", "IMPLEMENTED_BY", "dbt model")
         mixed.add("正規化", "USES", "dbt")
+        mixed.add("dbt model", "RUNS_ON", "Warehouse")
         mixed.add("dbt model", "WRITES_TO", "customer analytics table")
-        mixed.add("正規化", "WRITES_TO", "customer analytics table")
         mixed.add("取得", "READS_FROM", "CRM")
         mixed.add("取得", "READS_FROM", "customer records")
         mixed.add("権限確認", "READS_FROM", "access directory")
@@ -342,10 +342,9 @@ def run():
         assert positions["開始"]["y"] == positions["取得"]["y"] == positions["検証"]["y"]
         visible_edges = page.evaluate("edges.get().filter(e => !e.hidden).map(e => e.id)")
         expected_edges = page.evaluate(
-            "TRIPLES.map((t, i) => [t, i]).filter(([t]) => "
+            "TRIPLES.map((t, i) => [t, i]).filter(([t, i]) => "
             "(t.p === 'NEXT_STEP' && workflowNodes.has(t.s) && workflowNodes.has(t.o)) || "
-            "(t.p !== 'NEXT_STEP' && t.p !== 'HAS_STEP' && "
-            "(workflowNodes.has(t.s) || workflowNodes.has(t.o)))).map(([, i]) => i)")
+            "workflowContextGraph().edges.has(i)).map(([, i]) => i)")
         assert sorted(visible_edges) == sorted(expected_edges)
         positions_with_context = page.evaluate("""() => ({
           step: network.getPosition(nodeIds.get('正規化')),
@@ -358,14 +357,21 @@ def run():
         assert positions_with_context["warehouse"]["y"] > positions_with_context["step"]["y"]
         assert positions_with_context["model"]["y"] > positions_with_context["step"]["y"]
         assert positions_with_context["table"]["y"] > positions_with_context["step"]["y"]
+        assert positions_with_context["model"]["y"] < positions_with_context["warehouse"]["y"] < positions_with_context["table"]["y"]
         assert positions_with_context["contextVisible"]
         assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
         assert page.evaluate("nodes.get(nodeIds.get('Warehouse')).shadow.enabled")
         assert page.evaluate("edges.get().find(e => TRIPLES[e.id].p === 'RUNS_ON').arrows.to.enabled === false")
+        assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').arrows.middle.enabled")
+        assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').font.vadjust === -9")
         page.evaluate("showDetail('正規化')")
         step_detail = page.locator("#detail-body").inner_text()
         assert "USES" in step_detail and "dbt" in step_detail
-        assert "RUNS_ON" in step_detail and "Warehouse" in step_detail
+        assert "IMPLEMENTED_BY" in step_detail and "dbt model" in step_detail
+        page.evaluate("showDetail('dbt model')")
+        model_detail = page.locator("#detail-body").inner_text()
+        assert "RUNS_ON" in model_detail and "Warehouse" in model_detail
+        assert "WRITES_TO" in model_detail and "customer analytics table" in model_detail
         page.locator("#btn-workflow").click()
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")
         assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
@@ -373,6 +379,30 @@ def run():
         page.locator("#btn-unfocus").click()
         assert page.evaluate("workflowMode") is False
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON')")
+        assert not errors, errors
+
+        # --- large workflow catalogs are searchable and rendered in pages -
+        catalog = TrikeDB()
+        catalog.set_node("shared-step", type="process_step", label="Shared step")
+        for i in range(501):
+            catalog.set_node(f"workflow-{i:04d}", type="workflow",
+                             label=f"Workflow {i:04d}", summary=f"Group {i % 7}",
+                             tags=["domain:sample"])
+            catalog.add(f"workflow-{i:04d}", "HAS_STEP", "shared-step", order=1)
+        catalog_page = Path(root) / "large-workflow-catalog.html"
+        catalog.to_html(catalog_page, workflow_predicates=["NEXT_STEP"],
+                        workflow_membership_predicate="HAS_STEP")
+        page.goto(catalog_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        page.locator("#btn-workflow").click()
+        assert page.locator("#workflow-results-count").inner_text() == "501件中 40件を表示"
+        assert page.locator("#workflow-list .workflow-option").count() == 40
+        page.locator("#workflow-more").click()
+        assert page.locator("#workflow-list .workflow-option").count() == 80
+        page.locator("#workflow-search").fill("workflow-0500")
+        assert page.locator("#workflow-results-count").inner_text() == "1件中 1件を表示"
+        assert page.locator("#workflow-list .workflow-option").count() == 1
+        assert "Workflow 0500" in page.locator("#workflow-list .workflow-option").inner_text()
         assert not errors, errors
 
         # --- a filter re-frames what is left, and only when it must ------
@@ -423,6 +453,7 @@ def run():
                           "declarations": "passed", "human_names": "passed",
                           "html_injection_and_special_names": "passed",
                           "mixed_graph_workflow_picker": "passed",
+                          "large_workflow_catalog": "passed",
                           "workspace_filter_reframes": "passed"}))
 
 
