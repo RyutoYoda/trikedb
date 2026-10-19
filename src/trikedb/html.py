@@ -204,7 +204,28 @@ _TEMPLATE = """<!DOCTYPE html>
          color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap; }
   .btn:hover { border-color: #5a83b8; }
   .btn.active { background: #2c4a6e; border-color: #5a83b8; }
+  .btn.on { background: #2c4a6e; border-color: #5a83b8; }
   body.light .btn.active { background: #dbe6f7; }
+  #workflow-picker { position: fixed; top: var(--hdr); right: 12px; z-index: 22;
+                     width: min(360px, calc(100vw - 24px)); max-height: min(70vh, 520px);
+                     overflow: auto; padding: 12px; box-sizing: border-box;
+                     background: var(--panel); border: 1px solid var(--border);
+                     border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.35); }
+  #workflow-picker[hidden] { display: none; }
+  #workflow-picker .picker-row { display: flex; gap: 7px; margin-bottom: 9px; }
+  #workflow-picker input, #workflow-picker select { min-width: 0; padding: 7px 8px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); }
+  #workflow-search { flex: 1; }
+  #workflow-tag-filter { max-width: 45%; }
+  #workflow-list { display: grid; gap: 5px; }
+  .workflow-option { text-align: left; border: 1px solid var(--border); border-radius: 7px;
+    background: transparent; color: var(--text); padding: 8px; cursor: pointer; }
+  .workflow-option:hover, .workflow-option.selected { border-color: #5a83b8; background: rgba(79,142,247,.12); }
+  .workflow-option small { display: block; color: var(--dim); margin-top: 3px; }
+  #workflow-context-row { display: flex; align-items: center; gap: 7px; margin-top: 10px;
+    color: var(--dim); font-size: 11px; }
+  #focus-depth { width: 54px; box-sizing: border-box; padding: 6px 5px; border-radius: 7px;
+                 border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; }
   /* compact select-all / clear controls next to a group of toggles */
   .selbtn { font-size: 10px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--border);
             background: var(--bg); color: var(--dim); cursor: pointer; white-space: nowrap; }
@@ -301,12 +322,24 @@ _TEMPLATE = """<!DOCTYPE html>
     <button class="btn" id="btn-sparql">SPARQL</button>
     <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
     <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
+    <button class="btn" id="btn-workflow" title="choose an explicitly defined workflow" hidden>workflow</button>
+    <span title="maximum number of relations to follow">hop</span>
+    <input id="focus-depth" type="number" min="0" step="1" placeholder="∞" aria-label="maximum focus hops; blank means unlimited" title="focus traversal depth; blank means unlimited">
+    <button class="btn" id="btn-unfocus" title="return to the whole graph" hidden>全体表示</button>
     <button class="btn" id="btn-fit">Fit</button>
     <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
   </div>
 </div>
 
 <div id="graphbar"></div>
+<section id="workflow-picker" hidden aria-label="workflow selector">
+  <div class="picker-row">
+    <input id="workflow-search" type="search" placeholder="search workflows...">
+    <select id="workflow-tag-filter" aria-label="filter by workflow tag"><option value="">all tags</option></select>
+  </div>
+  <div id="workflow-list"></div>
+  <label id="workflow-context-row"><input id="workflow-context" type="checkbox">show related knowledge edges</label>
+</section>
 
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
@@ -367,6 +400,8 @@ const RULE_SAYS = {
 };
 const GRAPHS = Object.assign(Object.create(null), __GRAPHS__);   // workspace: {graph name: color}; {} otherwise
 const LEVELS = Object.assign(Object.create(null), __LEVELS__);   // computed column per node; a `level` prop overrides
+const WORKFLOW_PREDICATES = __WORKFLOW_PREDICATES__;
+const WORKFLOW_MEMBERSHIP_PREDICATE = __WORKFLOW_MEMBERSHIP_PREDICATE__;
 const BASE = "urn:trikedb:";
 
 // which member graph(s) each node belongs to (workspace unions only)
@@ -623,13 +658,237 @@ function visibleNodes() {
   });
 }
 let framed = visibleNodes().join("\\u0000");
+let focusCenter = null;
+let focusNodes = null;
+let focusDepth = Infinity;
+const focusDepthInput = document.getElementById("focus-depth");
+const unfocusButton = document.getElementById("btn-unfocus");
+const workflowButton = document.getElementById("btn-workflow");
+const workflowPicker = document.getElementById("workflow-picker");
+const workflowSearch = document.getElementById("workflow-search");
+const workflowTagFilterEl = document.getElementById("workflow-tag-filter");
+const workflowList = document.getElementById("workflow-list");
+const workflowContextInput = document.getElementById("workflow-context");
+let workflowMode = false;
+let workflowNodes = null;
+let workflowOriginalPositions = null;
+let selectedWorkflow = null;
+let showWorkflowContext = false;
+workflowButton.hidden = WORKFLOW_PREDICATES.length === 0 || !WORKFLOW_MEMBERSHIP_PREDICATE;
+function focusedNodes(center, depth) {
+  const allowedNodes = new Set(visibleNodes());
+  const reached = new Set([center]);
+  const distance = new Map([[center, 0]]);
+  const adjacency = new Map();
+  for (const t of TRIPLES) {
+    if (hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph)) ||
+        !allowedNodes.has(t.s) || !allowedNodes.has(t.o)) continue;
+    (adjacency.get(t.s) ?? (adjacency.set(t.s, []), adjacency.get(t.s))).push(t.o);
+    (adjacency.get(t.o) ?? (adjacency.set(t.o, []), adjacency.get(t.o))).push(t.s);
+  }
+  const queue = [center];
+  for (let i = 0; i < queue.length; i++) {
+    const here = queue[i], d = distance.get(here);
+    if (d >= depth) continue;
+    for (const next of adjacency.get(here) || []) {
+      if (reached.has(next)) continue;
+      reached.add(next); distance.set(next, d + 1); queue.push(next);
+    }
+  }
+  return reached;
+}
+function applyFocusStyles() {
+  const active = workflowMode ? workflowNodes : focusNodes;
+  const light = document.body.classList.contains("light"), th = THEMES[light ? "light" : "dark"];
+  const dim = workflowMode && !showWorkflowContext
+    ? "rgba(125,130,140,0.08)" : "rgba(125,130,140,0.22)";
+  nodes.update(ids.map(name => {
+    const n = nodes.get(nodeIds.get(name)), ev = n.shape === "diamond";
+    const base = NODE_TYPES[(NODES_META[name] || {}).type] || "#5a83b8";
+    const inFocus = !active || active.has(name);
+    return { id: n.id,
+      color: inFocus
+        ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
+            highlight: { border: th.hlBorder, background: th.hlBg } }
+        : { border: dim, background: dim, highlight: { border: dim, background: dim } },
+      font: { ...(n.font || {}), color: inFocus ? (ev ? th.evFont : th.font) : dim } };
+  }));
+  edges.update(TRIPLES.map((t, i) => {
+    const sequenceEdge = workflowMode && active && WORKFLOW_PREDICATES.includes(t.p) &&
+      active.has(t.s) && active.has(t.o);
+    const workflowContext = workflowMode && showWorkflowContext && active && !sequenceEdge &&
+      t.p !== WORKFLOW_MEMBERSHIP_PREDICATE && (active.has(t.s) || active.has(t.o));
+    const inFocus = workflowMode ? sequenceEdge
+      : !active || (active.has(t.s) && active.has(t.o));
+    const event = isEventTriple(t);
+    const color = inFocus ? PREDICATES[t.p] : workflowContext ? "rgba(125,130,140,0.52)" : dim;
+    const font = { ...(edges.get(i).font || {}),
+      color: inFocus ? (event ? EVENT_EDGE_FONT[light ? "light" : "dark"] : th.edgeFont)
+        : workflowContext ? "rgba(170,175,185,0.62)" : dim };
+    return { id: i, arrows: workflowMode && !inFocus ? { to: { enabled: false } } : "to",
+      color: { color, highlight: inFocus ? th.edgeHl : dim,
+               hover: inFocus ? color : dim }, font };
+  }));
+}
+function updateFocus() {
+  focusNodes = focusCenter === null ? null : focusedNodes(focusCenter, focusDepth);
+  if (workflowMode) applyWorkflowLayout();
+  else workflowNodes = null;
+  unfocusButton.hidden = focusCenter === null && !workflowMode;
+  applyFocusStyles();
+}
+function startFocus(id) { focusCenter = id; updateFocus(); }
+function workflowDefinitions() {
+  const shown = new Set(visibleNodes()), definitions = new Map();
+  for (const t of TRIPLES) {
+    if (t.p !== WORKFLOW_MEMBERSHIP_PREDICATE || (t.graph && hiddenGraphs.has(t.graph)) || !shown.has(t.o)) continue;
+    if (!definitions.has(t.s)) definitions.set(t.s, new Set());
+    definitions.get(t.s).add(t.o);
+  }
+  return [...definitions].map(([id, steps]) => {
+    const meta = NODES_META[id] || {}, rawTags = meta.tags;
+    const tags = Array.isArray(rawTags) ? rawTags.map(String) : rawTags == null ? [] : [String(rawTags)];
+    return { id, label: meta.label ? String(meta.label) : id, steps, tags };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+}
+function renderWorkflowPicker() {
+  const definitions = workflowDefinitions();
+  const tags = [...new Set(definitions.flatMap(w => w.tags))].sort();
+  const previousTag = workflowTagFilterEl.value;
+  workflowTagFilterEl.replaceChildren(new Option("all tags", ""));
+  for (const tag of tags) workflowTagFilterEl.add(new Option(tag, tag));
+  if (tags.includes(previousTag)) workflowTagFilterEl.value = previousTag;
+  else workflowTagFilterEl.value = "";
+  const term = workflowSearch.value.trim().toLocaleLowerCase();
+  const filterTag = workflowTagFilterEl.value;
+  const matching = definitions.filter(w => (!filterTag || w.tags.includes(filterTag)) &&
+    (!term || (w.label + " " + w.id + " " + w.tags.join(" ")).toLocaleLowerCase().includes(term)));
+  workflowList.replaceChildren();
+  if (!matching.length) {
+    const empty = document.createElement("div"); empty.className = "hint";
+    empty.textContent = "No matching workflows"; workflowList.appendChild(empty);
+  }
+  for (const workflow of matching) {
+    const option = document.createElement("button");
+    option.type = "button"; option.className = "workflow-option";
+    option.classList.toggle("selected", selectedWorkflow === workflow.id);
+    option.textContent = workflow.label + " · " + workflow.steps.size + " steps";
+    const tags = document.createElement("small"); tags.textContent = workflow.tags.join(" · ");
+    option.appendChild(tags);
+    option.onclick = () => {
+      selectedWorkflow = workflow.id; workflowMode = true;
+      workflowPicker.hidden = true; workflowButton.classList.add("on");
+      workflowButton.setAttribute("aria-pressed", "true");
+      applyWorkflowLayout(); refreshVisibility();
+      network.fit({ nodes: visualIds([...workflowNodes]), animation: true });
+    };
+    workflowList.appendChild(option);
+  }
+}
+function applyWorkflowLayout() {
+  if (!workflowMode || !selectedWorkflow) { workflowNodes = null; return; }
+  const workflow = workflowDefinitions().find(w => w.id === selectedWorkflow);
+  workflowNodes = workflow ? workflow.steps : null;
+  if (!workflowNodes || !workflowNodes.size) return;
+  if (!workflowOriginalPositions) {
+    workflowOriginalPositions = new Map(ids.map(id => [id, network.getPosition(nodeIds.get(id))]));
+  }
+  // Work out columns from this workflow's induced order graph. Using the
+  // whole graph lets unrelated NEXT_STEP links push the first step offscreen.
+  const next = new Map([...workflowNodes].map(id => [id, []]));
+  const prev = new Map([...workflowNodes].map(id => [id, []]));
+  const indegree = new Map([...workflowNodes].map(id => [id, 0]));
+  for (const t of TRIPLES) {
+    if (WORKFLOW_PREDICATES.includes(t.p) && workflowNodes.has(t.s) && workflowNodes.has(t.o)) {
+      next.get(t.s).push(t.o); prev.get(t.o).push(t.s);
+      indegree.set(t.o, indegree.get(t.o) + 1);
+    }
+  }
+  const levels = new Map([...workflowNodes].map(id => [id, 1]));
+  const queue = [...workflowNodes].filter(id => indegree.get(id) === 0);
+  for (let i = 0; i < queue.length; i++) {
+    const here = queue[i];
+    for (const there of next.get(here)) {
+      levels.set(there, Math.max(levels.get(there), levels.get(here) + 1));
+      indegree.set(there, indegree.get(there) - 1);
+      if (indegree.get(there) === 0) queue.push(there);
+    }
+  }
+  // Give each column one x coordinate. A single incoming/outgoing path stays
+  // level; branches spread vertically and converging paths return to center.
+  const membershipOrder = new Map();
+  for (const t of TRIPLES) {
+    if (t.p === WORKFLOW_MEMBERSHIP_PREDICATE && t.s === selectedWorkflow) {
+      membershipOrder.set(t.o, Number(t.order) || 0);
+    }
+  }
+  const columns = new Map();
+  for (const id of workflowNodes) {
+    const level = levels.get(id);
+    if (!columns.has(level)) columns.set(level, []);
+    columns.get(level).push(id);
+  }
+  const y = new Map();
+  for (const [level, column] of [...columns].sort((a, b) => a[0] - b[0])) {
+    column.sort((a, b) => (membershipOrder.get(a) || 0) - (membershipOrder.get(b) || 0) || a.localeCompare(b));
+    const parentY = id => {
+      const known = prev.get(id).map(p => y.get(p)).filter(v => v !== undefined);
+      return known.length ? known.reduce((sum, value) => sum + value, 0) / known.length : 0;
+    };
+    const center = column.reduce((sum, id) => sum + parentY(id), 0) / column.length;
+    column.forEach((id, index) => y.set(id, center + (index - (column.length - 1) / 2) * 150));
+  }
+  network.setOptions({ layout: { hierarchical: { enabled: false } }, physics: { enabled: false } });
+  nodes.update([...workflowNodes].map(id => ({ id: nodeIds.get(id),
+    x: (levels.get(id) - 1) * 260, y: y.get(id) || 0, fixed: { x: true, y: true } })));
+}
+workflowButton.onclick = () => {
+  workflowPicker.hidden = !workflowPicker.hidden;
+  if (!workflowPicker.hidden) renderWorkflowPicker();
+};
+workflowSearch.addEventListener("input", renderWorkflowPicker);
+workflowTagFilterEl.addEventListener("change", renderWorkflowPicker);
+workflowContextInput.addEventListener("change", () => {
+  showWorkflowContext = workflowContextInput.checked;
+  refreshVisibility();
+});
+function clearFocus() {
+  if (workflowOriginalPositions) {
+    nodes.update(ids.map(id => {
+      const position = workflowOriginalPositions.get(id);
+      return { id: nodeIds.get(id), x: position && position.x, y: position && position.y,
+        fixed: false };
+    }));
+    workflowOriginalPositions = null;
+  }
+  focusCenter = null; focusNodes = null; workflowNodes = null;
+  workflowMode = false; selectedWorkflow = null; showWorkflowContext = false;
+  workflowContextInput.checked = false; workflowPicker.hidden = true;
+  workflowButton.classList.remove("on"); workflowButton.setAttribute("aria-pressed", "false");
+  nodes.update(ids.map(id => ({ id: nodeIds.get(id), level: levelOf(id) })));
+  network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
+  refreshVisibility();
+  updateFocus();
+}
+focusDepthInput.addEventListener("input", () => {
+  const value = focusDepthInput.value.trim();
+  focusDepth = value === "" ? Infinity : Math.max(0, Math.floor(Number(value)));
+  if (focusCenter !== null || workflowMode) updateFocus();
+});
+unfocusButton.onclick = clearFocus;
 function refreshVisibility() {
   const shown = visibleNodes();
   const keep = new Set(shown);
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), hidden: !keep.has(id) })));
-  edges.update(TRIPLES.map((t, i) => ({
-    id: i, hidden: !!(hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))),
-  })));
+  edges.update(TRIPLES.map((t, i) => {
+    const filtered = hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph));
+    const sequence = workflowNodes && WORKFLOW_PREDICATES.includes(t.p) &&
+      workflowNodes.has(t.s) && workflowNodes.has(t.o);
+    const context = workflowMode && showWorkflowContext && workflowNodes &&
+      !WORKFLOW_PREDICATES.includes(t.p) && t.p !== WORKFLOW_MEMBERSHIP_PREDICATE &&
+      (workflowNodes.has(t.s) || workflowNodes.has(t.o));
+    return { id: i, hidden: !!(filtered || (workflowMode && !sequence && !context)) };
+  }));
   // Frame what is left. Hiding five sixths of a workspace used to leave
   // the remainder as a speck in whichever corner the layout had put it,
   // at the zoom chosen for the whole graph — so the answer to what you
@@ -642,6 +901,7 @@ function refreshVisibility() {
     network.fit({ nodes: visualIds(shown), animation: true });
   }
   framed = sig;
+  if (focusCenter !== null || workflowMode) updateFocus();
 }
 const legend = document.getElementById("legend");
 const typeEls = Object.create(null);
@@ -755,6 +1015,7 @@ function applyTheme(name, persist = true) {
   }));
   edges.update(TRIPLES.map((t, i) => ({
     id: i, color: { color: PREDICATES[t.p], highlight: th.edgeHl } })));
+  applyFocusStyles();
   network.setSelection(sel);
   if (persist) { try { localStorage.setItem("trikedb-theme", name); } catch (e) {} }
   document.getElementById("btn-theme").textContent = name === "light" ? "dark" : "light";
@@ -966,9 +1227,13 @@ btnBack.onclick = () => {
 };
 document.getElementById("btn-close").onclick = closePanel;
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !detail.classList.contains("open")) return;
-  if (/^(INPUT|TEXTAREA)$/.test((e.target.tagName || ""))) return;
-  closePanel();
+  if (e.key !== "Escape") return;
+  const field = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""));
+  if (field && !["focus-depth", "workflow-search", "workflow-tag-filter"].includes(e.target.id)) return;
+  if (workflowPicker && !workflowPicker.hidden) { workflowPicker.hidden = true; return; }
+  if (field) e.preventDefault();
+  if (focusCenter !== null || workflowMode) clearFocus();
+  if (detail.classList.contains("open")) closePanel();
 });
 const showDetail = (id) => openPanel("node", id);
 document.getElementById("detail").addEventListener("click", (e) => {
@@ -985,13 +1250,16 @@ document.getElementById("detail").addEventListener("click", (e) => {
 // relation hangs off, and for an event the node the event happened to, so
 // the panel that opens has the rest of that node's history in it.
 network.on("click", (params) => {
-  if (params.nodes.length) { showDetail(ids[params.nodes[0]]); return; }
+  if (params.nodes.length) { const id = ids[params.nodes[0]]; startFocus(id); showDetail(id); return; }
   if (params.edges.length) {
     const t = TRIPLES[params.edges[0]];
     if (t) focusNode(t.s);
+    return;
   }
+  clearFocus();
 });
 function focusNode(id) {
+  startFocus(id);
   network.selectNodes(visualIds([id]));
   network.focus(nodeIds.get(id), { scale: 1.1, animation: true });
   showDetail(id);
@@ -1167,6 +1435,8 @@ def to_html(
     title: str = "trikedb knowledge graph",
     event_predicates=None,
     layout: str = "auto",
+    workflow_predicates=None,
+    workflow_membership_predicate: str | None = None,
 ) -> str:
     """Render the graph to a single-file interactive HTML workbench (CDN dependencies).
 
@@ -1185,6 +1455,13 @@ def to_html(
     for pipeline-shaped graphs), "free" (force-directed, best for dense
     hub-shaped graphs), or "auto" (flow up to 150 triples, free above).
     A toggle button switches at runtime either way.
+
+    workflow_predicates: predicate name(s) whose directed edges define
+    workflow order. ``workflow_membership_predicate`` identifies edges from
+    a workflow definition node to its steps (for example, ``HAS_STEP``).
+    Both are explicit because TrikeDB does not assign business meaning to a
+    vocabulary by default. Workflow selection uses membership; only order
+    predicates position and connect steps.
     """
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
@@ -1199,6 +1476,14 @@ def to_html(
         event_preds = sorted({t.p for t in db if _is_event(t)})
     else:
         event_preds = sorted({str(p) for p in event_predicates})
+
+    if workflow_predicates is None:
+        workflow_preds = []
+    elif isinstance(workflow_predicates, str):
+        workflow_preds = [workflow_predicates]
+    else:
+        workflow_preds = [str(p) for p in workflow_predicates]
+    workflow_preds = sorted(set(workflow_preds))
 
     # Which objects of an event triple are payloads rather than nodes in
     # their own right. A name the graph says anything else about — node
@@ -1277,6 +1562,8 @@ def to_html(
         "RULES": script_json(rules_data),
         "GRAPHS": script_json(graph_colors),
         "LEVELS": script_json(_levels(triples, nodes_meta)),
+        "WORKFLOW_PREDICATES": script_json(workflow_preds),
+        "WORKFLOW_MEMBERSHIP_PREDICATE": script_json(workflow_membership_predicate),
         "FLOW_DEFAULT": "true" if flow_default else "false",
         "CONTENT_HASH": db.content_hash(),
     }

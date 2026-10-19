@@ -367,7 +367,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `validate(shapes)` | SHACL via pySHACL → `(conforms, report)` |
 | `audit()` | Health findings (see `trikedb audit` below) |
 | `content_hash()` | Stable fingerprint of graph content (embedded in HTML exports) |
-| `to_html(path, title=, event_predicates=, layout=)` | Interactive workbench (see below) |
+| `to_html(path, title=, event_predicates=, layout=, workflow_predicates=, workflow_membership_predicate=)` | Interactive workbench (see below) |
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
@@ -396,7 +396,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trike history FILE NAME` | What happened to a node, newest first, and the state it is in now |
 | `trikedb stats FILE` | Triples per predicate, node count |
 | `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional: `workspace.yaml` or `graph.yaml` if either is there, else the only graph in the directory, else the only workspace among them (a union is not a rival candidate — it contains the others) |
-| `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | Write the workbench to a file you can publish. (`trikedb html` still works and does the same, but the name moved under `ui`) |
+| `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free] [--workflow-predicates P1,P2] [--workflow-membership-predicate P]` | Write the workbench to a file you can publish. (`trikedb html` still works and does the same, but the name moved under `ui`) |
 | `trikedb jsonld FILE` | JSON-LD to stdout |
 | `trikedb validate FILE SHAPES.ttl` | SHACL; exit 1 on violations (CI-friendly) |
 | `trikedb infer FILE [--apply]` | OWL-RL inference; `--apply` persists tagged facts |
@@ -823,6 +823,9 @@ in [SCALING.md](SCALING.md).)
   by graph shape); workspaces tile each member graph into its own cell
   with per-graph filter chips
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
+- click a node → focus its reachable neighborhood; hidden predicates and graph/type filters constrain traversal. Enter a hop limit (blank `∞` means unlimited), then use **全体表示**, click the canvas background, or press **Esc** to clear focus. Out-of-range nodes and edges stay visible in muted gray. This is neighborhood navigation: it follows edges both ways and does not encode business-process order.
+- pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; a searchable picker selects the workflow, then the sequence relations alone are laid out left-to-right. Non-sequence relations are hidden by default; **show related knowledge edges** reveals them in muted gray without arrowheads, so they cannot be mistaken for process order.
+- Put classification tags on the workflow definition node as node metadata, for example `tags: [domain:billing, saas:salesforce, platform:snowflake]`. The picker filters workflows by these tags. `label` stays a human-readable display name. Tags classify a workflow; actual tool/data usage should remain explicit graph nodes and relations such as `RUNS_ON`, `READS_FROM`, or `WRITES_TO`.
 - clickable legend: check a node type on/off to filter nodes, click a
   predicate swatch to hide/show its edges (combines with graph chips)
 - full-text search over node ids, labels, node properties, edge
