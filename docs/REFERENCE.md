@@ -825,7 +825,36 @@ in [SCALING.md](SCALING.md).)
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
 - click a node → focus its reachable neighborhood; hidden predicates and graph/type filters constrain traversal. Enter a hop limit (blank `∞` means unlimited), then use **全体表示**, click the canvas background, or press **Esc** to clear focus. Out-of-range nodes and edges stay visible in muted gray. This is neighborhood navigation: it follows edges both ways and does not encode business-process order.
 - pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; the **workflow** button opens a searchable, tag-filtered picker. It renders 40 results at a time, so large catalogs stay responsive. Its hint tells you whether you are in the whole graph, a node focus, or an already selected workflow. Workflow cards can include a `summary` property to explain their purpose. Closing the picker or pressing Esc cancels the choice and preserves the current view; choosing a workflow switches to its ordered process view. Clicking a node inside that view opens its details without leaving the workflow. **全体表示** clears workflow or node focus. The sequence relations alone are laid out left-to-right. Directly related tools, models, platforms, and data objects appear highlighted in nested lanes beneath their process step by default; a linked model's runtime and materialized objects are included from their graph relations. These context nodes never affect process order. Their predicate-colored links have no arrowheads; sequence direction comes from the left-to-right placement and `NEXT_STEP` label, avoiding markers over node text. The context checkbox toggles this lane. Export validates each declared workflow's order graph: it must be connected and acyclic; sequence edges touching a declared step must stay within a workflow; and supplied `order` values must be positive and increase along each edge. Branches and rejoins are allowed, and unrelated graph components using the same sequence predicate are ignored.
-- Store workflow groups, tags, role labels, and order in the regular graph YAML. The workflow definition is a node, `HAS_STEP` groups its steps, and `NEXT_STEP` expresses order and branches. For example:
+- A workflow can be authored with a dedicated `workflows:` section. Each workflow and step has a stable graph node ID; `next` names the directed next step(s), so a step can branch or rejoin. Steps are not inferred from labels, tags, or tool names. Example:
+
+  ```yaml
+  workflows:
+    customer-refresh:
+      label: 顧客データ更新
+      summary: CRMの顧客データを検証して分析用へ反映
+      tags: [domain:customer-data, cadence:daily]
+      workflow_facets:
+        - label: Data source
+          values: [CRM]
+        - label: Transform tool
+          values: [dbt]
+      steps:
+        - id: extract-records
+          label: CRMから取得
+          description: 顧客データを取得する
+          next: [validate-records]
+        - id: validate-records
+          label: レコードを検証
+          next: [transform-records]
+        - id: transform-records
+          label: 分析用に変換
+          properties:
+            owner: data-platform
+  ```
+
+  A workflow declaration becomes ordinary graph data on load: its node has `type: workflow`; each step has `type: process_step`; `HAS_STEP` links the workflow to every step and carries its `order`; and each `next` entry becomes a `NEXT_STEP` RDF edge. An omitted step `order` defaults to its one-based position in the YAML list. IDs must be unique and every `next` target must be declared in the same workflow. The loader rejects unknown fields, duplicate IDs, missing targets, cycles, disconnected steps, and non-increasing order values. Since this form uses the standard predicates, `to_html()` recognizes it and enables the **workflow** picker automatically. `to_html()` and `trike ui generate` still accept explicit workflow predicates for graphs using a custom vocabulary.
+
+  The shorthand is normalized to the canonical `nodes:` / `triples:` graph representation when `save()` writes the file. There is one RDF source of truth; `db.sparql()` and PyOxigraph query the generated `HAS_STEP` and `NEXT_STEP` triples like any other facts. For handwritten RDF-style workflow data, the equivalent canonical form remains supported:
 
   ```yaml
   nodes:

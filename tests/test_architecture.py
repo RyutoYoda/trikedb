@@ -33,6 +33,7 @@ LAYERS = {
     "rules": 1,          # domain / range / requires / by
     "rdf": 1,            # the RDF projection
     "reasoning": 1,      # OWL-RL and SHACL over that projection
+    "workflows": 1,      # membership and directed process-order semantics
     # 2 — read the whole document and say something about it.
     "audit": 2,
     "merge": 2,          # what incoming triples would do

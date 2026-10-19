@@ -1329,6 +1329,76 @@ def test_workflow_groups_tags_and_role_facets_roundtrip_through_yaml(tmp_path):
     assert loaded.objects("validate-records", "NEXT_STEP") == ["transform-records"]
 
 
+def test_dedicated_workflow_yaml_compiles_to_rdf_and_roundtrips(tmp_path):
+    path = tmp_path / "workflow.yaml"
+    path.write_text("""workflows:
+  customer-refresh:
+    label: 顧客データ更新
+    summary: CRMの情報を検証して分析用へ反映
+    tags: [domain:customer-data, cadence:daily]
+    workflow_facets:
+      - label: Source
+        values: [CRM]
+    steps:
+      - id: extract-records
+        label: CRMから取得
+        description: 顧客データを取得する
+        next: [validate-records]
+      - id: validate-records
+        label: レコードを検証
+        order: 4
+        next: [transform-records]
+      - id: transform-records
+        label: 分析用に変換
+        order: 5
+        properties:
+          owner: data-platform
+""", encoding="utf-8")
+
+    db = TrikeDB(path)
+    assert db.nodes_meta["customer-refresh"]["type"] == "workflow"
+    assert db.nodes_meta["customer-refresh"]["tags"] == [
+        "domain:customer-data", "cadence:daily"
+    ]
+    assert db.nodes_meta["extract-records"]["type"] == "process_step"
+    assert db.nodes_meta["transform-records"]["owner"] == "data-platform"
+    assert db.objects("customer-refresh", "HAS_STEP") == [
+        "extract-records", "validate-records", "transform-records"
+    ]
+    assert db.sparql("ASK { t:extract-records t:NEXT_STEP t:validate-records }") is True
+    assert db.sparql("ASK { t:validate-records t:NEXT_STEP t:transform-records }") is True
+    assert "customer-refresh" in db.to_rdflib().serialize(format="nt")
+
+    html = db.to_html()
+    assert "顧客データ更新" in html
+    assert "domain:customer-data" in html
+
+    # The dedicated syntax is an authoring shorthand. Save writes the single
+    # canonical graph representation, which can be queried by either engine.
+    db.save()
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "workflows" not in doc
+    assert {"s": "customer-refresh", "p": "HAS_STEP", "o": "extract-records", "order": 1} in doc["triples"]
+    assert {"s": "extract-records", "p": "NEXT_STEP", "o": "validate-records"} in doc["triples"]
+    assert TrikeDB(path).sparql(
+        "ASK { t:validate-records t:NEXT_STEP t:transform-records }"
+    ) is True
+
+
+@pytest.mark.parametrize(("workflow", "message"), [
+    ("steps: []", "non-empty list"),
+    ("steps:\n      - id: A\n        next: B", "unknown step id"),
+    ("steps:\n      - id: A\n      - id: B\n        next: A", "values are not increasing"),
+    ("steps:\n      - id: A\n        next: B\n      - id: B\n      - id: C", "disconnected from its order graph"),
+    ("steps:\n      - id: A\n        mystery: x", "unknown field"),
+])
+def test_dedicated_workflow_yaml_rejects_invalid_declarations(tmp_path, workflow, message):
+    path = tmp_path / "invalid.yaml"
+    path.write_text(f"workflows:\n  flow:\n    {workflow.replace(chr(10), chr(10) + '    ')}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        TrikeDB(path)
+
+
 def test_force_layout_keeps_nodes_from_landing_on_each_other():
     """The solver's defaults settle nodes on top of each other, which on a
     graph of any size reads as one illegible clump — 64 nodes came out as a
