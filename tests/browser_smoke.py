@@ -255,7 +255,7 @@ def run():
         # --- workflow picker: isolate an ordered process inside a mixed KG -
         mixed = TrikeDB()
         flows = {
-            "billing-flow": ("月次請求", ["開始", "利用取得", "対象確認", "通常契約",
+            "billing-flow": ("月次請求", ["開始", "利用取得", "正規化", "対象確認", "通常契約",
                                            "例外契約", "集計", "登録"],
                              ["domain:billing", "saas:salesforce"]),
             "access-flow": ("SaaS利用申請", ["申請", "契約照合", "利用照合"],
@@ -263,12 +263,20 @@ def run():
         }
         for flow_id, (label, steps, tags) in flows.items():
             summary = "Salesforceの利用ログを集計して請求明細にする" if flow_id == "billing-flow" else "SaaS利用申請を受け付けて契約と利用額を照合する"
-            mixed.set_node(flow_id, type="workflow", label=label, summary=summary, tags=tags)
+            facets = ([{"label": "請求対象", "values": ["Salesforce"]},
+                       {"label": "業務システム", "values": ["Kintone"]},
+                       {"label": "集計基盤", "values": ["Snowflake"]},
+                       {"label": "変換", "values": ["dbt"]}]
+                      if flow_id == "billing-flow" else
+                      [{"label": "受付システム", "values": ["Kintone"]}])
+            mixed.set_node(flow_id, type="workflow", label=label, summary=summary,
+                           tags=tags, workflow_facets=facets)
             for i, step in enumerate(steps, 1):
                 mixed.set_node(step, type="process_step", level=i)
                 mixed.add(flow_id, "HAS_STEP", step, order=i)
             if flow_id == "billing-flow":
-                for a, b in (("開始", "利用取得"), ("利用取得", "対象確認"),
+                for a, b in (("開始", "利用取得"), ("利用取得", "正規化"),
+                             ("正規化", "対象確認"),
                              ("対象確認", "通常契約"), ("対象確認", "例外契約"),
                              ("通常契約", "集計"), ("例外契約", "集計"),
                              ("集計", "登録")):
@@ -278,12 +286,15 @@ def run():
                     mixed.add(a, "NEXT_STEP", b)
         # Branch and rejoin in the invoice process; unrelated knowledge uses
         # the same predicates and adds the kind of visual noise a KG has.
-        for name, typ in (("Snowflake", "platform"), ("dbt model", "dbt_model"),
+        for name, typ in (("Snowflake", "platform"), ("dbt", "tool"),
+                          ("dbt model", "dbt_model"),
                           ("Salesforce", "saas"), ("利用ログ", "table"),
                           ("契約マスタ", "table"), ("請求チーム", "team")):
             mixed.set_node(name, type=typ)
         mixed.add("集計", "RUNS_ON", "Snowflake")
         mixed.add("集計", "IMPLEMENTED_BY", "dbt model")
+        mixed.add("正規化", "USES", "dbt")
+        mixed.add("正規化", "RUNS_ON", "Snowflake")
         mixed.add("利用取得", "READS_FROM", "Salesforce")
         mixed.add("利用取得", "READS_FROM", "利用ログ")
         mixed.add("対象確認", "READS_FROM", "契約マスタ")
@@ -317,6 +328,10 @@ def run():
         assert "月次請求" in options.first.inner_text()
         assert "利用ログを集計" in options.first.inner_text()
         assert "SaaS: salesforce" in options.first.inner_text()
+        assert "請求対象: Salesforce" in options.first.inner_text()
+        assert "業務システム: Kintone" in options.first.inner_text()
+        assert "集計基盤: Snowflake" in options.first.inner_text()
+        assert "変換: dbt" in options.first.inner_text()
         options.first.click()
         page.wait_for_timeout(300)
         assert page.evaluate("workflowMode") is True
@@ -336,6 +351,10 @@ def run():
             "&& workflowNodes.has(t.s) && workflowNodes.has(t.o)).map(([, i]) => i)")
         assert sorted(visible_edges) == sorted(expected_edges)
         assert page.evaluate("nodes.get(nodeIds.get('Snowflake')).font.color") == "rgba(125,130,140,0.08)"
+        page.evaluate("showDetail('正規化')")
+        step_detail = page.locator("#detail-body").inner_text()
+        assert "USES" in step_detail and "dbt" in step_detail
+        assert "RUNS_ON" in step_detail and "Snowflake" in step_detail
         page.locator("#btn-workflow").click()
         page.locator("#workflow-context").check()
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")

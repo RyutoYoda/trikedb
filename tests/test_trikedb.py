@@ -1273,6 +1273,29 @@ def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
     assert "x: (levels.get(id) - 1) * 260" in html
 
 
+def test_workflow_groups_tags_and_role_facets_roundtrip_through_yaml(tmp_path):
+    path = tmp_path / "workflow.yaml"
+    db = TrikeDB(path)
+    db.set_node("monthly-billing", type="workflow", label="月次請求",
+                summary="Salesforceの利用料を算出する",
+                tags=["domain:billing", "charge-model:usage-based"],
+                workflow_facets=[{"label": "請求対象SaaS", "values": ["Salesforce"]},
+                                 {"label": "実行基盤", "values": ["Snowflake", "dbt"]}])
+    db.set_node("normalize-usage", type="process_step", label="利用ログを正規化")
+    db.add("monthly-billing", "HAS_STEP", "normalize-usage", order=1)
+    db.add("normalize-usage", "NEXT_STEP", "calculate-amount")
+
+    loaded = TrikeDB(path)
+    metadata = loaded.nodes_meta["monthly-billing"]
+    assert metadata["tags"] == ["domain:billing", "charge-model:usage-based"]
+    assert metadata["workflow_facets"] == [
+        {"label": "請求対象SaaS", "values": ["Salesforce"]},
+        {"label": "実行基盤", "values": ["Snowflake", "dbt"]},
+    ]
+    assert loaded.objects("monthly-billing", "HAS_STEP") == ["normalize-usage"]
+    assert loaded.objects("normalize-usage", "NEXT_STEP") == ["calculate-amount"]
+
+
 def test_force_layout_keeps_nodes_from_landing_on_each_other():
     """The solver's defaults settle nodes on top of each other, which on a
     graph of any size reads as one illegible clump — 64 nodes came out as a
@@ -1995,6 +2018,7 @@ def test_workspace_html_has_graph_filter_and_theme(tmp_path):
     html = db.to_html()
     block = _html_value(html, "GRAPHS")
     assert "finance" in block and "platform" in block
+    assert "2 workspace graphs" in html
     assert "btn-theme" in html and "body.light" in html  # light mode present
 
 
