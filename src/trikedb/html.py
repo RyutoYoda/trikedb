@@ -353,7 +353,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <select id="workflow-tag-filter" aria-label="filter workflows by classification"><option value="">すべて</option></select>
   </div>
   <div id="workflow-list"></div>
-  <label id="workflow-context-row" title="show linked SaaS, data, and owner nodes in a muted style"><input id="workflow-context" type="checkbox">SaaS・データなどの関連知識も表示</label>
+  <label id="workflow-context-row" title="Show tools, data objects, and other nodes linked to workflow steps in a separate context lane"><input id="workflow-context" type="checkbox">工程に紐づくツール・データも表示（順序には含めない）</label>
 </section>
 
 <div id="sparql">
@@ -688,6 +688,7 @@ const workflowPickerHint = document.getElementById("workflow-picker-hint");
 let workflowMode = false;
 let workflowNodes = null;
 let workflowOriginalPositions = null;
+let workflowPlacedNodes = new Set();
 let selectedWorkflow = null;
 let showWorkflowContext = false;
 workflowButton.hidden = WORKFLOW_PREDICATES.length === 0 || !WORKFLOW_MEMBERSHIP_PREDICATE;
@@ -716,18 +717,31 @@ function focusedNodes(center, depth) {
 function applyFocusStyles() {
   const active = workflowMode ? workflowNodes : focusNodes;
   const light = document.body.classList.contains("light"), th = THEMES[light ? "light" : "dark"];
+  const contextNodes = new Set();
+  if (workflowMode && showWorkflowContext && active) for (const t of TRIPLES) {
+    if (WORKFLOW_PREDICATES.includes(t.p) || t.p === WORKFLOW_MEMBERSHIP_PREDICATE ||
+        hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))) continue;
+    if (active.has(t.s) && !active.has(t.o)) contextNodes.add(t.o);
+    if (active.has(t.o) && !active.has(t.s)) contextNodes.add(t.s);
+  }
   const dim = workflowMode && !showWorkflowContext
     ? "rgba(125,130,140,0.08)" : "rgba(125,130,140,0.22)";
   nodes.update(ids.map(name => {
     const n = nodes.get(nodeIds.get(name)), ev = n.shape === "diamond";
     const base = NODE_TYPES[(NODES_META[name] || {}).type] || "#5a83b8";
     const inFocus = !active || active.has(name);
+    const inContext = contextNodes.has(name);
     return { id: n.id,
-      color: inFocus
+      color: inFocus || inContext
         ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
             highlight: { border: th.hlBorder, background: th.hlBg } }
         : { border: dim, background: dim, highlight: { border: dim, background: dim } },
-      font: { ...(n.font || {}), color: inFocus ? (ev ? th.evFont : th.font) : dim } };
+      borderWidth: inContext ? 3 : n.borderWidth,
+      shadow: { enabled: inFocus || inContext,
+        color: inContext ? (ev ? "rgba(247,79,79,0.92)" : base)
+          : (ev ? "rgba(247,79,79,0.72)" : th.hlBorder),
+        size: inContext ? 24 : 16, x: 0, y: 0 },
+      font: { ...(n.font || {}), color: inFocus || inContext ? (ev ? th.evFont : th.font) : dim } };
   }));
   edges.update(TRIPLES.map((t, i) => {
     const sequenceEdge = workflowMode && active && WORKFLOW_PREDICATES.includes(t.p) &&
@@ -737,13 +751,16 @@ function applyFocusStyles() {
     const inFocus = workflowMode ? sequenceEdge
       : !active || (active.has(t.s) && active.has(t.o));
     const event = isEventTriple(t);
-    const color = inFocus ? PREDICATES[t.p] : workflowContext ? "rgba(125,130,140,0.52)" : dim;
+    const color = inFocus || workflowContext ? PREDICATES[t.p] : dim;
     const font = { ...(edges.get(i).font || {}),
       color: inFocus ? (event ? EVENT_EDGE_FONT[light ? "light" : "dark"] : th.edgeFont)
-        : workflowContext ? "rgba(170,175,185,0.62)" : dim };
+        : workflowContext ? th.edgeFont : dim };
+    // Only sequence edges carry arrowheads in workflow mode. Context links
+    // remain visible and highlighted, but cannot be mistaken for next steps.
     return { id: i, arrows: workflowMode && !inFocus ? { to: { enabled: false } } : "to",
       color: { color, highlight: inFocus ? th.edgeHl : dim,
-               hover: inFocus ? color : dim }, font };
+               hover: inFocus || workflowContext ? color : dim },
+      shadow: inFocus || workflowContext, font };
   }));
 }
 function updateFocus() {
@@ -819,11 +836,12 @@ function renderWorkflowPicker() {
     option.onclick = () => {
       focusCenter = null; focusNodes = null;
       selectedWorkflow = workflow.id; workflowMode = true;
+      showWorkflowContext = true; workflowContextInput.checked = true;
       workflowPicker.hidden = true; workflowButton.classList.add("on");
       workflowButton.setAttribute("aria-expanded", "false");
       workflowButton.setAttribute("aria-pressed", "true");
       updateFocus(); refreshVisibility();
-      network.fit({ nodes: visualIds([...workflowNodes]), animation: true });
+      network.fit({ nodes: workflowFrameIds(), animation: true });
     };
     workflowList.appendChild(option);
   }
@@ -885,11 +903,56 @@ function applyWorkflowLayout() {
       return known.length ? known.reduce((sum, value) => sum + value, 0) / known.length : 0;
     };
     const center = column.reduce((sum, id) => sum + parentY(id), 0) / column.length;
-    column.forEach((id, index) => y.set(id, center + (index - (column.length - 1) / 2) * 150));
+    column.forEach((id, index) => y.set(id, center + (index - (column.length - 1) / 2) * 220));
   }
   network.setOptions({ layout: { hierarchical: { enabled: false } }, physics: { enabled: false } });
-  nodes.update([...workflowNodes].map(id => ({ id: nodeIds.get(id),
-    x: (levels.get(id) - 1) * 260, y: y.get(id) || 0, fixed: { x: true, y: true } })));
+  const placements = new Map([...workflowNodes].map(id => [id,
+    { x: (levels.get(id) - 1) * 260, y: y.get(id) || 0 }]));
+  // Put linked tools/data in a secondary lane beneath the ordered process.
+  // They stay ordinary graph nodes and keep their real predicates, but never
+  // participate in the left-to-right workflow columns.
+  if (showWorkflowContext) {
+    const allowed = new Set(visibleNodes()), related = new Map();
+    for (const t of TRIPLES) {
+      if (WORKFLOW_PREDICATES.includes(t.p) || t.p === WORKFLOW_MEMBERSHIP_PREDICATE ||
+          hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))) continue;
+      const step = workflowNodes.has(t.s) ? t.s : workflowNodes.has(t.o) ? t.o : null;
+      const other = step === t.s ? t.o : step === t.o ? t.s : null;
+      if (step === null || workflowNodes.has(other) || !allowed.has(other)) continue;
+      if (!related.has(step)) related.set(step, new Set());
+      related.get(step).add(other);
+    }
+    const sidecars = [];
+    for (const [step, connected] of related) {
+      const ordered = [...connected].sort((a, b) => a.localeCompare(b));
+      ordered.forEach((id, index) => sidecars.push([id, { x: (levels.get(step) - 1) * 260,
+        y: (y.get(step) || 0) + 175 + index * 92 }]));
+    }
+    for (const [id, position] of sidecars) placements.set(id, position);
+  }
+  // Restore nodes placed by the previous workflow, so switching workflows
+  // or hiding the context lane cannot leave stray nodes in its old lane.
+  const updates = [];
+  for (const id of workflowPlacedNodes) if (!placements.has(id)) {
+    const position = workflowOriginalPositions.get(id);
+    if (position) updates.push({ id: nodeIds.get(id), x: position.x, y: position.y, fixed: false });
+  }
+  for (const [id, position] of placements) updates.push({ id: nodeIds.get(id),
+    x: position.x, y: position.y, fixed: { x: true, y: true } });
+  nodes.update(updates);
+  workflowPlacedNodes = new Set(placements.keys());
+}
+function workflowFrameIds() {
+  const allowed = new Set(visibleNodes()), frame = new Set(workflowNodes || []);
+  if (showWorkflowContext && workflowNodes) {
+    for (const t of TRIPLES) {
+      if (WORKFLOW_PREDICATES.includes(t.p) || t.p === WORKFLOW_MEMBERSHIP_PREDICATE ||
+          hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph))) continue;
+      if (workflowNodes.has(t.s) && !workflowNodes.has(t.o) && allowed.has(t.o)) frame.add(t.o);
+      if (workflowNodes.has(t.o) && !workflowNodes.has(t.s) && allowed.has(t.s)) frame.add(t.s);
+    }
+  }
+  return visualIds([...frame]);
 }
 workflowButton.onclick = () => {
   workflowPicker.hidden = !workflowPicker.hidden;
@@ -905,6 +968,7 @@ workflowTagFilterEl.addEventListener("change", renderWorkflowPicker);
 workflowContextInput.addEventListener("change", () => {
   showWorkflowContext = workflowContextInput.checked;
   refreshVisibility();
+  if (workflowMode) network.fit({ nodes: workflowFrameIds(), animation: true });
 });
 function clearFocus() {
   if (workflowOriginalPositions) {
@@ -916,6 +980,7 @@ function clearFocus() {
     workflowOriginalPositions = null;
   }
   focusCenter = null; focusNodes = null; workflowNodes = null;
+  workflowPlacedNodes = new Set();
   workflowMode = false; selectedWorkflow = null; showWorkflowContext = false;
   workflowContextInput.checked = false; workflowPicker.hidden = true;
   workflowButton.classList.remove("on"); workflowButton.setAttribute("aria-pressed", "false");

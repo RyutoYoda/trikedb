@@ -1250,22 +1250,22 @@ def test_flow_columns_survive_a_rework_loop():
 
 def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
     db = TrikeDB()
-    db.add("開始", "NEXT_STEP", "分岐A")
-    db.add("開始", "NEXT_STEP", "分岐B")
-    db.add("分岐A", "NEXT_STEP", "合流")
-    db.add("分岐B", "NEXT_STEP", "合流")
-    for step in ("開始", "分岐A", "分岐B", "合流"):
-        db.add("請求ワークフロー", "HAS_STEP", step)
+    db.add("開始", "NEXT_STEP", "検証A")
+    db.add("開始", "NEXT_STEP", "検証B")
+    db.add("検証A", "NEXT_STEP", "更新")
+    db.add("検証B", "NEXT_STEP", "更新")
+    for step in ("開始", "検証A", "検証B", "更新"):
+        db.add("顧客データ更新", "HAS_STEP", step)
     # Context edges must not pull tools into the process order columns.
-    db.add("開始", "RUNS_ON", "Snowflake")
-    db.add("Snowflake", "HOSTED_IN", "AWS")
-    db.nodes_meta["請求ワークフロー"] = {
-        "label": "Salesforce請求", "tags": ["domain:billing", "saas:salesforce"]
+    db.add("開始", "RUNS_ON", "Warehouse")
+    db.add("Warehouse", "HOSTED_IN", "Cloud")
+    db.nodes_meta["顧客データ更新"] = {
+        "label": "顧客データ更新", "tags": ["domain:customer-data", "cadence:daily"]
     }
 
     html = db.to_html(workflow_predicates="NEXT_STEP", workflow_membership_predicate="HAS_STEP")
     assert _html_value(html, "WORKFLOW_PREDICATES") == ["NEXT_STEP"]
-    assert _html_value(html, "NODES_META")["請求ワークフロー"]["tags"] == ["domain:billing", "saas:salesforce"]
+    assert _html_value(html, "NODES_META")["顧客データ更新"]["tags"] == ["domain:customer-data", "cadence:daily"]
     assert 'id="btn-workflow"' in html
     assert 'id="workflow-picker"' in html and "function workflowDefinitions()" in html
     assert 'id="workflow-search"' in html and 'id="workflow-tag-filter"' in html
@@ -1276,24 +1276,24 @@ def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
 def test_workflow_groups_tags_and_role_facets_roundtrip_through_yaml(tmp_path):
     path = tmp_path / "workflow.yaml"
     db = TrikeDB(path)
-    db.set_node("monthly-billing", type="workflow", label="月次請求",
-                summary="Salesforceの利用料を算出する",
-                tags=["domain:billing", "charge-model:usage-based"],
-                workflow_facets=[{"label": "請求対象SaaS", "values": ["Salesforce"]},
-                                 {"label": "実行基盤", "values": ["Snowflake", "dbt"]}])
-    db.set_node("normalize-usage", type="process_step", label="利用ログを正規化")
-    db.add("monthly-billing", "HAS_STEP", "normalize-usage", order=1)
-    db.add("normalize-usage", "NEXT_STEP", "calculate-amount")
+    db.set_node("customer-refresh", type="workflow", label="顧客データ更新",
+                summary="CRMの顧客データを整形して分析用ウェアハウスへ反映",
+                tags=["domain:customer-data", "cadence:daily"],
+                workflow_facets=[{"label": "データソース", "values": ["CRM"]},
+                                 {"label": "実行基盤", "values": ["Warehouse", "dbt"]}])
+    db.set_node("validate-records", type="process_step", label="レコードを検証")
+    db.add("customer-refresh", "HAS_STEP", "validate-records", order=1)
+    db.add("validate-records", "NEXT_STEP", "transform-records")
 
     loaded = TrikeDB(path)
-    metadata = loaded.nodes_meta["monthly-billing"]
-    assert metadata["tags"] == ["domain:billing", "charge-model:usage-based"]
+    metadata = loaded.nodes_meta["customer-refresh"]
+    assert metadata["tags"] == ["domain:customer-data", "cadence:daily"]
     assert metadata["workflow_facets"] == [
-        {"label": "請求対象SaaS", "values": ["Salesforce"]},
-        {"label": "実行基盤", "values": ["Snowflake", "dbt"]},
+        {"label": "データソース", "values": ["CRM"]},
+        {"label": "実行基盤", "values": ["Warehouse", "dbt"]},
     ]
-    assert loaded.objects("monthly-billing", "HAS_STEP") == ["normalize-usage"]
-    assert loaded.objects("normalize-usage", "NEXT_STEP") == ["calculate-amount"]
+    assert loaded.objects("customer-refresh", "HAS_STEP") == ["validate-records"]
+    assert loaded.objects("validate-records", "NEXT_STEP") == ["transform-records"]
 
 
 def test_force_layout_keeps_nodes_from_landing_on_each_other():
