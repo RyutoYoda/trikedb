@@ -170,7 +170,7 @@ def run():
         page.click("#btn-onto")
         shown = page.locator("#detail-body").inner_text().lower()
         # every predicate, whether or not anything is declared about it
-        assert "3 predicates" in shown and "2 enforced" in shown
+        assert "3 predicate types" in shown and "2 enforced" in shown
         assert "nothing declared" in shown            # NOTE, and it says so
         assert "must have happened first: placed_by" in shown
         assert "may only be done by: picker" in shown
@@ -252,6 +252,80 @@ def run():
         assert not page.locator("html").get_attribute("data-review-injected")
         assert not errors, errors
 
+        # --- workflow picker: isolate an ordered process inside a mixed KG -
+        mixed = TrikeDB()
+        flows = {
+            "billing-flow": ("月次請求", ["開始", "利用取得", "対象確認", "通常契約",
+                                           "例外契約", "集計", "登録"],
+                             ["domain:billing", "saas:salesforce"]),
+            "access-flow": ("SaaS利用申請", ["申請", "契約照合", "利用照合"],
+                            ["domain:billing", "saas:kintone"]),
+        }
+        for flow_id, (label, steps, tags) in flows.items():
+            mixed.set_node(flow_id, type="workflow", label=label, tags=tags)
+            for i, step in enumerate(steps, 1):
+                mixed.set_node(step, type="process_step", level=i)
+                mixed.add(flow_id, "HAS_STEP", step, order=i)
+            if flow_id == "billing-flow":
+                for a, b in (("開始", "利用取得"), ("利用取得", "対象確認"),
+                             ("対象確認", "通常契約"), ("対象確認", "例外契約"),
+                             ("通常契約", "集計"), ("例外契約", "集計"),
+                             ("集計", "登録")):
+                    mixed.add(a, "NEXT_STEP", b)
+            else:
+                for a, b in zip(steps, steps[1:]):
+                    mixed.add(a, "NEXT_STEP", b)
+        # Branch and rejoin in the invoice process; unrelated knowledge uses
+        # the same predicates and adds the kind of visual noise a KG has.
+        for name, typ in (("Snowflake", "platform"), ("dbt model", "dbt_model"),
+                          ("Salesforce", "saas"), ("利用ログ", "table"),
+                          ("契約マスタ", "table"), ("請求チーム", "team")):
+            mixed.set_node(name, type=typ)
+        mixed.add("集計", "RUNS_ON", "Snowflake")
+        mixed.add("集計", "IMPLEMENTED_BY", "dbt model")
+        mixed.add("利用取得", "READS_FROM", "Salesforce")
+        mixed.add("利用取得", "READS_FROM", "利用ログ")
+        mixed.add("対象確認", "READS_FROM", "契約マスタ")
+        mixed.add("登録", "OWNED_BY", "請求チーム")
+        mixed_page = Path(root) / "mixed-workflows.html"
+        mixed.to_html(mixed_page, workflow_predicates=["NEXT_STEP"],
+                      workflow_membership_predicate="HAS_STEP")
+        page.goto(mixed_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        assert page.locator("#btn-workflow").is_visible()
+        assert page.evaluate("TRIPLES.length") > 20
+        page.locator("#btn-workflow").click()
+        page.locator("#workflow-tag-filter").select_option("saas:salesforce")
+        options = page.locator("#workflow-list .workflow-option")
+        assert options.count() == 1
+        assert "月次請求" in options.first.inner_text()
+        options.first.click()
+        page.wait_for_timeout(300)
+        assert page.evaluate("workflowMode") is True
+        assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["billing-flow"][1])
+        positions = page.evaluate("""() => Object.fromEntries(
+          [...workflowNodes].map(name => [name, network.getPosition(nodeIds.get(name))]))""")
+        assert positions["開始"]["x"] < positions["利用取得"]["x"] < positions["対象確認"]["x"]
+        assert positions["通常契約"]["x"] == positions["例外契約"]["x"]
+        assert positions["通常契約"]["y"] < positions["例外契約"]["y"]
+        assert positions["開始"]["y"] == positions["利用取得"]["y"] == positions["対象確認"]["y"]
+        assert positions["集計"]["y"] == positions["登録"]["y"] == positions["開始"]["y"]
+        visible_edges = page.evaluate("edges.get().filter(e => !e.hidden).map(e => e.id)")
+        expected_edges = page.evaluate(
+            "TRIPLES.map((t, i) => [t, i]).filter(([t]) => t.p === 'NEXT_STEP' "
+            "&& workflowNodes.has(t.s) && workflowNodes.has(t.o)).map(([, i]) => i)")
+        assert sorted(visible_edges) == sorted(expected_edges)
+        assert page.evaluate("nodes.get(nodeIds.get('Snowflake')).font.color") == "rgba(125,130,140,0.08)"
+        page.locator("#btn-workflow").click()
+        page.locator("#workflow-context").check()
+        assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")
+        assert page.evaluate("nodes.get(nodeIds.get('Snowflake')).font.color") == "rgba(125,130,140,0.22)"
+        page.locator("#workflow-context").uncheck()
+        page.locator("#btn-unfocus").click()
+        assert page.evaluate("workflowMode") is False
+        assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON')")
+        assert not errors, errors
+
         # --- a filter re-frames what is left, and only when it must ------
         # Hiding a member graph used to leave the camera at the zoom chosen
         # for the whole workspace, so the part you asked to see stayed a
@@ -299,6 +373,7 @@ def run():
                           "action_layer": "passed", "act_and_log": "passed",
                           "declarations": "passed", "human_names": "passed",
                           "html_injection_and_special_names": "passed",
+                          "mixed_graph_workflow_picker": "passed",
                           "workspace_filter_reframes": "passed"}))
 
 

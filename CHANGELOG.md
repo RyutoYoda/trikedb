@@ -3,6 +3,20 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.45.0
+
+- **A mixed knowledge graph can show one explicit workflow clearly.** The
+  HTML workbench can select workflow definitions through a membership
+  predicate, then draw only the configured directed order relations. Branches
+  split vertically and return to a shared column; related knowledge stays
+  faint unless requested. Workflow tags filter the picker, while `label`
+  remains the display name. The feature is opt-in because TrikeDB does not
+  assign process meaning to arbitrary predicates.
+- **Large graphs support neighborhood focus.** Click a node to highlight its
+  reachable neighborhood in either direction, constrained by the active
+  predicate and graph filters. A hop limit, Escape, background click, and a
+  return-to-whole-graph button control the view.
+
 ## 0.44.1
 
 - **A graph had nowhere free to be published.** `mcp/ecs/` runs the real

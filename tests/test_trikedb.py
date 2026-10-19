@@ -164,6 +164,10 @@ def test_html_export(db, tmp_path):
     assert "overflow-x: auto" in html  # legend slides instead of clipping when crowded
     assert "function setTypeHidden" in html  # select-all/clear reuse per-label toggle
     assert 'id="legend-ctl"' in html  # all/none controls for the node-type checkboxes
+    assert 'id="focus-depth"' in html and 'placeholder="∞"' in html
+    assert 'id="btn-unfocus"' in html and "function focusedNodes(center, depth)" in html
+    assert "hiddenPreds.has(t.p)" in html and "function clearFocus()" in html
+    assert 'network.on("click", (params) =>' in html and "applyFocusStyles();" in html
 
 
 def test_html_event_predicates_detected(tmp_path):
@@ -1242,6 +1246,31 @@ def test_flow_columns_survive_a_rework_loop():
     html = db.to_html(layout="flow")
     shipped = _html_value(html, "LEVELS")
     assert set(shipped) == set(db.nodes())     # vis needs a level on every node
+
+
+def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
+    db = TrikeDB()
+    db.add("開始", "NEXT_STEP", "分岐A")
+    db.add("開始", "NEXT_STEP", "分岐B")
+    db.add("分岐A", "NEXT_STEP", "合流")
+    db.add("分岐B", "NEXT_STEP", "合流")
+    for step in ("開始", "分岐A", "分岐B", "合流"):
+        db.add("請求ワークフロー", "HAS_STEP", step)
+    # Context edges must not pull tools into the process order columns.
+    db.add("開始", "RUNS_ON", "Snowflake")
+    db.add("Snowflake", "HOSTED_IN", "AWS")
+    db.nodes_meta["請求ワークフロー"] = {
+        "label": "Salesforce請求", "tags": ["domain:billing", "saas:salesforce"]
+    }
+
+    html = db.to_html(workflow_predicates="NEXT_STEP", workflow_membership_predicate="HAS_STEP")
+    assert _html_value(html, "WORKFLOW_PREDICATES") == ["NEXT_STEP"]
+    assert _html_value(html, "NODES_META")["請求ワークフロー"]["tags"] == ["domain:billing", "saas:salesforce"]
+    assert 'id="btn-workflow"' in html
+    assert 'id="workflow-picker"' in html and "function workflowDefinitions()" in html
+    assert 'id="workflow-search"' in html and 'id="workflow-tag-filter"' in html
+    assert "const next = new Map([...workflowNodes].map(id => [id, []]))" in html
+    assert "x: (levels.get(id) - 1) * 260" in html
 
 
 def test_force_layout_keeps_nodes_from_landing_on_each_other():

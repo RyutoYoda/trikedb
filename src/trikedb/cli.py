@@ -202,6 +202,10 @@ def main(argv=None) -> int:
         help="initial layout: flow (hierarchical), free (force-directed), "
              "auto (flow up to 150 triples)",
     )
+    p_html.add_argument("--workflow-predicates", default=None, metavar="P1,P2",
+                        help="comma-separated directed predicates that define workflow order")
+    p_html.add_argument("--workflow-membership-predicate", default=None, metavar="P",
+                        help="predicate from workflow definition nodes to member steps")
 
     p_ui = sub.add_parser(
         "ui", help="open the graph in a browser; `ui generate` writes the file instead"
@@ -222,6 +226,10 @@ def main(argv=None) -> int:
         "--layout", default="auto", choices=["auto", "flow", "free"],
         help="initial layout: flow (hierarchical), free (force-directed), auto",
     )
+    p_ui.add_argument("--workflow-predicates", default=None, metavar="P1,P2",
+                      help="comma-separated directed predicates that define workflow order")
+    p_ui.add_argument("--workflow-membership-predicate", default=None, metavar="P",
+                      help="predicate from workflow definition nodes to member steps")
 
     sub._choices_actions = [a for a in sub._choices_actions if a.dest != "html"]
 
@@ -744,16 +752,23 @@ def _cmd_ui(args) -> int:
 
     db = TrikeDB(path)
     events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
+    workflow_preds = None if args.workflow_predicates is None else [
+        p.strip() for p in args.workflow_predicates.split(",") if p.strip()
+    ]
     title = args.title or f"trikedb — {path}"
     if generate:
         out = args.out or _default_html_out(path)
-        db.to_html(out, title=title, event_predicates=events, layout=args.layout)
+        db.to_html(out, title=title, event_predicates=events, layout=args.layout,
+                   workflow_predicates=workflow_preds,
+                   workflow_membership_predicate=args.workflow_membership_predicate)
         print(f"wrote {out}")
         return 0
     if args.out:
         raise SystemExit("error: -o writes a file — did you mean `trike ui generate`?")
     out = Path(tempfile.gettempdir()) / f"trikedb-{db.content_hash()}.html"
-    db.to_html(out, title=title, event_predicates=events, layout=args.layout)
+    db.to_html(out, title=title, event_predicates=events, layout=args.layout,
+               workflow_predicates=workflow_preds,
+               workflow_membership_predicate=args.workflow_membership_predicate)
     webbrowser.open(out.as_uri())
     print(f"opened {path} → {out}", file=sys.stderr)
     return 0
@@ -766,7 +781,12 @@ def _cmd_html(args) -> int:
     out = args.out or _default_html_out(args.file)
     title = args.title or f"trikedb — {args.file}"
     events = None if args.events is None else [p.strip() for p in args.events.split(",") if p.strip()]
-    db.to_html(out, title=title, event_predicates=events, layout=args.layout)
+    workflow_preds = None if args.workflow_predicates is None else [
+        p.strip() for p in args.workflow_predicates.split(",") if p.strip()
+    ]
+    db.to_html(out, title=title, event_predicates=events, layout=args.layout,
+               workflow_predicates=workflow_preds,
+               workflow_membership_predicate=args.workflow_membership_predicate)
     print(f"wrote {out}")
     return 0
 
