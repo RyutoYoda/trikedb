@@ -226,6 +226,8 @@ _TEMPLATE = """<!DOCTYPE html>
   .workflow-option { text-align: left; border: 1px solid var(--border); border-radius: 7px;
     background: transparent; color: var(--text); padding: 8px; cursor: pointer; }
   .workflow-option:hover, .workflow-option.selected { border-color: #5a83b8; background: rgba(79,142,247,.12); }
+  .workflow-option .workflow-summary { display: block; color: var(--text); opacity: .84;
+    margin-top: 4px; line-height: 1.4; font-size: 11px; font-weight: 400; }
   .workflow-option small { display: block; color: var(--dim); margin-top: 4px; line-height: 1.45; }
   #workflow-context-row { display: flex; align-items: center; gap: 7px; margin-top: 10px;
     color: var(--dim); font-size: 11px; }
@@ -349,7 +351,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <select id="workflow-tag-filter" aria-label="filter workflows by classification"><option value="">すべて</option></select>
   </div>
   <div id="workflow-list"></div>
-  <label id="workflow-context-row"><input id="workflow-context" type="checkbox">show related knowledge edges</label>
+  <label id="workflow-context-row" title="show linked SaaS, data, and owner nodes in a muted style"><input id="workflow-context" type="checkbox">SaaS・データなどの関連知識も表示</label>
 </section>
 
 <div id="sparql">
@@ -760,7 +762,8 @@ function workflowDefinitions() {
   return [...definitions].map(([id, steps]) => {
     const meta = NODES_META[id] || {}, rawTags = meta.tags;
     const tags = Array.isArray(rawTags) ? rawTags.map(String) : rawTags == null ? [] : [String(rawTags)];
-    return { id, label: meta.label ? String(meta.label) : id, steps, tags };
+    return { id, label: meta.label ? String(meta.label) : id,
+      summary: meta.summary ? String(meta.summary) : "", steps, tags };
   }).sort((a, b) => a.label.localeCompare(b.label));
 }
 function renderWorkflowPicker() {
@@ -789,7 +792,12 @@ function renderWorkflowPicker() {
     const option = document.createElement("button");
     option.type = "button"; option.className = "workflow-option";
     option.classList.toggle("selected", selectedWorkflow === workflow.id);
-    option.textContent = workflow.label + " · " + workflow.steps.size + " steps";
+    option.textContent = workflow.label + " · " + workflow.steps.size + "工程";
+    if (workflow.summary) {
+      const summary = document.createElement("span");
+      summary.className = "workflow-summary"; summary.textContent = workflow.summary;
+      option.appendChild(summary);
+    }
     const tags = document.createElement("small");
     tags.textContent = workflow.tags.length
       ? "分類: " + workflow.tags.map(displayWorkflowTag).join(" · ")
