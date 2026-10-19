@@ -3,6 +3,17 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.46.0
+
+- **Declare workflows in a dedicated YAML section.** Each workflow lists
+  stable step IDs and explicit `next` links, including branches and rejoins.
+  Loading compiles the shorthand into regular `workflow` and `process_step`
+  nodes plus `HAS_STEP` and `NEXT_STEP` RDF triples. Missing targets,
+  duplicate IDs, malformed order, cycles, and disconnected steps are rejected.
+  The HTML workflow picker turns on automatically for this standard vocabulary.
+  Saving writes the canonical graph form, so PyOxigraph and SPARQL query the
+  same RDF facts without a parallel workflow store.
+
 ## 0.45.0
 
 - **A mixed knowledge graph can show one explicit workflow clearly.** The

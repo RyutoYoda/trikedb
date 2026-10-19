@@ -34,6 +34,38 @@ def run():
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
 
+        # --- dedicated workflow YAML is the same searchable RDF graph ----
+        workflow_yaml = Path(root) / "customer-refresh.yaml"
+        workflow_yaml.write_text("""workflows:
+  customer-refresh:
+    label: Customer refresh
+    summary: Refresh customer data for analytics
+    tags: [domain:customer-data]
+    steps:
+      - id: extract
+        label: Extract customer records
+        next: [validate]
+      - id: validate
+        label: Validate customer records
+        next: [publish]
+      - id: publish
+        label: Publish analytics table
+""", encoding="utf-8")
+        workflow_graph = TrikeDB(workflow_yaml)
+        assert workflow_graph.sparql("ASK { t:extract t:NEXT_STEP t:validate }")
+        workflow_page = Path(root) / "dedicated-workflow.html"
+        workflow_graph.to_html(workflow_page)
+        page.goto(workflow_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        assert page.locator("#btn-workflow").is_visible()
+        page.locator("#btn-workflow").click()
+        page.locator("#workflow-list .workflow-option").click()
+        assert page.evaluate("workflowMode") is True
+        assert page.evaluate("[...workflowNodes].sort()") == [
+            "extract", "publish", "validate"
+        ]
+        assert not errors, errors
+
         # --- action layer: an event belongs to the node it happened to ----
         ops = TrikeDB()
         ops.add("RAW_SPEND", "AFFECTED_BY", "units changed to micros",

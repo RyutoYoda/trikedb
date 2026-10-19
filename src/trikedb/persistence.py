@@ -26,6 +26,7 @@ from .storage import read_text as _read_text
 from .storage import serialization as _serialization
 from .storage import version as _version_of
 from .storage import write_text as _write_text
+from .workflows import _validate_workflows
 
 
 def locate(path):
@@ -90,7 +91,8 @@ def load(db) -> None:
             f"{db.path} does not hold a graph: expected a YAML mapping "
             f"with triples/nodes/ontology keys, found {type(data).__name__}"
         )
-    for key, want in (("triples", list), ("nodes", dict), ("graphs", dict)):
+    for key, want in (("triples", list), ("nodes", dict), ("graphs", dict),
+                      ("workflows", dict)):
         if key in data and data[key] is not None and not isinstance(data[key], want):
             # Left to itself this surfaces as .items() on a list or a
             # dict() on a string, several frames away from the file that
@@ -101,6 +103,11 @@ def load(db) -> None:
             )
     graphs = data.get("graphs")
     if isinstance(graphs, dict) and not data.get("triples"):
+        if data.get("workflows"):
+            raise ValueError(
+                f"{db.path}: 'workflows:' must be declared in a graph document, "
+                "not alongside workspace 'graphs:'"
+            )
         load_workspace(db, graphs)
         return
     onto = data.get("ontology") or {}
@@ -117,12 +124,130 @@ def load(db) -> None:
     elif isinstance(preds, (list, tuple)):
         for p in preds:
             db.ontology.setdefault(str(p), "")
-    for name, props in (data.get("nodes") or {}).items():
+    declared_nodes = data.get("nodes") or {}
+    workflows = data.get("workflows") or {}
+    workflow_nodes, workflow_triples = _compile_workflows(db.path, workflows, declared_nodes)
+    for name, props in declared_nodes.items():
         db.nodes_meta[str(name)] = _plain(dict(props or {}))
-    for item in data.get("triples") or []:
+    for name, props in workflow_nodes.items():
+        db.nodes_meta[name] = _plain(props)
+    triples = list(data.get("triples") or []) + workflow_triples
+    for item in triples:
         db._triples.append(Triple.from_dict(item))
+    if workflows:
+        # The shorthand has a stricter contract than arbitrary graph triples:
+        # reject a malformed process at the point it enters the RDF store.
+        try:
+            _validate_workflows(workflow_triples, {"NEXT_STEP"}, "HAS_STEP")
+        except ValueError as exc:
+            raise ValueError(f"{db.path}: {exc}") from exc
     db._rdf_cache = None
     db._index = db._pidx = db._eidx = None
+
+
+def _compile_workflows(path, workflows: dict, existing_nodes: dict):
+    """Expand author-friendly workflow declarations into ordinary graph data.
+
+    ``workflows:`` is only an input shorthand. Its output is the same node
+    metadata and RDF triples used by every other TrikeDB feature, so queries,
+    Oxigraph, and the HTML picker do not have a parallel workflow store.
+    """
+    if not workflows:
+        return {}, []
+    if not isinstance(workflows, dict):  # also protects callers outside load()
+        raise ValueError(f"{path}: 'workflows:' must be a mapping")
+
+    nodes: dict[str, dict] = {}
+    triples: list[dict] = []
+    errors: list[str] = []
+
+    def fail(where: str, message: str) -> None:
+        errors.append(f"{where}: {message}")
+
+    for workflow_id, raw in workflows.items():
+        wid = str(workflow_id)
+        where = f"workflows.{wid}"
+        if not isinstance(raw, dict):
+            fail(where, "must be a mapping")
+            continue
+        allowed = {"label", "summary", "description", "tags", "workflow_facets",
+                   "properties", "steps"}
+        extra = set(raw) - allowed
+        if extra:
+            fail(where, f"unknown field(s): {', '.join(sorted(map(str, extra)))}")
+        if wid in existing_nodes or wid in nodes:
+            fail(where, f"node id {wid!r} is already declared")
+        steps = raw.get("steps")
+        if not isinstance(steps, list) or not steps:
+            fail(where, "'steps:' must be a non-empty list")
+            continue
+        props = raw.get("properties", {})
+        if not isinstance(props, dict):
+            fail(f"{where}.properties", "must be a mapping")
+            props = {}
+        elif set(props) & {"type", "label", "summary", "description", "tags", "workflow_facets"}:
+            fail(f"{where}.properties", "put reserved workflow fields at the workflow level")
+        metadata = dict(props)
+        metadata["type"] = "workflow"
+        for field in ("label", "summary", "description", "tags", "workflow_facets"):
+            if field in raw:
+                metadata[field] = raw[field]
+        nodes[wid] = metadata
+
+        step_ids: list[str] = []
+        normalized_steps: list[tuple[str, dict]] = []
+        for index, item in enumerate(steps, start=1):
+            step_where = f"{where}.steps[{index - 1}]"
+            if not isinstance(item, dict):
+                fail(step_where, "must be a mapping")
+                continue
+            allowed_step = {"id", "label", "description", "properties", "order", "next"}
+            unknown = set(item) - allowed_step
+            if unknown:
+                fail(step_where, f"unknown field(s): {', '.join(sorted(map(str, unknown)))}")
+            if "id" not in item or not isinstance(item["id"], (str, int)):
+                fail(step_where, "requires a string or integer 'id'")
+                continue
+            sid = str(item["id"])
+            if not sid:
+                fail(step_where, "'id' cannot be empty")
+                continue
+            if sid in existing_nodes or sid in nodes or sid in step_ids:
+                fail(step_where, f"node id {sid!r} is already declared")
+            step_ids.append(sid)
+            step_props = item.get("properties", {})
+            if not isinstance(step_props, dict):
+                fail(f"{step_where}.properties", "must be a mapping")
+                step_props = {}
+            elif set(step_props) & {"type", "label", "description"}:
+                fail(f"{step_where}.properties", "put reserved step fields at the step level")
+            step_meta = dict(step_props)
+            step_meta["type"] = "process_step"
+            for field in ("label", "description"):
+                if field in item:
+                    step_meta[field] = item[field]
+            nodes[sid] = step_meta
+            normalized_steps.append((sid, item))
+
+        for index, (sid, item) in enumerate(normalized_steps, start=1):
+            order = item.get("order", index)
+            triples.append({"s": wid, "p": "HAS_STEP", "o": sid, "order": order})
+            next_ids = item.get("next", [])
+            if isinstance(next_ids, (str, int)):
+                next_ids = [next_ids]
+            if not isinstance(next_ids, list):
+                fail(f"{where}.steps[{index - 1}].next", "must be a node id or list of node ids")
+                continue
+            for target in next_ids:
+                target_id = str(target)
+                if target_id not in step_ids:
+                    fail(f"{where}.steps[{index - 1}].next", f"unknown step id {target_id!r}")
+                else:
+                    triples.append({"s": sid, "p": "NEXT_STEP", "o": target_id})
+
+    if errors:
+        raise ValueError(f"{path}: invalid workflow declaration:\n- " + "\n- ".join(errors))
+    return nodes, triples
 
 
 def load_workspace(db, graphs: dict) -> None:
