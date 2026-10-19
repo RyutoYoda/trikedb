@@ -212,16 +212,21 @@ _TEMPLATE = """<!DOCTYPE html>
                      background: var(--panel); border: 1px solid var(--border);
                      border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.35); }
   #workflow-picker[hidden] { display: none; }
+  #workflow-picker-header { display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 8px; }
+  #workflow-picker-title { font-size: 13px; font-weight: 700; }
+  #workflow-picker-hint { color: var(--dim); font-size: 11px; line-height: 1.4; margin-bottom: 9px; }
   #workflow-picker .picker-row { display: flex; gap: 7px; margin-bottom: 9px; }
   #workflow-picker input, #workflow-picker select { min-width: 0; padding: 7px 8px;
     border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); }
   #workflow-search { flex: 1; }
-  #workflow-tag-filter { max-width: 45%; }
+  #workflow-tag-filter { max-width: 52%; }
+  #workflow-tag-label { align-self: center; color: var(--dim); font-size: 11px; white-space: nowrap; }
   #workflow-list { display: grid; gap: 5px; }
   .workflow-option { text-align: left; border: 1px solid var(--border); border-radius: 7px;
     background: transparent; color: var(--text); padding: 8px; cursor: pointer; }
   .workflow-option:hover, .workflow-option.selected { border-color: #5a83b8; background: rgba(79,142,247,.12); }
-  .workflow-option small { display: block; color: var(--dim); margin-top: 3px; }
+  .workflow-option small { display: block; color: var(--dim); margin-top: 4px; line-height: 1.45; }
   #workflow-context-row { display: flex; align-items: center; gap: 7px; margin-top: 10px;
     color: var(--dim); font-size: 11px; }
   #focus-depth { width: 54px; box-sizing: border-box; padding: 6px 5px; border-radius: 7px;
@@ -322,7 +327,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <button class="btn" id="btn-sparql">SPARQL</button>
     <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
     <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
-    <button class="btn" id="btn-workflow" title="choose an explicitly defined workflow" hidden>workflow</button>
+    <button class="btn" id="btn-workflow" title="open the workflow picker" aria-expanded="false" aria-pressed="false" hidden>workflow</button>
     <span title="maximum number of relations to follow">hop</span>
     <input id="focus-depth" type="number" min="0" step="1" placeholder="∞" aria-label="maximum focus hops; blank means unlimited" title="focus traversal depth; blank means unlimited">
     <button class="btn" id="btn-unfocus" title="return to the whole graph" hidden>全体表示</button>
@@ -333,9 +338,15 @@ _TEMPLATE = """<!DOCTYPE html>
 
 <div id="graphbar"></div>
 <section id="workflow-picker" hidden aria-label="workflow selector">
+  <div id="workflow-picker-header">
+    <span id="workflow-picker-title">ワークフローを選択</span>
+    <button class="btn" id="workflow-picker-close" type="button" aria-label="close workflow picker">閉じる</button>
+  </div>
+  <div id="workflow-picker-hint"></div>
   <div class="picker-row">
     <input id="workflow-search" type="search" placeholder="search workflows...">
-    <select id="workflow-tag-filter" aria-label="filter by workflow tag"><option value="">all tags</option></select>
+    <label id="workflow-tag-label" for="workflow-tag-filter">分類タグ</label>
+    <select id="workflow-tag-filter" aria-label="filter workflows by classification"><option value="">すべて</option></select>
   </div>
   <div id="workflow-list"></div>
   <label id="workflow-context-row"><input id="workflow-context" type="checkbox">show related knowledge edges</label>
@@ -669,6 +680,7 @@ const workflowSearch = document.getElementById("workflow-search");
 const workflowTagFilterEl = document.getElementById("workflow-tag-filter");
 const workflowList = document.getElementById("workflow-list");
 const workflowContextInput = document.getElementById("workflow-context");
+const workflowPickerHint = document.getElementById("workflow-picker-hint");
 let workflowMode = false;
 let workflowNodes = null;
 let workflowOriginalPositions = null;
@@ -755,10 +767,15 @@ function renderWorkflowPicker() {
   const definitions = workflowDefinitions();
   const tags = [...new Set(definitions.flatMap(w => w.tags))].sort();
   const previousTag = workflowTagFilterEl.value;
-  workflowTagFilterEl.replaceChildren(new Option("all tags", ""));
-  for (const tag of tags) workflowTagFilterEl.add(new Option(tag, tag));
+  workflowTagFilterEl.replaceChildren(new Option("すべて", ""));
+  for (const tag of tags) workflowTagFilterEl.add(new Option(displayWorkflowTag(tag), tag));
   if (tags.includes(previousTag)) workflowTagFilterEl.value = previousTag;
   else workflowTagFilterEl.value = "";
+  workflowPickerHint.textContent = workflowMode
+    ? `「${(NODES_META[selectedWorkflow] || {}).label || selectedWorkflow}」を表示中です。別のワークフローを選ぶと切り替わります。`
+    : focusCenter !== null
+      ? "ノードにフォーカス中です。ワークフローを選ぶと、選んだ工程列の表示に切り替わります。"
+      : "全体表示中です。選ぶと、そのワークフローの工程列に切り替わります。";
   const term = workflowSearch.value.trim().toLocaleLowerCase();
   const filterTag = workflowTagFilterEl.value;
   const matching = definitions.filter(w => (!filterTag || w.tags.includes(filterTag)) &&
@@ -773,17 +790,28 @@ function renderWorkflowPicker() {
     option.type = "button"; option.className = "workflow-option";
     option.classList.toggle("selected", selectedWorkflow === workflow.id);
     option.textContent = workflow.label + " · " + workflow.steps.size + " steps";
-    const tags = document.createElement("small"); tags.textContent = workflow.tags.join(" · ");
+    const tags = document.createElement("small");
+    tags.textContent = workflow.tags.length
+      ? "分類: " + workflow.tags.map(displayWorkflowTag).join(" · ")
+      : "分類タグなし";
     option.appendChild(tags);
     option.onclick = () => {
+      focusCenter = null; focusNodes = null;
       selectedWorkflow = workflow.id; workflowMode = true;
       workflowPicker.hidden = true; workflowButton.classList.add("on");
+      workflowButton.setAttribute("aria-expanded", "false");
       workflowButton.setAttribute("aria-pressed", "true");
-      applyWorkflowLayout(); refreshVisibility();
+      updateFocus(); refreshVisibility();
       network.fit({ nodes: visualIds([...workflowNodes]), animation: true });
     };
     workflowList.appendChild(option);
   }
+}
+function displayWorkflowTag(tag) {
+  const [rawCategory, ...rawValue] = String(tag).split(":");
+  if (!rawValue.length) return String(tag);
+  const category = ({domain: "領域", saas: "SaaS", platform: "基盤"})[rawCategory.toLowerCase()] || rawCategory;
+  return `${category}: ${rawValue.join(":")}`;
 }
 function applyWorkflowLayout() {
   if (!workflowMode || !selectedWorkflow) { workflowNodes = null; return; }
@@ -844,7 +872,12 @@ function applyWorkflowLayout() {
 }
 workflowButton.onclick = () => {
   workflowPicker.hidden = !workflowPicker.hidden;
+  workflowButton.setAttribute("aria-expanded", String(!workflowPicker.hidden));
   if (!workflowPicker.hidden) renderWorkflowPicker();
+};
+document.getElementById("workflow-picker-close").onclick = () => {
+  workflowPicker.hidden = true;
+  workflowButton.setAttribute("aria-expanded", "false");
 };
 workflowSearch.addEventListener("input", renderWorkflowPicker);
 workflowTagFilterEl.addEventListener("change", renderWorkflowPicker);
@@ -865,6 +898,7 @@ function clearFocus() {
   workflowMode = false; selectedWorkflow = null; showWorkflowContext = false;
   workflowContextInput.checked = false; workflowPicker.hidden = true;
   workflowButton.classList.remove("on"); workflowButton.setAttribute("aria-pressed", "false");
+  workflowButton.setAttribute("aria-expanded", "false");
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), level: levelOf(id) })));
   network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
   refreshVisibility();
@@ -1230,7 +1264,11 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const field = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""));
   if (field && !["focus-depth", "workflow-search", "workflow-tag-filter"].includes(e.target.id)) return;
-  if (workflowPicker && !workflowPicker.hidden) { workflowPicker.hidden = true; return; }
+  if (workflowPicker && !workflowPicker.hidden) {
+    workflowPicker.hidden = true;
+    workflowButton.setAttribute("aria-expanded", "false");
+    return;
+  }
   if (field) e.preventDefault();
   if (focusCenter !== null || workflowMode) clearFocus();
   if (detail.classList.contains("open")) closePanel();
@@ -1250,10 +1288,17 @@ document.getElementById("detail").addEventListener("click", (e) => {
 // relation hangs off, and for an event the node the event happened to, so
 // the panel that opens has the rest of that node's history in it.
 network.on("click", (params) => {
-  if (params.nodes.length) { const id = ids[params.nodes[0]]; startFocus(id); showDetail(id); return; }
+  if (params.nodes.length) {
+    const id = ids[params.nodes[0]];
+    if (!workflowMode) startFocus(id);
+    showDetail(id); return;
+  }
   if (params.edges.length) {
     const t = TRIPLES[params.edges[0]];
-    if (t) focusNode(t.s);
+    if (t) {
+      if (workflowMode) showDetail(t.s);
+      else focusNode(t.s);
+    }
     return;
   }
   clearFocus();

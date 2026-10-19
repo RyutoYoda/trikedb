@@ -294,14 +294,32 @@ def run():
         page.wait_for_selector("canvas")
         assert page.locator("#btn-workflow").is_visible()
         assert page.evaluate("TRIPLES.length") > 20
+        # The picker is a reversible overlay: opening it from the whole graph
+        # explains the next action, and closing it does not change the view.
+        page.locator("#btn-workflow").click()
+        assert "全体表示中" in page.locator("#workflow-picker-hint").inner_text()
+        assert page.locator("#btn-workflow").get_attribute("aria-expanded") == "true"
+        page.locator("#workflow-picker-close").click()
+        assert page.evaluate("workflowMode") is False
+        # Opening the picker from a node focus explains that choosing a
+        # workflow will replace that view; closing preserves the focus.
+        page.evaluate("startFocus('Salesforce')")
+        page.locator("#btn-workflow").click()
+        assert "ノードにフォーカス中" in page.locator("#workflow-picker-hint").inner_text()
+        page.keyboard.press("Escape")
+        assert page.locator("#workflow-picker").is_hidden()
+        assert page.evaluate("focusCenter") == "Salesforce"
         page.locator("#btn-workflow").click()
         page.locator("#workflow-tag-filter").select_option("saas:salesforce")
         options = page.locator("#workflow-list .workflow-option")
         assert options.count() == 1
         assert "月次請求" in options.first.inner_text()
+        assert "SaaS: salesforce" in options.first.inner_text()
         options.first.click()
         page.wait_for_timeout(300)
         assert page.evaluate("workflowMode") is True
+        assert page.evaluate("focusCenter") is None
+        assert page.locator("#btn-workflow").get_attribute("aria-pressed") == "true"
         assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["billing-flow"][1])
         positions = page.evaluate("""() => Object.fromEntries(
           [...workflowNodes].map(name => [name, network.getPosition(nodeIds.get(name))]))""")
