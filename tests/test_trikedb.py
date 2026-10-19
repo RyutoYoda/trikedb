@@ -1271,6 +1271,39 @@ def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
     assert 'id="workflow-search"' in html and 'id="workflow-tag-filter"' in html
     assert "const next = new Map([...workflowNodes].map(id => [id, []]))" in html
     assert "x: (levels.get(id) - 1) * 260" in html
+    assert 'arrows: workflowMode ? { to: { enabled: false } } : "to"' in html
+
+
+@pytest.mark.parametrize("defect, message", [
+    ("cycle", "contains a cycle"),
+    ("orphan", "must connect steps in the same workflow"),
+    ("disconnected", "disconnected from its order graph"),
+    ("order", "values are not increasing"),
+])
+def test_workflow_export_rejects_malformed_order_graphs(defect, message):
+    db = TrikeDB()
+    for step in ("A", "B", "C"):
+        db.add("flow", "HAS_STEP", step)
+    db.add("A", "NEXT_STEP", "B")
+    if defect == "cycle":
+        db.add("B", "NEXT_STEP", "C")
+        db.add("C", "NEXT_STEP", "A")
+    elif defect == "orphan":
+        db.add("B", "NEXT_STEP", "outside")
+    elif defect == "order":
+        db.add("flow", "HAS_STEP", "A", order=2)
+        db.add("flow", "HAS_STEP", "B", order=1)
+    with pytest.raises(ValueError, match=message):
+        db.to_html(workflow_predicates="NEXT_STEP", workflow_membership_predicate="HAS_STEP")
+
+
+def test_workflow_validation_ignores_unrelated_ordered_knowledge():
+    db = TrikeDB()
+    db.add("flow", "HAS_STEP", "A")
+    db.add("flow", "HAS_STEP", "B")
+    db.add("A", "NEXT_STEP", "B")
+    db.add("unrelated-1", "NEXT_STEP", "unrelated-2")
+    db.to_html(workflow_predicates="NEXT_STEP", workflow_membership_predicate="HAS_STEP")
 
 
 def test_workflow_groups_tags_and_role_facets_roundtrip_through_yaml(tmp_path):

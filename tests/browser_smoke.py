@@ -362,7 +362,7 @@ def run():
         assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
         assert page.evaluate("nodes.get(nodeIds.get('Warehouse')).shadow.enabled")
         assert page.evaluate("edges.get().find(e => TRIPLES[e.id].p === 'RUNS_ON').arrows.to.enabled === false")
-        assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').arrows.middle.enabled")
+        assert page.evaluate("edges.get().filter(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').every(e => !e.arrows.to.enabled)")
         assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').font.vadjust === -9")
         page.evaluate("showDetail('正規化')")
         step_detail = page.locator("#detail-body").inner_text()
