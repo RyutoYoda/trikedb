@@ -228,6 +228,8 @@ _TEMPLATE = """<!DOCTYPE html>
   .workflow-option:hover, .workflow-option.selected { border-color: #5a83b8; background: rgba(79,142,247,.12); }
   .workflow-option .workflow-summary { display: block; color: var(--text); opacity: .84;
     margin-top: 4px; line-height: 1.4; font-size: 11px; font-weight: 400; }
+  .workflow-option .workflow-facets { display: block; color: var(--text); opacity: .78;
+    margin-top: 5px; line-height: 1.45; font-size: 11px; font-weight: 400; }
   .workflow-option small { display: block; color: var(--dim); margin-top: 4px; line-height: 1.45; }
   #workflow-context-row { display: flex; align-items: center; gap: 7px; margin-top: 10px;
     color: var(--dim); font-size: 11px; }
@@ -762,8 +764,13 @@ function workflowDefinitions() {
   return [...definitions].map(([id, steps]) => {
     const meta = NODES_META[id] || {}, rawTags = meta.tags;
     const tags = Array.isArray(rawTags) ? rawTags.map(String) : rawTags == null ? [] : [String(rawTags)];
+    const rawFacets = meta.workflow_facets;
+    const facets = Array.isArray(rawFacets) ? rawFacets.filter(f => f && f.label != null)
+      .map(f => ({ label: String(f.label), values: (Array.isArray(f.values) ? f.values : [f.values])
+        .filter(v => v != null).map(String) })).filter(f => f.values.length) : [];
     return { id, label: meta.label ? String(meta.label) : id,
-      summary: meta.summary ? String(meta.summary) : "", steps, tags };
+      summary: meta.summary ? String(meta.summary) : "", steps, tags,
+      facets };
   }).sort((a, b) => a.label.localeCompare(b.label));
 }
 function renderWorkflowPicker() {
@@ -797,6 +804,12 @@ function renderWorkflowPicker() {
       const summary = document.createElement("span");
       summary.className = "workflow-summary"; summary.textContent = workflow.summary;
       option.appendChild(summary);
+    }
+    if (workflow.facets.length) {
+      const facets = document.createElement("span");
+      facets.className = "workflow-facets";
+      facets.textContent = workflow.facets.map(f => f.label + ": " + f.values.join("、")).join(" · ");
+      option.appendChild(facets);
     }
     const tags = document.createElement("small");
     tags.textContent = workflow.tags.length
@@ -1575,9 +1588,9 @@ def to_html(
         flow_default = layout == "flow"
 
     n_nodes = len(db.nodes())
-    subtitle = (
-        f"{len(triples)} triples &middot; {n_nodes} nodes &middot; one YAML file"
-    )
+    workspace = getattr(db, "workspace", None)
+    graph_summary = f"{len(workspace)} workspace graphs" if workspace is not None else "one YAML file"
+    subtitle = f"{len(triples)} triples &middot; {n_nodes} nodes &middot; {graph_summary}"
 
     def json_safe(value):
         # YAML permits nonfinite numbers; JSON.parse does not. Display their
