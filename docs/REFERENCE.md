@@ -824,31 +824,29 @@ in [SCALING.md](SCALING.md).)
   with per-graph filter chips
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
 - click a node → focus its reachable neighborhood; hidden predicates and graph/type filters constrain traversal. Enter a hop limit (blank `∞` means unlimited), then use **全体表示**, click the canvas background, or press **Esc** to clear focus. Out-of-range nodes and edges stay visible in muted gray. This is neighborhood navigation: it follows edges both ways and does not encode business-process order.
-- pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; the **workflow** button opens a picker. Its hint tells you whether you are in the whole graph, a node focus, or an already selected workflow. Workflow cards can include a `summary` property to explain their purpose. Closing the picker or pressing Esc cancels the choice and preserves the current view; choosing a workflow switches to its ordered process view. Clicking a node inside that view opens its details without leaving the workflow. **全体表示** clears workflow or node focus. The sequence relations alone are laid out left-to-right. Non-sequence relations are hidden by default; **SaaS・データなどの関連知識も表示** reveals directly related entities and edges in muted gray without arrowheads, so they cannot be mistaken for process order.
+- pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; the **workflow** button opens a searchable, tag-filtered picker. It renders 40 results at a time, so large catalogs stay responsive. Its hint tells you whether you are in the whole graph, a node focus, or an already selected workflow. Workflow cards can include a `summary` property to explain their purpose. Closing the picker or pressing Esc cancels the choice and preserves the current view; choosing a workflow switches to its ordered process view. Clicking a node inside that view opens its details without leaving the workflow. **全体表示** clears workflow or node focus. The sequence relations alone are laid out left-to-right. Directly related tools, models, platforms, and data objects appear highlighted in nested lanes beneath their process step by default; a linked model's runtime and materialized objects are included from their graph relations. These context nodes never affect process order. Their predicate-colored links have no arrowheads; sequence direction comes from the left-to-right placement and `NEXT_STEP` label, avoiding markers over node text. The context checkbox toggles this lane. Export validates each declared workflow's order graph: it must be connected and acyclic; sequence edges touching a declared step must stay within a workflow; and supplied `order` values must be positive and increase along each edge. Branches and rejoins are allowed, and unrelated graph components using the same sequence predicate are ignored.
 - Store workflow groups, tags, role labels, and order in the regular graph YAML. The workflow definition is a node, `HAS_STEP` groups its steps, and `NEXT_STEP` expresses order and branches. For example:
 
   ```yaml
   nodes:
-    monthly-billing:
+    customer-refresh:
       type: workflow
-      label: Salesforce従量課金請求
-      summary: Salesforceの利用料を集計しKintoneへ登録
-      tags: [domain:billing, charge-model:usage-based]
+      label: 顧客データ更新
+      summary: CRMの顧客データを整形して分析用ウェアハウスへ反映
+      tags: [domain:customer-data, cadence:daily]
       workflow_facets:
-        - label: 請求対象SaaS
-          values: [Salesforce]
-        - label: 業務システム
-          values: [Kintone]
-        - label: 集計基盤
-          values: [Snowflake]
+        - label: データソース
+          values: [CRM]
         - label: 変換ツール
           values: [dbt]
+        - label: 実行基盤
+          values: [Warehouse]
   triples:
-    - {s: monthly-billing, p: HAS_STEP, o: normalize-usage, order: 1}
-    - {s: normalize-usage, p: NEXT_STEP, o: calculate-amount}
+    - {s: customer-refresh, p: HAS_STEP, o: validate-records, order: 1}
+    - {s: validate-records, p: NEXT_STEP, o: transform-records}
   ```
 
-  The picker labels `tags` as **分類タグ** and filters workflows by one tag. `workflow_facets` is generic: every item has a free-form `label` and one or more `values`, displayed as written. This keeps meanings such as the SaaS being billed separate from the tools used by the process. Facets explain the workflow card; actual tool/data usage should also remain explicit graph nodes and relations such as `RUNS_ON`, `READS_FROM`, or `WRITES_TO`. Tags classify workflows and do not replace those roles or relations.
+  The picker labels `tags` as **分類タグ** and filters workflows by one tag. `workflow_facets` is generic: every item has a free-form `label` and one or more `values`, displayed as written. This keeps meanings such as a workflow's data source separate from the tools used by the process. Facets explain the workflow card; actual tool/data usage should also remain explicit graph nodes and relations such as `RUNS_ON`, `READS_FROM`, or `WRITES_TO`. Tags classify workflows and do not replace those roles or relations.
 - clickable legend: check a node type on/off to filter nodes, click a
   predicate swatch to hide/show its edges (combines with graph chips)
 - full-text search over node ids, labels, node properties, edge

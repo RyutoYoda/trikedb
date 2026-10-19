@@ -255,50 +255,47 @@ def run():
         # --- workflow picker: isolate an ordered process inside a mixed KG -
         mixed = TrikeDB()
         flows = {
-            "billing-flow": ("月次請求", ["開始", "利用取得", "正規化", "対象確認", "通常契約",
-                                           "例外契約", "集計", "登録"],
-                             ["domain:billing", "saas:salesforce"]),
-            "access-flow": ("SaaS利用申請", ["申請", "契約照合", "利用照合"],
-                            ["domain:billing", "saas:kintone"]),
+            "customer-refresh": ("顧客データ更新", ["開始", "取得", "正規化", "検証", "公開"],
+                                 ["domain:customer-data", "cadence:daily"]),
+            "access-review": ("アクセス権レビュー", ["申請", "権限確認", "結果通知"],
+                              ["domain:security", "cadence:weekly"]),
         }
         for flow_id, (label, steps, tags) in flows.items():
-            summary = "Salesforceの利用ログを集計して請求明細にする" if flow_id == "billing-flow" else "SaaS利用申請を受け付けて契約と利用額を照合する"
-            facets = ([{"label": "請求対象", "values": ["Salesforce"]},
-                       {"label": "業務システム", "values": ["Kintone"]},
-                       {"label": "集計基盤", "values": ["Snowflake"]},
-                       {"label": "変換", "values": ["dbt"]}]
-                      if flow_id == "billing-flow" else
-                      [{"label": "受付システム", "values": ["Kintone"]}])
+            summary = ("CRMの顧客データを検証し分析用ウェアハウスへ反映"
+                       if flow_id == "customer-refresh" else
+                       "申請されたアクセス権を確認して結果を通知")
+            facets = ([{"label": "データソース", "values": ["CRM"]},
+                       {"label": "変換ツール", "values": ["dbt"]},
+                       {"label": "実行基盤", "values": ["Warehouse"]}]
+                      if flow_id == "customer-refresh" else
+                      [{"label": "申請システム", "values": ["Access Portal"]}])
             mixed.set_node(flow_id, type="workflow", label=label, summary=summary,
                            tags=tags, workflow_facets=facets)
             for i, step in enumerate(steps, 1):
                 mixed.set_node(step, type="process_step", level=i)
                 mixed.add(flow_id, "HAS_STEP", step, order=i)
-            if flow_id == "billing-flow":
-                for a, b in (("開始", "利用取得"), ("利用取得", "正規化"),
-                             ("正規化", "対象確認"),
-                             ("対象確認", "通常契約"), ("対象確認", "例外契約"),
-                             ("通常契約", "集計"), ("例外契約", "集計"),
-                             ("集計", "登録")):
+            if flow_id == "customer-refresh":
+                for a, b in (("開始", "取得"), ("取得", "正規化"),
+                             ("正規化", "検証"), ("検証", "公開")):
                     mixed.add(a, "NEXT_STEP", b)
             else:
                 for a, b in zip(steps, steps[1:]):
                     mixed.add(a, "NEXT_STEP", b)
-        # Branch and rejoin in the invoice process; unrelated knowledge uses
-        # the same predicates and adds the kind of visual noise a KG has.
-        for name, typ in (("Snowflake", "platform"), ("dbt", "tool"),
-                          ("dbt model", "dbt_model"),
-                          ("Salesforce", "saas"), ("利用ログ", "table"),
-                          ("契約マスタ", "table"), ("請求チーム", "team")):
+        # Non-workflow knowledge remains in the graph as realistic context.
+        for name, typ in (("Warehouse", "platform"), ("dbt", "tool"),
+                          ("dbt model", "dbt_model"), ("CRM", "saas"),
+                          ("customer records", "table"),
+                          ("customer analytics table", "table"),
+                          ("access directory", "table"), ("data team", "team")):
             mixed.set_node(name, type=typ)
-        mixed.add("集計", "RUNS_ON", "Snowflake")
-        mixed.add("集計", "IMPLEMENTED_BY", "dbt model")
+        mixed.add("正規化", "IMPLEMENTED_BY", "dbt model")
         mixed.add("正規化", "USES", "dbt")
-        mixed.add("正規化", "RUNS_ON", "Snowflake")
-        mixed.add("利用取得", "READS_FROM", "Salesforce")
-        mixed.add("利用取得", "READS_FROM", "利用ログ")
-        mixed.add("対象確認", "READS_FROM", "契約マスタ")
-        mixed.add("登録", "OWNED_BY", "請求チーム")
+        mixed.add("dbt model", "RUNS_ON", "Warehouse")
+        mixed.add("dbt model", "WRITES_TO", "customer analytics table")
+        mixed.add("取得", "READS_FROM", "CRM")
+        mixed.add("取得", "READS_FROM", "customer records")
+        mixed.add("権限確認", "READS_FROM", "access directory")
+        mixed.add("公開", "OWNED_BY", "data team")
         mixed_page = Path(root) / "mixed-workflows.html"
         mixed.to_html(mixed_page, workflow_predicates=["NEXT_STEP"],
                       workflow_membership_predicate="HAS_STEP")
@@ -315,54 +312,97 @@ def run():
         assert page.evaluate("workflowMode") is False
         # Opening the picker from a node focus explains that choosing a
         # workflow will replace that view; closing preserves the focus.
-        page.evaluate("startFocus('Salesforce')")
+        page.evaluate("startFocus('CRM')")
         page.locator("#btn-workflow").click()
         assert "ノードにフォーカス中" in page.locator("#workflow-picker-hint").inner_text()
         page.keyboard.press("Escape")
         assert page.locator("#workflow-picker").is_hidden()
-        assert page.evaluate("focusCenter") == "Salesforce"
+        assert page.evaluate("focusCenter") == "CRM"
         page.locator("#btn-workflow").click()
-        page.locator("#workflow-tag-filter").select_option("saas:salesforce")
+        page.locator("#workflow-tag-filter").select_option("domain:customer-data")
         options = page.locator("#workflow-list .workflow-option")
         assert options.count() == 1
-        assert "月次請求" in options.first.inner_text()
-        assert "利用ログを集計" in options.first.inner_text()
-        assert "SaaS: salesforce" in options.first.inner_text()
-        assert "請求対象: Salesforce" in options.first.inner_text()
-        assert "業務システム: Kintone" in options.first.inner_text()
-        assert "集計基盤: Snowflake" in options.first.inner_text()
-        assert "変換: dbt" in options.first.inner_text()
+        assert "顧客データ更新" in options.first.inner_text()
+        assert "CRMの顧客データ" in options.first.inner_text()
+        assert "領域: customer-data" in options.first.inner_text()
+        assert "データソース: CRM" in options.first.inner_text()
+        assert "変換ツール: dbt" in options.first.inner_text()
+        assert "実行基盤: Warehouse" in options.first.inner_text()
         options.first.click()
         page.wait_for_timeout(300)
         assert page.evaluate("workflowMode") is True
         assert page.evaluate("focusCenter") is None
         assert page.locator("#btn-workflow").get_attribute("aria-pressed") == "true"
-        assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["billing-flow"][1])
+        assert page.locator("#workflow-context").is_checked()
+        assert "順序には含めない" in page.locator("#workflow-context-row").inner_text()
+        assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["customer-refresh"][1])
         positions = page.evaluate("""() => Object.fromEntries(
           [...workflowNodes].map(name => [name, network.getPosition(nodeIds.get(name))]))""")
-        assert positions["開始"]["x"] < positions["利用取得"]["x"] < positions["対象確認"]["x"]
-        assert positions["通常契約"]["x"] == positions["例外契約"]["x"]
-        assert positions["通常契約"]["y"] < positions["例外契約"]["y"]
-        assert positions["開始"]["y"] == positions["利用取得"]["y"] == positions["対象確認"]["y"]
-        assert positions["集計"]["y"] == positions["登録"]["y"] == positions["開始"]["y"]
+        assert positions["開始"]["x"] < positions["取得"]["x"] < positions["検証"]["x"]
+        assert positions["開始"]["y"] == positions["取得"]["y"] == positions["検証"]["y"]
         visible_edges = page.evaluate("edges.get().filter(e => !e.hidden).map(e => e.id)")
         expected_edges = page.evaluate(
-            "TRIPLES.map((t, i) => [t, i]).filter(([t]) => t.p === 'NEXT_STEP' "
-            "&& workflowNodes.has(t.s) && workflowNodes.has(t.o)).map(([, i]) => i)")
+            "TRIPLES.map((t, i) => [t, i]).filter(([t, i]) => "
+            "(t.p === 'NEXT_STEP' && workflowNodes.has(t.s) && workflowNodes.has(t.o)) || "
+            "workflowContextGraph().edges.has(i)).map(([, i]) => i)")
         assert sorted(visible_edges) == sorted(expected_edges)
-        assert page.evaluate("nodes.get(nodeIds.get('Snowflake')).font.color") == "rgba(125,130,140,0.08)"
+        positions_with_context = page.evaluate("""() => ({
+          step: network.getPosition(nodeIds.get('正規化')),
+          warehouse: network.getPosition(nodeIds.get('Warehouse')),
+          model: network.getPosition(nodeIds.get('dbt model')),
+          table: network.getPosition(nodeIds.get('customer analytics table')),
+          contextVisible: edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON'),
+        })""")
+        assert positions_with_context["warehouse"]["x"] == positions_with_context["step"]["x"]
+        assert positions_with_context["warehouse"]["y"] > positions_with_context["step"]["y"]
+        assert positions_with_context["model"]["y"] > positions_with_context["step"]["y"]
+        assert positions_with_context["table"]["y"] > positions_with_context["step"]["y"]
+        assert positions_with_context["model"]["y"] < positions_with_context["warehouse"]["y"] < positions_with_context["table"]["y"]
+        assert positions_with_context["contextVisible"]
+        assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
+        assert page.evaluate("nodes.get(nodeIds.get('Warehouse')).shadow.enabled")
+        assert page.evaluate("edges.get().find(e => TRIPLES[e.id].p === 'RUNS_ON').arrows.to.enabled === false")
+        assert page.evaluate("edges.get().filter(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').every(e => !e.arrows.to.enabled)")
+        assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').font.vadjust === -9")
         page.evaluate("showDetail('正規化')")
         step_detail = page.locator("#detail-body").inner_text()
         assert "USES" in step_detail and "dbt" in step_detail
-        assert "RUNS_ON" in step_detail and "Snowflake" in step_detail
+        assert "IMPLEMENTED_BY" in step_detail and "dbt model" in step_detail
+        page.evaluate("showDetail('dbt model')")
+        model_detail = page.locator("#detail-body").inner_text()
+        assert "RUNS_ON" in model_detail and "Warehouse" in model_detail
+        assert "WRITES_TO" in model_detail and "customer analytics table" in model_detail
         page.locator("#btn-workflow").click()
-        page.locator("#workflow-context").check()
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")
-        assert page.evaluate("nodes.get(nodeIds.get('Snowflake')).font.color") == "rgba(125,130,140,0.22)"
+        assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
         page.locator("#workflow-context").uncheck()
         page.locator("#btn-unfocus").click()
         assert page.evaluate("workflowMode") is False
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON')")
+        assert not errors, errors
+
+        # --- large workflow catalogs are searchable and rendered in pages -
+        catalog = TrikeDB()
+        catalog.set_node("shared-step", type="process_step", label="Shared step")
+        for i in range(501):
+            catalog.set_node(f"workflow-{i:04d}", type="workflow",
+                             label=f"Workflow {i:04d}", summary=f"Group {i % 7}",
+                             tags=["domain:sample"])
+            catalog.add(f"workflow-{i:04d}", "HAS_STEP", "shared-step", order=1)
+        catalog_page = Path(root) / "large-workflow-catalog.html"
+        catalog.to_html(catalog_page, workflow_predicates=["NEXT_STEP"],
+                        workflow_membership_predicate="HAS_STEP")
+        page.goto(catalog_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        page.locator("#btn-workflow").click()
+        assert page.locator("#workflow-results-count").inner_text() == "501件中 40件を表示"
+        assert page.locator("#workflow-list .workflow-option").count() == 40
+        page.locator("#workflow-more").click()
+        assert page.locator("#workflow-list .workflow-option").count() == 80
+        page.locator("#workflow-search").fill("workflow-0500")
+        assert page.locator("#workflow-results-count").inner_text() == "1件中 1件を表示"
+        assert page.locator("#workflow-list .workflow-option").count() == 1
+        assert "Workflow 0500" in page.locator("#workflow-list .workflow-option").inner_text()
         assert not errors, errors
 
         # --- a filter re-frames what is left, and only when it must ------
@@ -413,6 +453,7 @@ def run():
                           "declarations": "passed", "human_names": "passed",
                           "html_injection_and_special_names": "passed",
                           "mixed_graph_workflow_picker": "passed",
+                          "large_workflow_catalog": "passed",
                           "workspace_filter_reframes": "passed"}))
 
 
