@@ -262,7 +262,8 @@ def run():
                             ["domain:billing", "saas:kintone"]),
         }
         for flow_id, (label, steps, tags) in flows.items():
-            mixed.set_node(flow_id, type="workflow", label=label, tags=tags)
+            summary = "Salesforceの利用ログを集計して請求明細にする" if flow_id == "billing-flow" else "SaaS利用申請を受け付けて契約と利用額を照合する"
+            mixed.set_node(flow_id, type="workflow", label=label, summary=summary, tags=tags)
             for i, step in enumerate(steps, 1):
                 mixed.set_node(step, type="process_step", level=i)
                 mixed.add(flow_id, "HAS_STEP", step, order=i)
@@ -314,6 +315,7 @@ def run():
         options = page.locator("#workflow-list .workflow-option")
         assert options.count() == 1
         assert "月次請求" in options.first.inner_text()
+        assert "利用ログを集計" in options.first.inner_text()
         assert "SaaS: salesforce" in options.first.inner_text()
         options.first.click()
         page.wait_for_timeout(300)
