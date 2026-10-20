@@ -89,6 +89,79 @@ trikedb query graph.yaml -w "?vendor PROVIDES ?job"
 trikedb ui graph.yaml                             # 在浏览器里打开
 ```
 
+## 用 YAML 建模有序工作流
+
+使用 `workflows:` 简洁地描述业务或数据处理流程。它不是独立的工作流数据库，而是
+普通知识图谱的编写形式：TrikeDB 会将其编译为 RDF 节点和三元组，可保存、查看差异，
+并通过 PyOxigraph 使用 SPARQL 查询。
+
+```yaml
+workflows:
+  customer-refresh:
+    label: 刷新客户数据
+    summary: 验证 CRM 记录并发布分析数据
+    tags: [domain:customer-data, cadence:daily]
+    workflow_facets:
+      - label: 数据源
+        values: [CRM]
+      - label: 转换工具
+        values: [dbt]
+    steps:
+      - id: extract-records
+        label: 从 CRM 获取数据
+        next: [validate-records]
+      - id: validate-records
+        label: 验证记录
+        next: [publish-records, request-review]
+      - id: publish-records
+        label: 发布分析数据
+      - id: request-review
+        label: 请求数据审核
+        next: [publish-records]
+```
+
+每个工作流和步骤都需要稳定的 ID。步骤的 `next` 指定紧接着执行的一个或多个步骤；
+多个目标表示分支，多个入边表示汇合。示例表示：获取数据后先验证，再审核或发布，审核
+之后汇合到发布。顺序由这些明确的连接表示，标签、YAML 列表位置和标签分类都不会推断
+或改变顺序。
+
+加载时，TrikeDB 会创建一个 `workflow` 节点和每个步骤对应的 `process_step` 节点。
+`HAS_STEP` 记录工作流与步骤的成员关系及顺序，每个 `next` 则生成一条有向的
+`NEXT_STEP` 关系。这些都是普通 RDF 事实，可以与图谱中的其他数据一起查询。保存时，
+简写会规范化为 `nodes:` / `triples:` 格式。
+
+加载器会检查结构：ID 必须唯一，`next` 的目标必须属于当前工作流，步骤图必须连通且
+无环。手动填写的 `order` 必须沿每条 `NEXT_STEP` 边递增；省略时按步骤列表顺序编号。
+分支和汇合有效。分支条件应写入步骤的 `description` 或 `properties`；顺序图描述前后
+关系，不会推断条件的业务含义。
+
+### 打开并浏览工作流
+
+使用标准的 `HAS_STEP` 和 `NEXT_STEP` 时，HTML 工作台会自动启用工作流选择器：
+
+```python
+from trikedb import TrikeDB
+
+db = TrikeDB("graph.yaml")
+db.to_html("graph.html")
+```
+
+也可以运行 `trikedb ui graph.yaml` 从命令行生成。选择器可搜索工作流名称，并按一个
+`tags` 值过滤。选择工作流后会显示有序流程；点击**全图**返回完整图谱。若使用自定义
+词汇，可向 `to_html()` 传入 `workflow_predicates` 和
+`workflow_membership_predicate`，或使用对应的 CLI 选项。
+
+### 将流程顺序与上下文分开
+
+只有处理步骤属于 `NEXT_STEP` 顺序。工具、平台、dbt 模型和具体数据对象应各自作为图谱
+节点，并使用 `IMPLEMENTED_BY`、`USES`、`RUNS_ON`、`READS_FROM` 或 `WRITES_TO` 等关系
+连接到相关步骤。工作台会在独立的泳道中显示这些上下文节点；它们不会变成流程步骤，也
+不会影响流程顺序。已知具体模型或对象时，应记录具体节点。
+
+使用 `tags` 对工作流分类和过滤，例如领域或频率。使用 `workflow_facets` 为工作流卡片
+提供数据源、工具类别等描述信息。二者都不能代替用于标识实际系统和数据的图谱节点与
+关系。完整字段、RDF 格式和自定义谓词选项见[参考手册](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_zh.md)。
+
 ## 真正会用到的四个
 
 还有别的，但一个站得住脚的图谱，通常就是由这四个搭起来的：
