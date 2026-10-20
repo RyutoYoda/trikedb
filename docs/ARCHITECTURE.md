@@ -26,7 +26,7 @@ flowchart TB
         SO("object<br/>s3:// · gs:// · az://")
         SW("table row<br/>snowflake:// · bigquery://")
     end
-    PO("oxigraph<br/>answers every read query")
+    PO("oxigraph<br/>SPARQL SELECT · ASK")
     PR("rdflib.Graph<br/>updates · owlrl · pyshacl · exports")
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
