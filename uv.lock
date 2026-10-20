@@ -2878,7 +2878,7 @@ wheels = [
 
 [[package]]
 name = "trikedb"
-version = "0.46.0"
+version = "0.46.1"
 source = { editable = "." }
 dependencies = [
     { name = "pyoxigraph" },
