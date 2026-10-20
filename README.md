@@ -91,6 +91,93 @@ trikedb query graph.yaml -w "?vendor PROVIDES ?job"
 trikedb ui graph.yaml                             # open it in a browser
 ```
 
+## Model an ordered workflow in YAML
+
+The `workflows:` section is a concise way to author a business or data process.
+It is an authoring form for a **regular knowledge graph**, not a separate
+workflow database: TrikeDB compiles it into RDF nodes and triples that can be
+saved, diffed, and queried with SPARQL through PyOxigraph.
+
+```yaml
+workflows:
+  customer-refresh:
+    label: Refresh customer data
+    summary: Validate CRM records and publish them for analytics
+    tags: [domain:customer-data, cadence:daily]
+    workflow_facets:
+      - label: Data source
+        values: [CRM]
+      - label: Transform tool
+        values: [dbt]
+    steps:
+      - id: extract-records
+        label: Extract from CRM
+        next: [validate-records]
+      - id: validate-records
+        label: Validate records
+        next: [publish-records, request-review]
+      - id: publish-records
+        label: Publish for analytics
+      - id: request-review
+        label: Request data review
+        next: [publish-records]
+```
+
+Each workflow and step has a stable ID. A step's `next` field names its
+immediate successor or successors; multiple targets express a branch, and
+multiple incoming links express a rejoin. This makes the direction explicit:
+the example says extraction comes before validation, then either review or
+publication, with review rejoining at publication. Labels, YAML list position,
+and tags do not infer or change the sequence.
+
+On load, TrikeDB creates a `workflow` node, a `process_step` node for each
+step, one `HAS_STEP` relation per step (with its order), and a directed
+`NEXT_STEP` relation for each `next` target. These are ordinary RDF facts, so
+the workflow can be queried alongside the rest of the graph. Saving normalizes
+the shorthand to the canonical `nodes:` / `triples:` representation.
+
+The loader checks the workflow structure: IDs must be unique, every `next`
+target must exist in that workflow, and the step graph must be connected and
+acyclic. Explicit `order` values must increase along each `NEXT_STEP` edge;
+when omitted, order follows the step list. Branches and rejoins are valid.
+Put decision conditions in a step's `description` or `properties`; the
+sequence graph records order, not the business meaning of a branch.
+
+### Open and explore a workflow
+
+The standard `HAS_STEP` and `NEXT_STEP` predicates enable the workflow picker
+automatically in the HTML workbench:
+
+```python
+from trikedb import TrikeDB
+
+db = TrikeDB("graph.yaml")
+db.to_html("graph.html")
+```
+
+Or generate it from the command line with `trikedb ui graph.yaml`. The picker
+searches workflow names and filters by one `tags` value. Select a workflow to
+see its ordered process, then use **全体表示** to return to the whole graph.
+Graphs with a custom vocabulary can pass `workflow_predicates` and
+`workflow_membership_predicate` to `to_html()` or the corresponding CLI
+options.
+
+### Keep workflow order separate from context
+
+Only process steps belong in the `NEXT_STEP` sequence. Model tools, platforms,
+dbt models, and specific data objects as their own graph nodes, then connect
+them to the relevant step with relations such as `IMPLEMENTED_BY`, `USES`,
+`RUNS_ON`, `READS_FROM`, or `WRITES_TO`. The workbench displays this related
+context in separate lanes; it does not turn those nodes into steps or let them
+change the process order. Record the concrete model or object when it is known.
+
+Use `tags` to classify and filter workflows (for example, by domain or
+cadence). Use `workflow_facets` for descriptive values shown on workflow
+cards, such as a data source or tool category. Neither replaces graph nodes
+and relations that identify the actual systems and data used. For the complete
+field list, RDF form, and custom-predicate options, see the
+[workflow and HTML workbench reference](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#the-html-workbench).
+
 ## The four you actually need
 
 There are more, but a graph that earns its keep is usually built out of these:

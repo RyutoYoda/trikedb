@@ -3,6 +3,15 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.46.1
+
+- **Document workflow authoring on the package page.** The PyPI README now
+  explains the `workflows:` YAML form, its generated `HAS_STEP` / `NEXT_STEP`
+  RDF, validation, workflow picker, tags, and how to keep tools and data
+  objects separate from process order. The English and Japanese READMEs carry
+  the same guidance. The architecture diagram now names the SPARQL query forms
+  Oxigraph handles rather than implying it answers every read query.
+
 ## 0.46.0
 
 - **Declare workflows in a dedicated YAML section.** Each workflow lists

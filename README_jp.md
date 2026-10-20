@@ -91,6 +91,84 @@ trikedb query graph.yaml -w "?vendor PROVIDES ?job"
 trikedb ui graph.yaml                             # ブラウザで開く
 ```
 
+## YAML で順序付きワークフローを作る
+
+`workflows:` は業務やデータ処理の流れを書くための簡潔な形式だ。
+**別のワークフロー専用データベースではなく、通常のナレッジグラフを記述する
+入力形式**である。読み込むと RDF のノードとトリプルに変換され、保存・差分確認・
+PyOxigraph による SPARQL 検索をそのまま行える。
+
+```yaml
+workflows:
+  customer-refresh:
+    label: 顧客データ更新
+    summary: CRMのレコードを検証し、分析用データを公開する
+    tags: [domain:customer-data, cadence:daily]
+    workflow_facets:
+      - label: データソース
+        values: [CRM]
+      - label: 変換ツール
+        values: [dbt]
+    steps:
+      - id: extract-records
+        label: CRMから取得
+        next: [validate-records]
+      - id: validate-records
+        label: レコードを検証
+        next: [publish-records, request-review]
+      - id: publish-records
+        label: 分析用データを公開
+      - id: request-review
+        label: データをレビュー
+        next: [publish-records]
+```
+
+ワークフローと各工程に変わらない `id` を付ける。工程の `next` には直後の工程を
+指定する。複数の接続先で分岐を、複数の接続元で合流を表せる。この例では取得、
+検証の後にレビューまたは公開へ進み、レビュー後は公開へ合流する。ラベル、YAMLの
+記載順、タグから工程の順番が推測されることはない。
+
+読み込み時、TrikeDB は `workflow` ノードと各 `process_step` ノードを作る。
+各工程への所属と順番は `HAS_STEP`、`next` の接続は方向付き `NEXT_STEP` になる。
+つまり、生成されるのは通常の RDF トリプルであり、他の知識と一緒に検索できる。
+保存すると `nodes:` / `triples:` の標準形式に正規化される。
+
+構造も読み込み時に検証される。IDの重複、ワークフロー内にない `next` の参照先、
+循環、分断された工程グラフは拒否される。明示した `order` は各 `NEXT_STEP` の
+向きに沿って増加しなければならない。省略時はYAMLの工程順から番号が付く。分岐と
+合流は許可される。分岐の業務上の条件は `description` や `properties` に書く。
+順序グラフが表すのは工程の前後関係であり、条件の意味までは推測しない。
+
+### ワークフローを表示する
+
+標準の `HAS_STEP` と `NEXT_STEP` を使うと、HTML ワークベンチでワークフロー選択が
+自動で有効になる。
+
+```python
+from trikedb import TrikeDB
+
+db = TrikeDB("graph.yaml")
+db.to_html("graph.html")
+```
+
+コマンドラインなら `trikedb ui graph.yaml` で生成できる。選択パネルでは名前を
+検索し、`tags` の値で絞り込める。ワークフローを選ぶと工程が順序付きで表示され、
+**全体表示**でグラフ全体へ戻る。独自の述語を使う場合は、`to_html()` の
+`workflow_predicates` / `workflow_membership_predicate` または対応するCLIオプションを指定する。
+
+### 工程順とツール・データの関係を分ける
+
+`NEXT_STEP` に入れるのは処理工程だけだ。ツール、プラットフォーム、dbtモデル、
+個別のデータオブジェクトは独立したグラフノードにし、関係する工程と
+`IMPLEMENTED_BY` / `USES` / `RUNS_ON` / `READS_FROM` / `WRITES_TO` などで結ぶ。
+ワークベンチはこれらを工程とは別のレーンに表示する。ツールやデータが工程順の
+一部になることはない。対象モデルやオブジェクトが分かるなら、具体的なノードを記録する。
+
+`tags` は領域や頻度など、ワークフローの分類と絞り込みに使う。`workflow_facets` は
+データソースやツール区分など、選択カードに表示する説明情報だ。実際に使うシステムや
+データを特定するグラフノード・関係の代わりにはならない。対応フィールド、RDF形式、
+独自述語の指定は[リファレンス](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)を参照。
+
 ## 実際に使うのはこの4つ
 
 他にもあるが、役に立っているグラフはたいていこの4つで組み上がっている:
