@@ -793,13 +793,13 @@ function workflowDefinitions() {
         ...facets.flatMap(f => [f.label, ...f.values])].join(" ").toLocaleLowerCase() };
   }).sort((a, b) => a.label.localeCompare(b.label));
 }
-// The graph is static in this viewer. Build the workflow catalog and its
-// search text once, then only filter the compact index as the user types.
+// Retain the full catalog for layout. The picker derives its choices from
+// current graph and node-type filters, which can change after page load.
 const WORKFLOW_CATALOG = workflowDefinitions();
 const WORKFLOW_PAGE_SIZE = 40;
 let workflowResultLimit = WORKFLOW_PAGE_SIZE;
 function renderWorkflowPicker() {
-  const definitions = WORKFLOW_CATALOG;
+  const definitions = workflowDefinitions();
   const tags = [...new Set(definitions.flatMap(w => w.tags))].sort();
   const previousTag = workflowTagFilterEl.value;
   workflowTagFilterEl.replaceChildren(new Option("すべて", ""));
@@ -1056,6 +1056,17 @@ focusDepthInput.addEventListener("input", () => {
 });
 unfocusButton.onclick = clearFocus;
 function refreshVisibility() {
+  if (workflowMode && selectedWorkflow &&
+      !workflowDefinitions().some(workflow => workflow.id === selectedWorkflow)) {
+    const pickerWasOpen = !workflowPicker.hidden;
+    clearFocus();
+    if (pickerWasOpen) {
+      workflowPicker.hidden = false;
+      workflowButton.setAttribute("aria-expanded", "true");
+      renderWorkflowPicker();
+    }
+    return;
+  }
   const shown = visibleNodes();
   const keep = new Set(shown);
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), hidden: !keep.has(id) })));
@@ -1079,6 +1090,7 @@ function refreshVisibility() {
     network.fit({ nodes: visualIds(shown), animation: true });
   }
   framed = sig;
+  if (!workflowPicker.hidden) renderWorkflowPicker();
   if (focusCenter !== null || workflowMode) updateFocus();
 }
 const legend = document.getElementById("legend");
