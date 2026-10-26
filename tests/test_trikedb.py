@@ -164,7 +164,7 @@ def test_html_export(db, tmp_path):
     assert "overflow-x: auto" in html  # legend slides instead of clipping when crowded
     assert "function setTypeHidden" in html  # select-all/clear reuse per-label toggle
     assert 'id="legend-ctl"' in html  # all/none controls for the node-type checkboxes
-    assert 'id="focus-depth"' in html and 'placeholder="∞"' in html
+    assert 'id="focus-depth"' in html and 'placeholder="空欄＝制限なし"' in html
     assert 'id="btn-unfocus"' in html and "function focusedNodes(center, depth)" in html
     assert "hiddenPreds.has(t.p)" in html and "function clearFocus()" in html
     assert 'network.on("click", (params) =>' in html and "applyFocusStyles();" in html
@@ -1271,7 +1271,7 @@ def test_workflow_view_uses_explicit_sequence_predicates_for_columns():
     assert 'id="workflow-search"' in html and 'id="workflow-tag-filter"' in html
     assert "const next = new Map([...workflowNodes].map(id => [id, []]))" in html
     assert "x: (levels.get(id) - 1) * 260" in html
-    assert 'arrows: workflowMode ? { to: { enabled: false } } : "to"' in html
+    assert 'arrows: workflowMode || !showDetail ? { to: { enabled: false } } : "to"' in html
 
 
 @pytest.mark.parametrize("defect, message", [
@@ -4866,8 +4866,8 @@ def test_identifier_rules_are_per_dialect():
     """
     from trikedb import storage_sql
 
-    _, table, name = storage_sql._split("bigquery://ca-data-1234.ds.T/kg/g")
-    assert (table, name) == ("ca-data-1234.ds.T", "kg/g")
+    _, table, name = storage_sql._split("bigquery://demo-data-1234.ds.T/kg/g")
+    assert (table, name) == ("demo-data-1234.ds.T", "kg/g")
     _, snow, _ = storage_sql._split("snowflake://DB.PUBLIC.T/g")
     assert snow == "DB.PUBLIC.T"
 
@@ -4890,10 +4890,10 @@ def test_quoting_is_applied_at_the_point_of_use():
     """
     from trikedb import storage_sql
 
-    ddl = storage_sql.ddl_for("bigquery://ca-data-1234.ds.TRIKE_GRAPHS/g")
-    assert "CREATE TABLE IF NOT EXISTS `ca-data-1234.ds.TRIKE_GRAPHS`" in ddl
-    assert "CREATE OR REPLACE VIEW `ca-data-1234.ds.KG_NODE`" in ddl
-    assert "`ca-data-1234.ds`" not in ddl          # no half-quoted schema
+    ddl = storage_sql.ddl_for("bigquery://demo-data-1234.ds.TRIKE_GRAPHS/g")
+    assert "CREATE TABLE IF NOT EXISTS `demo-data-1234.ds.TRIKE_GRAPHS`" in ddl
+    assert "CREATE OR REPLACE VIEW `demo-data-1234.ds.KG_NODE`" in ddl
+    assert "`demo-data-1234.ds`" not in ddl          # no half-quoted schema
 
     snow = storage_sql.ddl_for("snowflake://DB.PUBLIC.TRIKE_GRAPHS/g")
     assert "CREATE OR REPLACE VIEW DB.PUBLIC.KG_NODE" in snow
@@ -5551,6 +5551,8 @@ def test_the_repo_ships_the_files_an_open_source_project_is_judged_by():
     # PEP 561: without this marker every annotation in the package is ignored
     # by type checkers, so shipping the hints without it ships nothing.
     assert (root / "src" / "trikedb" / "py.typed").is_file()
-    assert 'trikedb = ["py.typed"]' in (root / "pyproject.toml").read_text(
-        encoding="utf-8"
-    ), "py.typed exists but is not packaged, so it will not be in the wheel"
+    package_data = (root / "pyproject.toml").read_text(encoding="utf-8").split(
+        "[tool.setuptools.package-data]", 1
+    )[1].split("\n[", 1)[0]
+    assert '"py.typed"' in package_data, "py.typed must be included in the wheel"
+    assert '"trikedb-horizontal.png"' in package_data, "the HTML logo must be packaged"

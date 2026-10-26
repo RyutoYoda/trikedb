@@ -819,12 +819,38 @@ in [SCALING.md](SCALING.md).)
 
 `to_html()` / `trike ui generate` produce a single-file, CDN-dependent page:
 
+The header embeds the TrikeDB logo. Set the graph title beside it with
+`--title` or `to_html(title=...)`; the exported HTML needs no separate logo file.
+
+- the whole graph is visible on open. The left explorer holds search, workspace
+  and type filters, workflow selection, and node-focus range; the right panel holds
+  details. The menu button collapses the explorer. Focus still mutes out-of-range
+  nodes and edges instead of removing them.
+  The explorer uses Japanese labels when the browser language is Japanese;
+  `?lang=ja` also selects them explicitly.
+- the relation filter holds a separate definitions button. Advanced queries
+  hold the SPARQL editor and search-to-SPARQL action; the latter is disabled
+  until a search term is entered and searches subjects, predicates, and objects.
+- SPARQL `SELECT` results that contain graph nodes show those nodes and their
+  neighbors within the explorer's hop range (0 means exact result nodes),
+  with the result table kept above the graph.
+  **Back to whole graph** clears this result view. `ASK` and results without
+  graph nodes do not narrow the graph.
+- graphs over 500 nodes keep all nodes and connections in the overview, but
+  draw edge labels, arrows, and shadows only for focused relationships. Their
+  drag and zoom gestures temporarily omit edges. Node focus defaults to two
+  hops; a blank hop field still means unlimited traversal.
+- a relation card shows its predicate name and its `ontology.predicates`
+  description side by side; the relation filter in the left explorer shows the
+  same description below the predicate name. Put a reader-facing translation in that declaration
+  (for example, `NEXT_STEP: 次の工程へ進む`). Undeclared predicates retain their
+  original name. Long event `note` values start collapsed and remain expandable.
 - force-directed clusters or left-to-right flow (`--layout auto` picks
   by graph shape); workspaces tile each member graph into its own cell
   with per-graph filter chips
 - click a node → detail panel (all properties, URLs linkified, in/out edges)
 - click a node → focus its reachable neighborhood; hidden predicates and graph/type filters constrain traversal. Enter a hop limit (blank `∞` means unlimited), then use **全体表示**, click the canvas background, or press **Esc** to clear focus. Out-of-range nodes and edges stay visible in muted gray. This is neighborhood navigation: it follows edges both ways and does not encode business-process order.
-- pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; the **workflow** button opens a searchable, tag-filtered picker. It renders 40 results at a time, so large catalogs stay responsive. Its hint tells you whether you are in the whole graph, a node focus, or an already selected workflow. Workflow cards can include a `summary` property to explain their purpose. Closing the picker or pressing Esc cancels the choice and preserves the current view; choosing a workflow switches to its ordered process view. Clicking a node inside that view opens its details without leaving the workflow. **全体表示** clears workflow or node focus. The sequence relations alone are laid out left-to-right. Directly related tools, models, platforms, and data objects appear highlighted in nested lanes beneath their process step by default; a linked model's runtime and materialized objects are included from their graph relations. These context nodes never affect process order. Their predicate-colored links have no arrowheads; sequence direction comes from the left-to-right placement and `NEXT_STEP` label, avoiding markers over node text. The context checkbox toggles this lane. Export validates each declared workflow's order graph: it must be connected and acyclic; sequence edges touching a declared step must stay within a workflow; and supplied `order` values must be positive and increase along each edge. Branches and rejoins are allowed, and unrelated graph components using the same sequence predicate are ignored.
+- pass `workflow_predicates=["NEXT_STEP"]` and `workflow_membership_predicate="HAS_STEP"` to `to_html()` (or `--workflow-predicates NEXT_STEP --workflow-membership-predicate HAS_STEP` to `trike ui generate`) to enable **workflow** mode. The membership relation explicitly connects each workflow definition node to its steps; the **workflow** button opens a searchable, tag-filtered picker. It renders 8 results at a time, so large catalogs stay responsive. Its hint tells you whether you are in the whole graph, a node focus, or an already selected workflow. Workflow cards can include a `summary` property to explain their purpose. Closing the picker or pressing Esc cancels the choice and preserves the current view; choosing a workflow switches to its ordered process view. Clicking a node inside that view opens its details without leaving the workflow. **全体表示** clears workflow or node focus. The sequence relations alone are laid out left-to-right. Directly related tools, models, platforms, and data objects appear highlighted in nested lanes beneath their process step by default; a linked model's runtime and materialized objects are included from their graph relations. These context nodes never affect process order. Their predicate-colored links have no arrowheads; sequence direction comes from the left-to-right placement and `NEXT_STEP` label, avoiding markers over node text. The context checkbox toggles this lane. Export validates each declared workflow's order graph: it must be connected and acyclic; sequence edges touching a declared step must stay within a workflow; and supplied `order` values must be positive and increase along each edge. Branches and rejoins are allowed, and unrelated graph components using the same sequence predicate are ignored.
 - A workflow can be authored with a dedicated `workflows:` section. Each workflow and step has a stable graph node ID; `next` names the directed next step(s), so a step can branch or rejoin. Steps are not inferred from labels, tags, or tool names. Example:
 
   ```yaml
@@ -896,7 +922,8 @@ in [SCALING.md](SCALING.md).)
   entities render as red diamonds; that is a prompt to promote the event
   rather than a finished shape (`--events AFFECTED_BY` to pin which
   predicates count)
-- light/dark toggle (persisted), content hash embedded for `trikedb check`
+- light theme by default; light/dark toggle (persisted), with `?theme=light|dark`
+  overriding the saved choice for a given URL; content hash embedded for `trikedb check`
 
 ## Where the graph lives
 

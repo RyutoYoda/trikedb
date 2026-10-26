@@ -3,6 +3,20 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.47.0
+
+- **Explore large graphs with a clearer HTML workbench.** The generated page
+  starts in light mode with a sidebar for workflows, filters, search, and
+  advanced queries. Its header embeds the TrikeDB logo beside a configurable
+  graph title. Large overviews omit expensive edge labels, arrows, and shadows
+  until a focus is selected, and returning to the whole graph does not restart
+  physics. Node and workflow selection retain the full graph as muted context.
+- **See SPARQL results in the graph.** `SELECT` results containing graph nodes
+  narrow the view to those nodes and the configured number of relation hops.
+  The result table stays visible above the graph; the return action restores
+  the overview. The detail panel and relation definitions make provenance,
+  long notes, and predicate descriptions easier to read.
+
 ## 0.46.1
 
 - **Document workflow authoring on the package page.** The PyPI README now
