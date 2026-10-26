@@ -447,6 +447,7 @@ const jitter = (id, salt) => {
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
+const largeGraph = ids.length > 500;
 // Never pass user names into the renderer's object-keyed internal indexes.
 const nodeIds = new Map(ids.map((name, i) => [name, i]));
 const visualIds = names => names.map(name => nodeIds.get(name));
@@ -604,7 +605,7 @@ const FREE_OPTS = {
   physics: { enabled: true, solver: "forceAtlas2Based",
              forceAtlas2Based: { gravitationalConstant: -120, centralGravity: 0.008,
                                  springLength: 190, springConstant: 0.05, avoidOverlap: 1 },
-             stabilization: { iterations: Math.min(1200, Math.max(200, ids.length * 12)) } },
+             stabilization: { iterations: largeGraph ? 250 : Math.min(1200, Math.max(200, ids.length * 12)) } },
 };
 let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
@@ -634,16 +635,11 @@ if (!flow) {
   });
 }
 
-// vis hides a label once it would render under ~4px, so on a big graph the
-// whole thing fits on screen as rows of blank boxes and you have to zoom in
-// to find out what anything is. Tiny text still reads as "there is a name
-// here", and you can still see which cluster you want. Passing this through
-// the options is not an option: vis rewrites any `scaling` we hand it and
-// leaves the label with a NaN font size. So reach for the threshold vis
-// built itself, and do it every frame — vis rebuilds a node's options
-// whenever one is updated (theme switch, type filter), which would put the
-// default back.
-network.on("beforeDrawing", function () {
+// For small graphs, show labels even when zoomed out. Vis rebuilds node
+// options after updates, so this threshold must be restored each frame.
+// Large graphs retain the default threshold to avoid drawing every tiny label;
+// labels become visible as users zoom in.
+if (!largeGraph) network.on("beforeDrawing", function () {
   for (const id in network.body.nodes) {
     const o = network.body.nodes[id].options;
     if (o && o.scaling && o.scaling.label) o.scaling.label.drawThreshold = 0;
@@ -738,7 +734,7 @@ function applyFocusStyles() {
             highlight: { border: th.hlBorder, background: th.hlBg } }
         : { border: dim, background: dim, highlight: { border: dim, background: dim } },
       borderWidth: inContext ? 3 : n.borderWidth,
-      shadow: { enabled: inFocus || inContext,
+      shadow: { enabled: (inFocus || inContext) && (!largeGraph || !!active),
         color: inContext ? (ev ? "rgba(247,79,79,0.92)" : base)
           : (ev ? "rgba(247,79,79,0.72)" : th.hlBorder),
         size: inContext ? 24 : 16, x: 0, y: 0 },
