@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.46.1"
+version = "0.47.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
@@ -90,7 +90,7 @@ where = ["src"]
 # The modules are annotated throughout; without this marker file PEP 561 says
 # a type checker must ignore all of it, so anyone importing trikedb sees Any.
 [tool.setuptools.package-data]
-trikedb = ["py.typed"]
+trikedb = ["py.typed", "trikedb-horizontal.png"]
 
 [tool.pytest.ini_options]
 # Name the suites explicitly: a bare `pytest` at the repo root otherwise

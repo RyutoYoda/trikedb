@@ -4866,8 +4866,8 @@ def test_identifier_rules_are_per_dialect():
     """
     from trikedb import storage_sql
 
-    _, table, name = storage_sql._split("bigquery://ca-data-1234.ds.T/kg/g")
-    assert (table, name) == ("ca-data-1234.ds.T", "kg/g")
+    _, table, name = storage_sql._split("bigquery://demo-data-1234.ds.T/kg/g")
+    assert (table, name) == ("demo-data-1234.ds.T", "kg/g")
     _, snow, _ = storage_sql._split("snowflake://DB.PUBLIC.T/g")
     assert snow == "DB.PUBLIC.T"
 
@@ -4890,10 +4890,10 @@ def test_quoting_is_applied_at_the_point_of_use():
     """
     from trikedb import storage_sql
 
-    ddl = storage_sql.ddl_for("bigquery://ca-data-1234.ds.TRIKE_GRAPHS/g")
-    assert "CREATE TABLE IF NOT EXISTS `ca-data-1234.ds.TRIKE_GRAPHS`" in ddl
-    assert "CREATE OR REPLACE VIEW `ca-data-1234.ds.KG_NODE`" in ddl
-    assert "`ca-data-1234.ds`" not in ddl          # no half-quoted schema
+    ddl = storage_sql.ddl_for("bigquery://demo-data-1234.ds.TRIKE_GRAPHS/g")
+    assert "CREATE TABLE IF NOT EXISTS `demo-data-1234.ds.TRIKE_GRAPHS`" in ddl
+    assert "CREATE OR REPLACE VIEW `demo-data-1234.ds.KG_NODE`" in ddl
+    assert "`demo-data-1234.ds`" not in ddl          # no half-quoted schema
 
     snow = storage_sql.ddl_for("snowflake://DB.PUBLIC.TRIKE_GRAPHS/g")
     assert "CREATE OR REPLACE VIEW DB.PUBLIC.KG_NODE" in snow

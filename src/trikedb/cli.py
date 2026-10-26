@@ -189,7 +189,8 @@ def main(argv=None) -> int:
     p_html.add_argument("file", nargs="?", default=None,
                         help="graph file; omit it to pick up the one in this directory")
     p_html.add_argument("-o", "--out", default=None)
-    p_html.add_argument("--title", default=None)
+    p_html.add_argument("--title", default=None,
+                        help="graph title shown beside the TrikeDB logo")
     p_html.add_argument(
         "--events", default=None, metavar="PRED1,PRED2",
         help="comma-separated predicates to treat as change events, attached "
@@ -217,7 +218,8 @@ def main(argv=None) -> int:
              "instead of opening it",
     )
     p_ui.add_argument("-o", "--out", default=None, help="output path for `ui generate`")
-    p_ui.add_argument("--title", default=None)
+    p_ui.add_argument("--title", default=None,
+                      help="graph title shown beside the TrikeDB logo")
     p_ui.add_argument(
         "--events", default=None, metavar="PRED1,PRED2",
         help="comma-separated predicates to treat as change events",

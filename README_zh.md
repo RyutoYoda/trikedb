@@ -151,6 +151,10 @@ db.to_html("graph.html")
 词汇，可向 `to_html()` 传入 `workflow_predicates` 和
 `workflow_membership_predicate`，或使用对应的 CLI 选项。
 
+HTML 工作台的左侧集中放置搜索、筛选和 SPARQL；顶部显示内嵌的 TrikeDB 标志，
+图谱标题可用 `--title` 修改。SPARQL `SELECT` 结果可按左侧设置的跳数显示相邻节点；
+设为 0 时只显示结果节点。
+
 ### 将流程顺序与上下文分开
 
 只有处理步骤属于 `NEXT_STEP` 顺序。工具、平台、dbt 模型和具体数据对象应各自作为图谱

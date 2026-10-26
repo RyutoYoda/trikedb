@@ -11,9 +11,11 @@ use, never hand-rolled).
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from html import escape
+from importlib.resources import files
 from pathlib import Path
 from typing import Union
 
@@ -126,12 +128,12 @@ _TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>__TITLE__</title>
+<title>__TITLE__ · TrikeDB</title>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
   :root { --bg: #14161b; --panel: #1e2129; --border: #32363f; --text: #e8e8ea; --dim: #9a9daa;
           --hdr: 52px; }
-  body.light { --bg: #f4f5f8; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
+  body.light { --bg: #edf1f6; --panel: #ffffff; --border: #d7dae2; --text: #1b1e26; --dim: #646a78; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
   #graph { position: fixed; inset: var(--hdr) 0 0 0; }
 
@@ -177,7 +179,12 @@ _TEMPLATE = """<!DOCTYPE html>
             display: flex; flex-wrap: wrap; align-items: center; align-content: center;
             gap: 8px 10px; padding: 6px 14px; box-sizing: border-box;
             background: var(--panel); border-bottom: 1px solid var(--border); }
-  #header h1 { font-size: 15px; margin: 0; white-space: nowrap; }
+  #brand { display: flex; align-items: center; flex: 0 0 auto; }
+  #brand img { display: block; width: 124px; height: auto; }
+  body:not(.light) #brand { background: #f8f9fc; border-radius: 5px; padding: 2px 4px; }
+  #header h1 { font-size: 15px; margin: 0; white-space: nowrap;
+               max-width: min(44vw, 560px); overflow: hidden; text-overflow: ellipsis;
+               border-left: 1px solid var(--border); padding-left: 12px; }
   /* Basis 0, not content width: a line breaks on base sizes before any
      item shrinks, so leaving these at their content width would wrap the
      bar at widths where it still fits. They grow back into the space the
@@ -247,6 +254,7 @@ _TEMPLATE = """<!DOCTYPE html>
   #sparql { position: fixed; top: var(--hdr); left: 0; right: 0; z-index: 19; display: none;
             background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 14px; }
   #sparql.open { display: block; }
+  body.sparql-open #graph { top: calc(var(--hdr) + var(--sparql-height, 0px)); }
   /* never cover the detail panel (its close button stays visible and unambiguous) */
   body.detail-open #sparql { right: 330px; }
   /* The member-graph chips ran under the panel, which draws over them. */
@@ -291,6 +299,11 @@ _TEMPLATE = """<!DOCTYPE html>
           font-family: ui-monospace, Menlo, monospace; color: #14161b; font-weight: 700; margin-right: 6px; }
   .rel .attr { color: var(--dim); font-size: 11px; margin-top: 4px;
                font-family: ui-monospace, Menlo, monospace; }
+  .pred-meaning { display: inline; color: var(--dim); font-size: 11px; margin-right: 3px;
+    line-height: 1.45; overflow-wrap: anywhere; }
+  .event-note { margin-top: 8px; color: var(--dim); font-size: 11px; }
+  .event-note summary { cursor: pointer; overflow-wrap: anywhere; }
+  .event-note .full-note { margin-top: 7px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .rel .attr a { color: #7aa3d8; }
   a.nodelink { color: var(--text); cursor: pointer; text-decoration: underline dotted; }
   #detail .nodeid { font-family: ui-monospace, Menlo, monospace; font-size: 11px;
@@ -307,7 +320,8 @@ _TEMPLATE = """<!DOCTYPE html>
 
   .state { display: inline-block; border: 1px solid #7a4444; border-radius: 7px; padding: 1px 7px;
            font-size: 10px; color: #f7784f; white-space: nowrap; letter-spacing: .02em;
-           font-family: ui-monospace, Menlo, monospace; }
+           font-family: ui-monospace, Menlo, monospace; max-width: 100%; box-sizing: border-box;
+           overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
   .when { font-size: 10px; color: var(--dim); white-space: nowrap;
           font-family: ui-monospace, Menlo, monospace; }
   .rel.event { border-left: 2px solid #7a4444; }
@@ -319,11 +333,99 @@ _TEMPLATE = """<!DOCTYPE html>
   body.light .state { border-color: #d89b9b; color: #c73e1d; }
   body.light .rel.event { border-left-color: #d89b9b; }
   body.light .rel.event[data-node]:hover { border-color: #c73e1d; }
+  /* Explorer layout. The complete graph remains on the canvas; navigation
+     changes only which controls are visible and where they are placed. */
+  :root { --sidew: 270px; }
+  #sidebar { position: fixed; top: var(--hdr); left: 0; bottom: 0; width: var(--sidew);
+    z-index: 19; box-sizing: border-box; overflow-y: auto; padding: 16px 14px 28px;
+    background: var(--panel); border-right: 1px solid var(--border); scrollbar-width: thin; }
+  #sidebar h2 { margin: 18px 0 8px; color: var(--dim); font-size: 11px;
+    font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  #sidebar h2:first-child { margin-top: 0; }
+  #sidebar .nav-actions { display: grid; gap: 6px; }
+  #sidebar .nav-actions .btn { width: 100%; text-align: left; min-height: 38px;
+    white-space: normal; }
+  #sidebar .nav-actions .btn:focus-visible, #sidebar summary:focus-visible,
+  #sidebar #graphbar .btn:focus-visible { outline: 2px solid #8cb5f7; outline-offset: 2px; }
+  #sidebar #nav-modes .btn.on {
+    background: #2c4a6e; border-color: #5a83b8; font-weight: 700; }
+  #sidebar #nav-modes .btn.on::before { content: "● "; color: #86c4ff; }
+  #sidebar #focus-status { margin: 8px 0 12px; color: var(--dim); font-size: 11px;
+    line-height: 1.45; overflow-wrap: anywhere; }
+  #sidebar #nav-depth-group { margin: 12px 0 18px; }
+  #sidebar #nav-depth-label { display: block; color: var(--text); font-size: 12px;
+    font-weight: 600; }
+  #sidebar .nav-help { margin: 4px 0 8px; color: var(--dim); font-size: 11px;
+    line-height: 1.45; }
+  #sidebar #nav-relation-guide { margin: 2px 0 10px; }
+  #sidebar #nav-relation-guide .btn { width: 100%; text-align: left;
+    white-space: normal; }
+  #sidebar .nav-actions .btn:disabled { opacity: .5; cursor: not-allowed; }
+  #sidebar .nav-group { margin-top: 15px; border-top: 1px solid var(--border);
+    padding-top: 12px; }
+  #sidebar .nav-group summary { cursor: pointer; color: var(--text); font-size: 12px;
+    font-weight: 600; min-height: 30px; }
+  #sidebar .nav-group[open] summary { margin-bottom: 8px; }
+  #sidebar #graph-filter-count { color: var(--dim); font-weight: 400; }
+  #sidebar #nav-layers .btn.active { background: var(--bg); border-color: var(--border); }
+  #sidebar #nav-layers .btn.active::before { content: "☑ "; color: #7fd59c; }
+  #sidebar #nav-layers .btn:not(.active)::before { content: "□ "; color: var(--dim); }
+  #sidebar #search { width: 100%; box-sizing: border-box; }
+  #sidebar #search-count { display: block; min-height: 16px; text-align: right; }
+  #sidebar #graphbar { position: static; display: none; flex-direction: column;
+    align-items: stretch; gap: 5px; overflow: visible; padding: 0; border: 0;
+    background: none; }
+  #sidebar #graphbar .btn { width: 100%; text-align: left; overflow: hidden;
+    text-overflow: ellipsis; }
+  #sidebar #graphbar .btn.active { background: var(--bg); border-color: var(--border); }
+  #sidebar #graphbar .btn::before { content: "□ "; color: var(--dim); }
+  #sidebar #graphbar .btn.active::before { content: "☑ "; color: #7fd59c; }
+  #sidebar #graphbar .lg { display: none; }
+  #sidebar #graphbar .selbtn { width: fit-content; }
+  #sidebar #legend { display: flex; flex-direction: column; align-items: flex-start;
+    gap: 8px; margin: 0; max-width: none; overflow: visible; }
+  #sidebar #legend-ctl { margin: 8px 0; }
+  #sidebar #nav-relations-list { display: grid; gap: 4px; }
+  #sidebar #nav-relations-list .lg { display: flex; gap: 7px; align-items: flex-start;
+    min-width: 0; padding: 5px 2px; white-space: normal; line-height: 1.4; }
+  #sidebar #nav-relations-list .lg b { flex: 0 0 16px; margin-top: 7px; }
+  #sidebar #nav-relations-list .relation-text { display: grid; min-width: 0;
+    overflow-wrap: anywhere; }
+  #sidebar #nav-relations-list .relation-name { color: var(--text); font-size: 12px;
+    font-family: ui-monospace, Menlo, monospace; }
+  #sidebar #nav-relations-list .relation-description { color: var(--dim);
+    font-size: 12px; }
+  #sidebar #workflow-picker { position: static; width: 100%; max-height: none;
+    overflow: visible; padding: 9px; margin-top: 8px; box-shadow: none; }
+  #sidebar #workflow-picker .picker-row { flex-wrap: wrap; }
+  #sidebar #workflow-search { flex: 0 0 100%; box-sizing: border-box; width: 100%; }
+  #sidebar #workflow-tag-label { flex: 0 0 100%; }
+  #sidebar #workflow-tag-filter { flex: 0 0 100%; box-sizing: border-box;
+    width: 100%; max-width: 100%; }
+  #sidebar .lg.toggle:focus-visible { outline: 2px solid #8cb5f7;
+    outline-offset: 3px; border-radius: 3px; }
+  #sidebar #focus-depth { width: 100%; margin-top: 6px; }
+  #graph { left: var(--sidew); }
+  body.strip-on #graph { left: var(--sidew); }
+  #strip, #sparql { left: var(--sidew); }
+  #sparql { top: var(--hdr) !important; }
+  #btn-sidebar { flex: 0 0 auto; }
+  body.sidebar-closed #sidebar { transform: translateX(-100%); }
+  body.sidebar-closed #graph, body.sidebar-closed #strip,
+  body.sidebar-closed #sparql { left: 0; }
+  body.sidebar-closed.strip-on #graph { left: 0; }
+  @media (max-width: 760px) {
+    #sidebar { box-shadow: 12px 0 30px rgba(0,0,0,.3); }
+    #graph, body.strip-on #graph, #strip, #sparql { left: 0; }
+    #subtitle { display: none; }
+  }
 </style>
 </head>
-<body>
+<body class="light">
 <div id="header">
-  <h1>&#x1F996; __TITLE__</h1>
+  <button class="btn" id="btn-sidebar" type="button" aria-controls="sidebar" aria-expanded="true" title="toggle explorer">☰</button>
+  <div id="brand"><img src="data:image/png;base64,__BRAND_LOGO__" alt="TrikeDB"></div>
+  <h1 title="__TITLE__">__TITLE__</h1>
   <div id="subtitle">__SUBTITLE__</div>
   <div id="legend"></div>
   <span id="legend-ctl"></span>
@@ -335,14 +437,47 @@ _TEMPLATE = """<!DOCTYPE html>
     <button class="btn" id="btn-events" title="every event in time order, newest first">events</button>
     <button class="btn" id="btn-onto" title="all predicate types and their declarations: domain, range, requires, by">predicates</button>
     <button class="btn" id="btn-workflow" title="open the workflow picker" aria-expanded="false" aria-pressed="false" hidden>workflow</button>
-    <span title="maximum number of relations to follow">hop</span>
-    <input id="focus-depth" type="number" min="0" step="1" placeholder="∞" aria-label="maximum focus hops; blank means unlimited" title="focus traversal depth; blank means unlimited">
-    <button class="btn" id="btn-unfocus" title="return to the whole graph" hidden>全体表示</button>
+    <span id="focus-label" title="maximum number of relations to follow">hop</span>
+    <input id="focus-depth" type="number" min="0" step="1" inputmode="numeric" placeholder="空欄＝制限なし" aria-label="number of relation hops when focusing a node; blank means unlimited" title="node focus depth; blank means unlimited">
+    <button class="btn" id="btn-unfocus" title="clear the selection and return to the whole graph" hidden>← 全体に戻る</button>
     <button class="btn" id="btn-fit">Fit</button>
-    <button class="btn" id="btn-theme" title="toggle light/dark">light</button>
+    <button class="btn" id="btn-theme" title="switch to dark mode">dark</button>
   </div>
 </div>
 
+<aside id="sidebar" aria-label="Graph explorer">
+  <h2 id="nav-title-view">View</h2>
+  <div id="nav-modes" class="nav-actions"></div>
+  <div id="focus-status" aria-live="polite">Showing the whole graph</div>
+  <div id="nav-depth-group">
+    <label id="nav-depth-label" for="focus-depth">Node and SPARQL result range</label>
+    <p id="nav-depth-help" class="nav-help">How many links from a selected node or SPARQL match to show? Large graphs start at 2; 0 shows matches only, blank means unlimited.</p>
+    <div id="nav-depth"></div>
+  </div>
+  <div id="nav-workflows"></div>
+  <h2 id="nav-title-search">Search</h2>
+  <div id="nav-search"></div>
+  <details id="nav-workspaces" class="nav-group">
+    <summary><span id="nav-title-workspaces">Workspaces</span> <span id="graph-filter-count"></span></summary>
+    <div id="nav-graphs"></div>
+  </details>
+  <details id="nav-node-types" class="nav-group">
+    <summary id="nav-title-types">Node types</summary>
+    <div id="nav-types"></div>
+  </details>
+  <details id="nav-relations" class="nav-group">
+    <summary id="nav-title-relations">Relations</summary>
+    <div id="nav-relation-guide"></div>
+    <div id="nav-relations-list"></div>
+  </details>
+  <h2 id="nav-title-layers">Layers</h2>
+  <div id="nav-layers" class="nav-actions"></div>
+  <details id="nav-advanced" class="nav-group">
+    <summary id="nav-title-advanced">Advanced queries</summary>
+    <p id="nav-query-help" class="nav-help">Write a SPARQL query, or turn the search term above into one and run it.</p>
+    <div id="nav-advanced-actions" class="nav-actions"></div>
+  </details>
+</aside>
 <div id="graphbar"></div>
 <section id="workflow-picker" hidden aria-label="workflow selector">
   <div id="workflow-picker-header">
@@ -365,7 +500,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
   <div class="row">
     <button class="btn" id="btn-run">Run</button>
-    <span class="hint">SPARQL 1.1 via Oxigraph (WASM) &middot; prefixes <code>t:</code> and <code>rdf:</code> are pre-bound &middot; edge attrs are reified (<code>?st rdf:subject ?s ; t:note ?n</code>) &middot; matching nodes get highlighted</span>
+    <span class="hint">SPARQL 1.1 via Oxigraph (WASM) &middot; prefixes <code>t:</code> and <code>rdf:</code> are pre-bound &middot; edge attrs are reified (<code>?st rdf:subject ?s ; t:note ?n</code>) &middot; result nodes and their connections are shown in the graph</span>
   </div>
   <div id="results"></div>
 </div>
@@ -401,6 +536,47 @@ const linkify = (s) => {
     start = match.index + url.length;
   }
   return result + esc(text.slice(start));
+};
+
+// Move the existing controls into the HTML workbench's own explorer. Keeping
+// their IDs and listeners intact preserves filters, focus, and workflow mode.
+const place = (id, target) => document.getElementById(target).appendChild(document.getElementById(id));
+for (const id of ["search", "search-count"]) place(id, "nav-search");
+for (const id of ["btn-unfocus", "btn-workflow"]) place(id, "nav-modes");
+place("btn-events", "nav-layers");
+place("btn-onto", "nav-relation-guide");
+for (const id of ["btn-sparql", "btn-tosparql"]) place(id, "nav-advanced-actions");
+place("workflow-picker", "nav-workflows");
+place("graphbar", "nav-graphs");
+for (const id of ["legend-ctl", "legend"]) place(id, "nav-types");
+document.getElementById("focus-label").remove();
+place("focus-depth", "nav-depth");
+const uiJa = (new URLSearchParams(location.search).get("lang") || navigator.language)
+  .toLowerCase().startsWith("ja");
+if (uiJa) {
+  for (const [id, label] of Object.entries({
+    "nav-title-view": "表示", "nav-title-search": "検索",
+    "nav-title-workspaces": "ワークスペース", "nav-title-types": "ノード種別",
+    "nav-title-relations": "関係の種類",
+    "nav-title-layers": "表示レイヤー", "nav-title-advanced": "高度な検索",
+    "nav-depth-label": "選択・SPARQL結果の表示範囲", "btn-workflow": "ワークフローを選ぶ",
+    "nav-depth-help": "起点から何段先まで表示するか。大きいグラフは初期値2段。0は該当ノードだけ、1は直接つながる先まで、空欄は制限なし。",
+    "nav-query-help": "SPARQLを直接編集できます。検索語から作る場合は、主語・関係・目的語を対象にクエリを実行します。",
+    "btn-sparql": "SPARQLクエリを開く",
+    "btn-tosparql": "検索語からSPARQLを作って実行",
+  })) document.getElementById(id).textContent = label;
+  document.getElementById("search").placeholder = "ノードを検索…";
+  document.getElementById("workflow-search").placeholder = "ワークフローを検索…";
+  document.getElementById("focus-depth").placeholder = "空欄＝制限なし";
+  document.getElementById("focus-status").textContent = "グラフ全体を表示中";
+}
+if (matchMedia("(max-width: 760px)").matches) document.body.classList.add("sidebar-closed");
+const sidebarToggle = document.getElementById("btn-sidebar");
+sidebarToggle.setAttribute("aria-expanded", String(!document.body.classList.contains("sidebar-closed")));
+sidebarToggle.onclick = () => {
+  const closed = document.body.classList.toggle("sidebar-closed");
+  sidebarToggle.setAttribute("aria-expanded", String(!closed));
+  requestAnimationFrame(() => network.redraw());
 };
 
 const TRIPLES = __TRIPLES__;
@@ -558,6 +734,7 @@ const spreadLabels = TRIPLES.length > 150;
 const LANES = [0, -11, 11, -22, 22, -33, 33];
 const laneCount = Object.create(null);
 const eventEdgeIds = [];
+const edgeLabels = [];
 const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   const e = { id: i, from: nodeIds.get(t.s), to: nodeIds.get(t.o), label: t.p,
               color: { color: PREDICATES[t.p], highlight: "#ffffff" } };
@@ -589,6 +766,12 @@ const edges = new vis.DataSet(TRIPLES.map((t, i) => {
   e.title = document.createElement("div");
   e.title.textContent = lines.join("\\n");
   if (t.deprecated || EVENT_PREDICATES.includes(t.p)) e.dashes = true;
+  edgeLabels[i] = e.label;
+  if (largeGraph) {
+    e.label = "";
+    e.arrows = { to: { enabled: false } };
+    e.smooth = false;
+  }
   return e;
 }));
 const FLOW_OPTS = {
@@ -605,7 +788,7 @@ const FREE_OPTS = {
   physics: { enabled: true, solver: "forceAtlas2Based",
              forceAtlas2Based: { gravitationalConstant: -120, centralGravity: 0.008,
                                  springLength: 190, springConstant: 0.05, avoidOverlap: 1 },
-             stabilization: { iterations: largeGraph ? 250 : Math.min(1200, Math.max(200, ids.length * 12)) } },
+             stabilization: { iterations: largeGraph ? 100 : Math.min(1200, Math.max(200, ids.length * 12)) } },
 };
 let flow = __FLOW_DEFAULT__;
 const network = new vis.Network(document.getElementById("graph"), { nodes, edges }, {
@@ -626,8 +809,10 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
   edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0,
                                  background: "#14161b" },
            smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
-  interaction: { hover: true },
+  interaction: { hover: !largeGraph, hideEdgesOnDrag: largeGraph,
+                 hideEdgesOnZoom: largeGraph },
 });
+const QUICK_CAMERA = { duration: 220, easingFunction: "easeInOutQuad" };
 if (!flow) {
   network.once("stabilizationIterationsDone", function () {
     network.setOptions({ physics: false });
@@ -676,8 +861,13 @@ function visibleNodes() {
 let framed = visibleNodes().join("\\u0000");
 let focusCenter = null;
 let focusNodes = null;
-let focusDepth = Infinity;
+let queryHits = null;
+let queryNodes = null;
+// A two-hop default keeps a click on a large graph local and responsive.
+// Clearing the input still restores the full connected neighborhood.
+let focusDepth = largeGraph ? 2 : Infinity;
 const focusDepthInput = document.getElementById("focus-depth");
+if (largeGraph) focusDepthInput.value = "2";
 const unfocusButton = document.getElementById("btn-unfocus");
 const workflowButton = document.getElementById("btn-workflow");
 const workflowPicker = document.getElementById("workflow-picker");
@@ -695,10 +885,10 @@ let workflowPlacedNodes = new Set();
 let selectedWorkflow = null;
 let showWorkflowContext = false;
 workflowButton.hidden = WORKFLOW_PREDICATES.length === 0 || !WORKFLOW_MEMBERSHIP_PREDICATE;
-function focusedNodes(center, depth) {
+function focusedNodesFrom(centers, depth) {
   const allowedNodes = new Set(visibleNodes());
-  const reached = new Set([center]);
-  const distance = new Map([[center, 0]]);
+  const reached = new Set([...centers].filter(id => allowedNodes.has(id)));
+  const distance = new Map([...reached].map(id => [id, 0]));
   const adjacency = new Map();
   for (const t of TRIPLES) {
     if (hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph)) ||
@@ -706,7 +896,7 @@ function focusedNodes(center, depth) {
     (adjacency.get(t.s) ?? (adjacency.set(t.s, []), adjacency.get(t.s))).push(t.o);
     (adjacency.get(t.o) ?? (adjacency.set(t.o, []), adjacency.get(t.o))).push(t.s);
   }
-  const queue = [center];
+  const queue = [...reached];
   for (let i = 0; i < queue.length; i++) {
     const here = queue[i], d = distance.get(here);
     if (d >= depth) continue;
@@ -717,15 +907,17 @@ function focusedNodes(center, depth) {
   }
   return reached;
 }
+function focusedNodes(center, depth) { return focusedNodesFrom([center], depth); }
 function applyFocusStyles() {
-  const active = workflowMode ? workflowNodes : focusNodes;
+  const active = workflowMode ? workflowNodes : (focusNodes || queryNodes);
   const light = document.body.classList.contains("light"), th = THEMES[light ? "light" : "dark"];
   const contextGraph = workflowMode ? workflowContextGraph(active) : { nodes: new Set(), edges: new Set() };
+  const overview = largeGraph && !active;
   const dim = workflowMode && !showWorkflowContext
     ? "rgba(125,130,140,0.08)" : "rgba(125,130,140,0.22)";
   nodes.update(ids.map(name => {
     const n = nodes.get(nodeIds.get(name)), ev = n.shape === "diamond";
-    const base = NODE_TYPES[(NODES_META[name] || {}).type] || "#5a83b8";
+    const base = themeColor(NODE_TYPES[(NODES_META[name] || {}).type] || "#5a83b8", light);
     const inFocus = !active || active.has(name);
     const inContext = contextGraph.nodes.has(name);
     return { id: n.id,
@@ -733,7 +925,7 @@ function applyFocusStyles() {
         ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
             highlight: { border: th.hlBorder, background: th.hlBg } }
         : { border: dim, background: dim, highlight: { border: dim, background: dim } },
-      borderWidth: inContext ? 3 : n.borderWidth,
+      borderWidth: inContext ? 3 : (eventsOf[name] ? 3 : (light ? 2 : 1)),
       shadow: { enabled: (inFocus || inContext) && (!largeGraph || !!active),
         color: inContext ? (ev ? "rgba(247,79,79,0.92)" : base)
           : (ev ? "rgba(247,79,79,0.72)" : th.hlBorder),
@@ -747,23 +939,39 @@ function applyFocusStyles() {
     const inFocus = workflowMode ? sequenceEdge
       : !active || (active.has(t.s) && active.has(t.o));
     const event = isEventTriple(t);
-    const color = inFocus || workflowContext ? PREDICATES[t.p] : dim;
+    const color = inFocus || workflowContext ? themeColor(PREDICATES[t.p], light) : dim;
     const font = { ...(edges.get(i).font || {}), vadjust: inFocus ? -9 : 0,
       color: inFocus ? (event ? EVENT_EDGE_FONT[light ? "light" : "dark"] : th.edgeFont)
         : workflowContext ? th.edgeFont : dim };
     // Direction is conveyed by the left-to-right layout and NEXT_STEP label.
     // vis-network's middle marker still overlaps labels at common zoom levels.
-    return { id: i, arrows: workflowMode ? { to: { enabled: false } } : "to",
+    const showDetail = !largeGraph || (!overview && (inFocus || workflowContext));
+    return { id: i, arrows: workflowMode || !showDetail ? { to: { enabled: false } } : "to",
+      label: showDetail ? edgeLabels[i] : "",
+      smooth: showDetail ? { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } : false,
+      width: event ? (light ? 2.6 : 2) : (light ? 1.8 : 1),
       color: { color, highlight: inFocus ? th.edgeHl : dim,
                hover: inFocus || workflowContext ? color : dim },
-      shadow: inFocus || workflowContext, font };
+      shadow: !largeGraph && (inFocus || workflowContext), font };
   }));
 }
 function updateFocus() {
   focusNodes = focusCenter === null ? null : focusedNodes(focusCenter, focusDepth);
+  queryNodes = queryHits === null ? null : focusedNodesFrom(queryHits, focusDepth);
   if (workflowMode) applyWorkflowLayout();
   else workflowNodes = null;
-  unfocusButton.hidden = focusCenter === null && !workflowMode;
+  const wholeGraph = focusCenter === null && !workflowMode && queryHits === null;
+  unfocusButton.hidden = wholeGraph;
+  unfocusButton.textContent = uiJa ? "← 全体に戻る" : "← Back to whole graph";
+  const status = document.getElementById("focus-status");
+  status.textContent = workflowMode && selectedWorkflow
+    ? (uiJa ? "選択中: " : "Selected: ") + (NODES_META[selectedWorkflow]?.label || selectedWorkflow)
+    : focusCenter !== null
+      ? (uiJa ? "選択中: " : "Selected: ") + (NODES_META[focusCenter]?.label || focusCenter)
+      : queryHits !== null
+        ? (uiJa ? `SPARQL結果: ${queryHits.size}ノードを起点に${queryNodes.size}ノード表示中`
+          : `SPARQL result: ${queryNodes.size} nodes within range of ${queryHits.size} matches`)
+      : (uiJa ? "グラフ全体を表示中" : "Showing the whole graph");
   applyFocusStyles();
 }
 function startFocus(id) { focusCenter = id; updateFocus(); }
@@ -792,7 +1000,7 @@ function workflowDefinitions() {
 // Retain the full catalog for layout. The picker derives its choices from
 // current graph and node-type filters, which can change after page load.
 const WORKFLOW_CATALOG = workflowDefinitions();
-const WORKFLOW_PAGE_SIZE = 40;
+const WORKFLOW_PAGE_SIZE = 8;
 let workflowResultLimit = WORKFLOW_PAGE_SIZE;
 function renderWorkflowPicker() {
   const definitions = workflowDefinitions();
@@ -844,13 +1052,14 @@ function renderWorkflowPicker() {
     option.appendChild(tags);
     option.onclick = () => {
       focusCenter = null; focusNodes = null;
+      queryHits = null;
       selectedWorkflow = workflow.id; workflowMode = true;
       showWorkflowContext = true; workflowContextInput.checked = true;
       workflowPicker.hidden = true; workflowButton.classList.add("on");
       workflowButton.setAttribute("aria-expanded", "false");
       workflowButton.setAttribute("aria-pressed", "true");
-      updateFocus(); refreshVisibility();
-      network.fit({ nodes: workflowFrameIds(), animation: true });
+      updateFocus(); refreshVisibility(true);
+      network.fit({ nodes: workflowFrameIds(), animation: QUICK_CAMERA });
     };
     workflowList.appendChild(option);
   }
@@ -1023,9 +1232,12 @@ workflowMore.addEventListener("click", () => {
 workflowContextInput.addEventListener("change", () => {
   showWorkflowContext = workflowContextInput.checked;
   refreshVisibility();
-  if (workflowMode) network.fit({ nodes: workflowFrameIds(), animation: true });
+  if (workflowMode) network.fit({ nodes: workflowFrameIds(), animation: QUICK_CAMERA });
 });
 function clearFocus() {
+  const wasQuery = queryHits !== null;
+  network.unselectAll();
+  closePanel();
   if (workflowOriginalPositions) {
     nodes.update(ids.map(id => {
       const position = workflowOriginalPositions.get(id);
@@ -1034,24 +1246,32 @@ function clearFocus() {
     }));
     workflowOriginalPositions = null;
   }
-  focusCenter = null; focusNodes = null; workflowNodes = null;
+  focusCenter = null; focusNodes = null; workflowNodes = null; queryHits = null; queryNodes = null;
   workflowPlacedNodes = new Set();
   workflowMode = false; selectedWorkflow = null; showWorkflowContext = false;
   workflowContextInput.checked = false; workflowPicker.hidden = true;
   workflowButton.classList.remove("on"); workflowButton.setAttribute("aria-pressed", "false");
   workflowButton.setAttribute("aria-expanded", "false");
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), level: levelOf(id) })));
-  network.setOptions(flow ? FLOW_OPTS : FREE_OPTS);
+  // The large free graph has already settled. Restarting its solver here
+  // makes a simple return from a workflow freeze the entire canvas.
+  network.setOptions(flow ? FLOW_OPTS : (largeGraph
+    ? { ...FREE_OPTS, physics: { enabled: false } } : FREE_OPTS));
   refreshVisibility();
   updateFocus();
+  const shown = visibleNodes();
+  if (shown.length && !wasQuery) network.fit({ nodes: visualIds(shown), animation: QUICK_CAMERA });
 }
 focusDepthInput.addEventListener("input", () => {
   const value = focusDepthInput.value.trim();
   focusDepth = value === "" ? Infinity : Math.max(0, Math.floor(Number(value)));
-  if (focusCenter !== null || workflowMode) updateFocus();
+  if (focusCenter !== null || workflowMode || queryHits !== null) {
+    updateFocus();
+    if (queryHits !== null) refreshVisibility(true);
+  }
 });
 unfocusButton.onclick = clearFocus;
-function refreshVisibility() {
+function refreshVisibility(focusAlreadyUpdated = false, fitVisible = true) {
   if (workflowMode && selectedWorkflow &&
       !workflowDefinitions().some(workflow => workflow.id === selectedWorkflow)) {
     const pickerWasOpen = !workflowPicker.hidden;
@@ -1063,7 +1283,8 @@ function refreshVisibility() {
     }
     return;
   }
-  const shown = visibleNodes();
+  if (queryHits !== null) queryNodes = focusedNodesFrom(queryHits, focusDepth);
+  const shown = visibleNodes().filter(id => queryNodes === null || queryNodes.has(id));
   const keep = new Set(shown);
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), hidden: !keep.has(id) })));
   const contextEdges = workflowContextGraph().edges;
@@ -1072,7 +1293,8 @@ function refreshVisibility() {
     const sequence = workflowNodes && WORKFLOW_PREDICATES.includes(t.p) &&
       workflowNodes.has(t.s) && workflowNodes.has(t.o);
     const context = contextEdges.has(i);
-    return { id: i, hidden: !!(filtered || (workflowMode && !sequence && !context)) };
+    return { id: i, hidden: !!(filtered || !keep.has(t.s) || !keep.has(t.o) ||
+      (workflowMode && !sequence && !context)) };
   }));
   // Frame what is left. Hiding five sixths of a workspace used to leave
   // the remainder as a speck in whichever corner the layout had put it,
@@ -1082,12 +1304,12 @@ function refreshVisibility() {
   // predicate toggle hides edges only, so the visible set is compared
   // before anything is re-framed.
   const sig = shown.join("\\u0000");
-  if (sig !== framed && shown.length) {
-    network.fit({ nodes: visualIds(shown), animation: true });
+  if (fitVisible && sig !== framed && shown.length) {
+    network.fit({ nodes: visualIds(shown), animation: QUICK_CAMERA });
   }
   framed = sig;
   if (!workflowPicker.hidden) renderWorkflowPicker();
-  if (focusCenter !== null || workflowMode) updateFocus();
+  if (!focusAlreadyUpdated && (focusCenter !== null || workflowMode || queryHits !== null)) updateFocus();
 }
 const legend = document.getElementById("legend");
 const typeEls = Object.create(null);
@@ -1095,31 +1317,52 @@ function setTypeHidden(ty, off) {   // reused by per-label clicks and the all/no
   off ? hiddenTypes.add(ty) : hiddenTypes.delete(ty);
   const el = typeEls[ty];
   el.classList.toggle("off", off);
+  el.setAttribute("aria-checked", String(!off));
   el.querySelector("i").innerHTML = off ? "" : "&#10003;";
 }
 for (const [ty, color] of Object.entries(NODE_TYPES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
+  el.tabIndex = 0; el.setAttribute("role", "checkbox");
+  el.setAttribute("aria-checked", "true");
   el.title = `show/hide ${ty} nodes`;
   el.innerHTML = `<i style="border-color:${color};color:${color}">&#10003;</i>${esc(ty)}`;
   el.onclick = () => { setTypeHidden(ty, !hiddenTypes.has(ty)); refreshVisibility(); };
+  el.onkeydown = event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); el.click();
+    }
+  };
   typeEls[ty] = el;
   legend.appendChild(el);
 }
 for (const [p, color] of Object.entries(PREDICATES)) {
   const el = document.createElement("span");
   el.className = "lg toggle";
+  el.tabIndex = 0; el.setAttribute("role", "checkbox");
+  el.setAttribute("aria-checked", "true");
   const r = RULES[p] || {};
+  const description = r.description ? String(r.description) : "";
+  el.setAttribute("aria-label", description ? `${p}: ${description}` : p);
   const shape = RULE_ORDER.filter(k => (r[k] || []).length)
     .map(k => `${k}: ${r[k].join(", ")}`).join("\\n");
   el.title = `show/hide ${p} edges` + (shape ? `\\n\\n${shape}` : "");
-  el.innerHTML = `<b style="background:${color}"></b>${esc(p)}`;
+  el.innerHTML = `<b style="background:${color}"></b><span class="relation-text">`
+    + `<span class="relation-name">${esc(p)}</span>`
+    + (description ? `<span class="relation-description">${esc(description)}</span>` : "")
+    + `</span>`;
   el.onclick = () => {
     hiddenPreds.has(p) ? hiddenPreds.delete(p) : hiddenPreds.add(p);
     el.classList.toggle("off", hiddenPreds.has(p));
+    el.setAttribute("aria-checked", String(!hiddenPreds.has(p)));
     refreshVisibility();
   };
-  legend.appendChild(el);
+  el.onkeydown = event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); el.click();
+    }
+  };
+  document.getElementById("nav-relations-list").appendChild(el);
 }
 // select-all / clear for the node-type checkboxes above (predicate bars are left alone)
 const typeNames = Object.keys(NODE_TYPES);
@@ -1140,8 +1383,12 @@ const graphChips = Object.create(null);
 function setGraphHidden(g, hidden) {   // reused by per-chip clicks and the all/none controls
   hidden ? hiddenGraphs.add(g) : hiddenGraphs.delete(g);
   graphChips[g].classList.toggle("active", !hidden);
+  graphChips[g].setAttribute("aria-checked", String(!hidden));
+  document.getElementById("graph-filter-count").textContent =
+    `${gnames.length - hiddenGraphs.size}/${gnames.length}`;
 }
 if (gnames.length > 0) {
+  document.getElementById("graph-filter-count").textContent = `${gnames.length}/${gnames.length}`;
   const bar = document.getElementById("graphbar");
   bar.style.display = "flex";
   const tag = document.createElement("span");
@@ -1151,6 +1398,8 @@ if (gnames.length > 0) {
   for (const g of gnames) {
     const chip = document.createElement("button");
     chip.className = "btn active";
+    chip.setAttribute("role", "checkbox");
+    chip.setAttribute("aria-checked", "true");
     chip.title = `show/hide member graph "${g}"`;
     chip.innerHTML = `<b style="display:inline-block;width:9px;height:9px;border-radius:5px;background:${GRAPHS[g]};margin-right:6px;vertical-align:middle"></b>${esc(g)}`;
     chip.onclick = () => { setGraphHidden(g, !hiddenGraphs.has(g)); refreshVisibility(); };
@@ -1173,9 +1422,19 @@ if (gnames.length > 0) {
 const THEMES = {
   dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e", bg: "#14161b",
            hlBorder: "#ffffff", edgeHl: "#ffffff", evFont: "#f0a0a0", evBg: "#3a1f1f" },
-  light: { font: "#1b1e26", nodeBg: "#ffffff", edgeFont: "#646a78", hlBg: "#dbe6f7", bg: "#f4f5f8",
-           hlBorder: "#5a83b8", edgeHl: "#1b1e26", evFont: "#b3261e", evBg: "#fdeaea" },
+  light: { font: "#253346", nodeBg: "#d5dee9", edgeFont: "#485568", hlBg: "#c9d9ed", bg: "#edf1f6",
+           hlBorder: "#365f9c", edgeHl: "#253346", evFont: "#a12720", evBg: "#f3d8d8" },
 };
+// The dark palette is vivid on charcoal but too pale on a light canvas.
+// Blend graph strokes toward slate only in light mode; predicate identity
+// and the underlying data stay the same across themes.
+function themeColor(color, light) {
+  if (!light || !/^#[0-9a-f]{6}$/i.test(color || "")) return color;
+  const target = [36, 52, 71], amount = 0.48;
+  const channels = [1, 3, 5].map((at, i) => Math.round(
+    parseInt(color.slice(at, at + 2), 16) * (1 - amount) + target[i] * amount));
+  return "#" + channels.map(v => v.toString(16).padStart(2, "0")).join("");
+}
 function applyTheme(name, persist = true) {
   const th = THEMES[name];
   document.body.classList.toggle("light", name === "light");
@@ -1200,11 +1459,16 @@ function applyTheme(name, persist = true) {
                       highlight: { border: th.hlBorder, background: th.hlBg } } };
   }));
   edges.update(TRIPLES.map((t, i) => ({
-    id: i, color: { color: PREDICATES[t.p], highlight: th.edgeHl } })));
+    id: i, color: { color: themeColor(PREDICATES[t.p], name === "light"), highlight: th.edgeHl } })));
   applyFocusStyles();
   network.setSelection(sel);
   if (persist) { try { localStorage.setItem("trikedb-theme", name); } catch (e) {} }
-  document.getElementById("btn-theme").textContent = name === "light" ? "dark" : "light";
+  const themeButton = document.getElementById("btn-theme");
+  const nextTheme = name === "light" ? "dark" : "light";
+  themeButton.textContent = uiJa ? (nextTheme === "dark" ? "ダーク" : "ライト") : nextTheme;
+  themeButton.title = uiJa
+    ? (nextTheme === "dark" ? "ダーク表示に切り替える" : "ライト表示に切り替える")
+    : `switch to ${nextTheme} mode`;
 }
 document.getElementById("btn-theme").onclick = () =>
   applyTheme(document.body.classList.contains("light") ? "dark" : "light");
@@ -1214,12 +1478,12 @@ const urlTheme = new URLSearchParams(location.search).get("theme");
 if (urlTheme === "light" || urlTheme === "dark") {
   applyTheme(urlTheme, false);
 } else {
-  try {
-    if (localStorage.getItem("trikedb-theme") === "light") applyTheme("light");
-  } catch (e) {}
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem("trikedb-theme"); } catch (e) {}
+  applyTheme(savedTheme === "dark" ? "dark" : "light", false);
 }
 
-document.getElementById("btn-fit").onclick = () => network.fit({ animation: true });
+document.getElementById("btn-fit").onclick = () => network.fit({ animation: QUICK_CAMERA });
 // full-text search: node ids + labels + node properties + edge attributes
 // + free-text objects (attached to their subjects). Enter cycles matches.
 const searchIndex = Object.create(null);
@@ -1243,20 +1507,22 @@ TRIPLES.forEach(t => {
 });
 const searchBox = document.getElementById("search");
 const searchCount = document.getElementById("search-count");
+const searchToSparql = document.getElementById("btn-tosparql");
+searchToSparql.disabled = !searchBox.value.trim();
 let searchState = { q: "", hits: [], i: -1 };
 searchBox.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
   searchState = { q, hits: q ? ids.filter(id => searchIndex[id].includes(q)) : [], i: -1 };
   searchCount.textContent = q ? `${searchState.hits.length}` : "";
+  searchToSparql.disabled = !q.trim();
 });
 // bridge: turn the current search into an editable SPARQL query
-document.getElementById("btn-tosparql").onclick = () => {
+searchToSparql.onclick = () => {
   const q = searchBox.value.trim().toLowerCase().replace(/"/g, '\\"');
   if (!q) return;
   document.getElementById("sparql-input").value =
     `SELECT ?s ?p ?o WHERE { ?s ?p ?o .\n  FILTER(CONTAINS(LCASE(STR(?s)), "${q}")\n      || CONTAINS(LCASE(STR(?p)), "${q}")\n      || CONTAINS(LCASE(STR(?o)), "${q}")) }`;
-  document.getElementById("sparql").classList.add("open");
-  document.getElementById("btn-sparql").classList.add("active");
+  setSparqlOpen(true);
   document.getElementById("btn-run").click();
 };
 searchBox.addEventListener("keydown", (e) => {
@@ -1269,7 +1535,7 @@ searchBox.addEventListener("keydown", (e) => {
   searchCount.textContent = `${searchState.i + 1}/${n}`;
   network.selectNodes(visualIds(searchState.hits));       // 全ヒットをハイライト
   const id = searchState.hits[searchState.i];  // 現在のヒットへズーム
-  network.focus(nodeIds.get(id), { scale: 1.1, animation: true });
+  network.focus(nodeIds.get(id), { scale: 1.1, animation: QUICK_CAMERA });
   showDetail(id);
 });
 
@@ -1304,12 +1570,14 @@ const linkOrText = (x) => ids.includes(x) ? nodeLink(x) : linkify(x);
 // mapping used to render as. Nothing in the graph should hold one, but the
 // file is hand-edited, and a stray `attrs: {}` key made every relation in
 // the shipped demo read "attrs: [object Object]".
+const predMeaning = p => RULES[p] && RULES[p].description
+  ? `<span class="pred-meaning"> ${esc(RULES[p].description)}</span>` : "";
 
 function relHTML(t, other, arrow) {
   const attrs = Object.entries(t).filter(([k]) => !["s", "p", "o"].includes(k));
   const cls = t.deprecated ? "rel deprecated" : "rel";
   return `<div class="${cls}">
-    <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>${arrow}
+    <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>${predMeaning(t.p)}${arrow}
     ${linkOrText(other)}
     ${attrs.map(([k, v]) => `<div class="attr">${esc(k)}: ${linkify(v)}</div>`).join("")}
   </div>`;
@@ -1321,15 +1589,17 @@ function relHTML(t, other, arrow) {
 function eventHTML(t, from) {
   const when = timeOf(t), st = stateOf(t);
   const skip = ["s", "p", "o", ...TIME_KEYS, ...STATE_KEYS];
-  const attrs = Object.entries(t).filter(([k]) => !skip.includes(k));
+  const attrs = Object.entries(t).filter(([k]) => !skip.includes(k) && k !== "note");
+  const note = t.note === undefined ? "" : show(t.note);
   return `<div class="rel event">
     <div class="evhead">
       ${when ? `<span class="when">${esc(when)}</span>` : ""}
       ${st ? `<span class="state">${esc(st)}</span>` : ""}
-      <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>
+      <span class="pred" data-pred="${esc(t.p)}" title="what ${esc(t.p)} declares" style="background:${PREDICATES[t.p]}">${esc(t.p)}</span>${predMeaning(t.p)}
     </div>
     <div class="evwhat">${from ? "&larr; " : ""}${linkOrText(from ? t.s : t.o)}</div>
     ${attrs.map(([k, v]) => `<div class="attr">${esc(k)}: ${linkify(v)}</div>`).join("")}
+    ${note ? `<details class="event-note"><summary>note: ${esc(note.length > 48 ? note.slice(0, 48) + "…" : note)}</summary><div class="full-note">${linkify(note)}</div></details>` : ""}
   </div>`;
 }
 
@@ -1408,7 +1678,7 @@ btnBack.onclick = () => {
   const here = trail[trail.length - 1];
   if (here.kind === "node" && nodeIds.has(here.arg)) {
     network.selectNodes(visualIds([here.arg]));
-    network.focus(nodeIds.get(here.arg), { scale: 1.1, animation: true });
+    network.focus(nodeIds.get(here.arg), { scale: 1.1, animation: QUICK_CAMERA });
   }
 };
 document.getElementById("btn-close").onclick = closePanel;
@@ -1422,7 +1692,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (field) e.preventDefault();
-  if (focusCenter !== null || workflowMode) clearFocus();
+  if (focusCenter !== null || workflowMode || queryHits !== null) clearFocus();
   if (detail.classList.contains("open")) closePanel();
 });
 const showDetail = (id) => openPanel("node", id);
@@ -1453,12 +1723,12 @@ network.on("click", (params) => {
     }
     return;
   }
-  clearFocus();
+  if (focusCenter !== null || workflowMode || queryHits !== null) clearFocus();
 });
 function focusNode(id) {
   startFocus(id);
   network.selectNodes(visualIds([id]));
-  network.focus(nodeIds.get(id), { scale: 1.1, animation: true });
+  network.focus(nodeIds.get(id), { scale: 1.1, animation: QUICK_CAMERA });
   showDetail(id);
 }
 
@@ -1471,7 +1741,7 @@ function focusNode(id) {
 const timeline = eventTriples.slice().sort(byTime);
 const btnEvents = document.getElementById("btn-events");
 if (!timeline.length) btnEvents.style.display = "none";
-else btnEvents.textContent = "events \\u00b7 " + timeline.length;
+else btnEvents.textContent = (uiJa ? "変更履歴" : "events") + " \\u00b7 " + timeline.length;
 function timelineHTML(t) {
   const when = timeOf(t), st = stateOf(t);
   return `<div class="rel event" data-node="${esc(t.s)}">
@@ -1506,6 +1776,7 @@ if (timeline.length) {
   rail.innerHTML = timeline.map(tickHTML).join("");
   document.body.classList.add("strip-on");
   btnEvents.classList.add("active");
+  btnEvents.setAttribute("aria-pressed", "true");
 }
 rail.addEventListener("click", (e) => {
   const el = e.target.closest(".tick");
@@ -1517,6 +1788,7 @@ rail.addEventListener("click", (e) => {
 btnEvents.onclick = () => {
   const on = document.body.classList.toggle("strip-on");
   btnEvents.classList.toggle("active", on);
+  btnEvents.setAttribute("aria-pressed", String(on));
 };
 document.getElementById("btn-fulllog").onclick = () => showTimeline();
 
@@ -1551,32 +1823,48 @@ function ruleHTML(p) {
   }).join("");
   return `<div class="rel rule">
     <span class="pred" style="background:${PREDICATES[p] || "#5a83b8"}">${esc(p)}</span>
-    ${r.n ? `<span class="when">${r.n} triple${r.n === 1 ? "" : "s"}</span>` : ""}
+    ${r.n ? `<span class="when">${r.n} ${uiJa ? "トリプル" : `triple${r.n === 1 ? "" : "s"}`}</span>` : ""}
     ${r.description ? `<div class="attr">${esc(r.description)}</div>` : ""}
-    ${rows || `<div class="undeclared">nothing declared \\u2014 anything may write this</div>`}
+    ${rows || `<div class="undeclared">${uiJa ? "追加の制約は宣言されていません" : "nothing declared \\u2014 anything may write this"}</div>`}
   </div>`;
 }
 function rulesHTML(only) {
   const names = only && RULES[only] ? [only] : ruleNames;
   const head = only && RULES[only]
-    ? `<h2>${esc(only)}</h2><h3>what this predicate declares</h3>`
-    : `<h2>predicates</h2><h3>${ruleNames.length} predicate type${ruleNames.length === 1 ? "" : "s"}`
-      + ` &middot; ${enforced.length} enforced</h3>`;
+    ? `<h2>${esc(only)}</h2><h3>${uiJa ? "この関係の説明と制約" : "what this predicate declares"}</h3>`
+    : uiJa
+      ? `<h2>関係の説明・ルール</h2><h3>${ruleNames.length}種類 · 制約あり ${enforced.length}種類</h3>`
+      : `<h2>predicates</h2><h3>${ruleNames.length} predicate type${ruleNames.length === 1 ? "" : "s"}`
+        + ` &middot; ${enforced.length} enforced</h3>`;
   return head + names.map(ruleHTML).join("");
 }
 function showOntology(only) { openPanel("rule", (only && RULES[only]) ? only : ""); }
 const btnOnto = document.getElementById("btn-onto");
 if (!ruleNames.length) btnOnto.style.display = "none";
 else {
-  btnOnto.textContent = "predicates \\u00b7 " + ruleNames.length;
+  btnOnto.textContent = (uiJa ? "関係の説明・ルールを見る" : "View relation definitions")
+    + " \\u00b7 " + ruleNames.length;
   btnOnto.onclick = () => showOntology();
 }
 
 // ------------------------------------------------------- SPARQL console
-document.getElementById("btn-sparql").onclick = (e) => {
-  document.getElementById("sparql").classList.toggle("open");
-  e.target.classList.toggle("active");
-};
+const sparqlPanel = document.getElementById("sparql");
+const syncSparqlHeight = () => document.documentElement.style.setProperty(
+  "--sparql-height", sparqlPanel.classList.contains("open") ? sparqlPanel.offsetHeight + "px" : "0px");
+new ResizeObserver(syncSparqlHeight).observe(sparqlPanel);
+function setSparqlOpen(open) {
+  const button = document.getElementById("btn-sparql");
+  sparqlPanel.classList.toggle("open", open);
+  document.body.classList.toggle("sparql-open", open);
+  syncSparqlHeight();
+  button.classList.toggle("active", open);
+  button.setAttribute("aria-expanded", String(open));
+  button.textContent = uiJa
+    ? (open ? "SPARQLクエリを閉じる" : "SPARQLクエリを開く")
+    : (open ? "Close SPARQL query" : "Open SPARQL query");
+}
+document.getElementById("btn-sparql").onclick = () =>
+  setSparqlOpen(!document.getElementById("sparql").classList.contains("open"));
 let store = null;
 async function ensureStore() {
   if (store) return store;
@@ -1596,6 +1884,7 @@ document.getElementById("btn-run").onclick = async () => {
     const s = await ensureStore();
     const result = s.query("PREFIX t: <" + BASE + ">\\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\\n" + document.getElementById("sparql-input").value);
     if (typeof result === "boolean") {
+      if (queryHits !== null) clearFocus();
       box.innerHTML = `<table><tr><th>ASK</th></tr><tr><td>${result ? "yes" : "no"}</td></tr></table>`;
       return;
     }
@@ -1605,15 +1894,31 @@ document.getElementById("btn-run").onclick = async () => {
       for (const [k, term] of binding) row[k] = shorten(term.value);
       rows.push(row);
     }
-    if (!rows.length) { box.innerHTML = '<span class="hint">no matches</span>'; return; }
+    if (!rows.length) {
+      if (queryHits !== null) clearFocus();
+      box.innerHTML = '<span class="hint">no matches</span>';
+      return;
+    }
     const cols = Object.keys(rows[0]);
     box.innerHTML = `<table><tr>${cols.map(c => `<th>?${esc(c)}</th>`).join("")}</tr>` +
       rows.map(r => `<tr>${cols.map(c => `<td>${esc(r[c] ?? "")}</td>`).join("")}</tr>`).join("") +
       "</table>";
-    const hits = [...new Set(rows.flatMap(r => Object.values(r)))].filter(v => ids.includes(v));
+    const allowed = new Set(visibleNodes());
+    const hits = [...new Set(rows.flatMap(r => Object.values(r)))].filter(v => allowed.has(v));
     if (hits.length) {
+      if (workflowMode) clearFocus();
+      focusCenter = null; focusNodes = null;
+      queryHits = new Set(hits);
+      updateFocus();
+      refreshVisibility(true, false);
       network.selectNodes(visualIds(hits));
-      network.fit({ nodes: visualIds(hits), animation: true });
+      requestAnimationFrame(() => {
+        syncSparqlHeight();
+        network.fit({ nodes: visualIds([...queryNodes]), animation: QUICK_CAMERA });
+      });
+    } else {
+      if (queryHits !== null) clearFocus();
+      box.insertAdjacentHTML("beforeend", '<div class="hint">No graph nodes in these results.</div>');
     }
   } catch (err) {
     box.innerHTML = `<div class="err">${esc(err.message || err)}</div>`;
@@ -1636,6 +1941,8 @@ def to_html(
     workflow_membership_predicate: str | None = None,
 ) -> str:
     """Render the graph to a single-file interactive HTML workbench (CDN dependencies).
+
+    The header shows the embedded TrikeDB logo and the customizable ``title``.
 
     event_predicates: which predicates carry change events. An event is
     attached to its subject — the node whose state it changed — which
@@ -1733,6 +2040,9 @@ def to_html(
     workspace = getattr(db, "workspace", None)
     graph_summary = f"{len(workspace)} workspace graphs" if workspace is not None else "one YAML file"
     subtitle = f"{len(triples)} triples &middot; {n_nodes} nodes &middot; {graph_summary}"
+    brand_logo = base64.b64encode(
+        files("trikedb").joinpath("trikedb-horizontal.png").read_bytes()
+    ).decode("ascii")
 
     def json_safe(value):
         # YAML permits nonfinite numbers; JSON.parse does not. Display their
@@ -1763,6 +2073,7 @@ def to_html(
 
     replacements = {
         "TITLE": escape(str(title), quote=True), "SUBTITLE": subtitle,
+        "BRAND_LOGO": brand_logo,
         "TRIPLES": script_json(triples), "PREDICATES": script_json(colors),
         "NODES_META": script_json(nodes_meta), "NODE_TYPES": script_json(type_colors),
         "NT": script_json(nt), "EVENT_PREDICATES": script_json(event_preds),

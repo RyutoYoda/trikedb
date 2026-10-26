@@ -162,6 +162,41 @@ Graphs with a custom vocabulary can pass `workflow_predicates` and
 `workflow_membership_predicate` to `to_html()` or the corresponding CLI
 options.
 
+The HTML workbench opens with the whole graph visible. Its header embeds the
+TrikeDB logo beside a graph title configurable with `--title` or
+`to_html(title=...)`. The left explorer holds search, workspace and node-type
+filters, workflow selection, and the node-focus range;
+the selected node's facts open on the right. The menu button collapses the
+explorer without changing the graph. Selecting a node or workflow keeps the
+rest of the graph in muted gray; **Back to whole graph** clears that focus.
+New visitors start in light mode; the theme button remembers an explicit choice,
+and `?theme=light` or `?theme=dark` overrides it for a given URL.
+Relation filters contain a separate button for their definitions; advanced
+SPARQL actions explain what they do, and search-to-SPARQL is available only
+after entering a search term.
+Running a SPARQL `SELECT` with graph nodes shows the results and neighbors
+within the explorer's hop range. Set the range to 0 for exact result nodes.
+The result table stays open above the graph, and
+**Back to whole graph** restores the overview. `ASK` and results without graph
+nodes leave the overview unchanged.
+For graphs over 500 nodes, the overview keeps every node and connection but
+omits edge labels, arrows, and shadows until a focus is selected. It also
+pauses edge drawing during drag and zoom. Node focus starts at two hops on
+these graphs; clearing the hop field restores unlimited traversal.
+
+Predicate descriptions from `ontology.predicates` appear beside relation
+names in the detail panel and below relation names in the explorer filter.
+Write descriptions in the language your readers use:
+
+```yaml
+ontology:
+  predicates:
+    NEXT_STEP: 次の工程へ進む
+    AFFECTED_BY: 変更イベントの影響を受けた
+```
+
+Long event `note` values are collapsed in the panel and can be expanded.
+
 ### Keep workflow order separate from context
 
 Only process steps belong in the `NEXT_STEP` sequence. Model tools, platforms,
