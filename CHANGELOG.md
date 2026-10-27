@@ -3,6 +3,13 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.47.1
+
+- **Keep node text visible at Fit without enlarging it.** The HTML workbench
+  no longer paints oversized labels over a large graph. Its original node
+  labels remain inside their boxes at low zoom, with stronger contrast in
+  light mode.
+
 ## 0.47.0
 
 - **Explore large graphs with a clearer HTML workbench.** The generated page
