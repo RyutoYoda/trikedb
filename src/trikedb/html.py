@@ -829,11 +829,10 @@ if (!flow) {
   });
 }
 
-// For small graphs, show labels even when zoomed out. Vis rebuilds node
-// options after updates, so this threshold must be restored each frame.
-// Large graphs retain the default threshold to avoid drawing every tiny label;
-// labels become visible as users zoom in.
-if (!largeGraph) network.on("beforeDrawing", function () {
+// Keep the original labels inside their nodes at Fit. Vis normally suppresses
+// them below its zoom threshold, leaving light boxes that look empty. The
+// graph still controls their size; we only keep them drawn at every scale.
+network.on("beforeDrawing", function () {
   for (const id in network.body.nodes) {
     const o = network.body.nodes[id].options;
     if (o && o.scaling && o.scaling.label) o.scaling.label.drawThreshold = 0;
@@ -1426,93 +1425,11 @@ if (gnames.length > 0) {
   mk("none", true, "hide all member graphs");
   document.getElementById("sparql").style.top = "94px";
 }
-// Vis scales labels with the graph and stops drawing them below its label
-// threshold. Keep labels attached to their actual nodes/edges on the canvas,
-// but draw a bounded set at a minimum screen size when the whole large graph
-// is far away. Collision checks keep the result readable without a separate
-// overview card or thousands of overlapping words.
-if (largeGraph) {
-  const labelNodes = [...ids].sort((a, b) =>
-    (degree[b] || 0) - (degree[a] || 0) || a.localeCompare(b));
-  const labelEdges = TRIPLES.map((t, i) => ({ t, i })).sort((a, b) =>
-    (degree[b.t.s] || 0) + (degree[b.t.o] || 0) -
-    (degree[a.t.s] || 0) - (degree[a.t.o] || 0));
-  network.on("afterDrawing", ctx => {
-    if (focusCenter !== null || workflowMode || queryHits !== null) return;
-    const scale = network.getScale();
-    if (!Number.isFinite(scale) || scale <= 0) return;
-    const canvas = document.getElementById("graph");
-    const width = canvas.clientWidth, height = canvas.clientHeight;
-    const positions = network.getPositions();
-    const screenCache = new Map(), occupied = [];
-    const screen = name => {
-      if (!screenCache.has(name)) {
-        const position = positions[nodeIds.get(name)];
-        screenCache.set(name, position ? network.canvasToDOM(position) : null);
-      }
-      return screenCache.get(name);
-    };
-    const free = (x, y, w, h) => {
-      if (x < 4 || y < 4 || x + w > width - 4 || y + h > height - 4) return false;
-      const rect = { x: x - 3, y: y - 3, w: w + 6, h: h + 6 };
-      if (occupied.some(r => rect.x < r.x + r.w && rect.x + rect.w > r.x &&
-          rect.y < r.y + r.h && rect.y + rect.h > r.y)) return false;
-      occupied.push(rect);
-      return true;
-    };
-    const light = document.body.classList.contains("light");
-    ctx.save();
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = light ? "#edf1f6" : "#14161b";
-    ctx.lineWidth = 4 / scale;
-    if (scale < 0.8) {
-      ctx.font = `${12 / scale}px -apple-system, sans-serif`;
-      ctx.fillStyle = light ? "#1b1e26" : "#e8e8ea";
-      let drawn = 0;
-      for (const name of labelNodes) {
-        if (drawn >= 110 || nodes.get(nodeIds.get(name)).hidden) continue;
-        const point = screen(name);
-        if (!point) continue;
-        const label = String((NODES_META[name] || {}).label || name).slice(0, 32);
-        const x = point.x + 6, y = point.y - 9;
-        const textWidth = ctx.measureText(label).width * scale;
-        if (!free(x, y - 7, textWidth, 15)) continue;
-        const position = positions[nodeIds.get(name)];
-        ctx.strokeText(label, position.x + 6 / scale, position.y - 9 / scale);
-        ctx.fillText(label, position.x + 6 / scale, position.y - 9 / scale);
-        drawn++;
-      }
-    }
-    ctx.font = `${11 / scale}px -apple-system, sans-serif`;
-    ctx.fillStyle = light ? "#334155" : "#cbd5e1";
-    const byPredicate = new Map();
-    let drawnEdges = 0;
-    for (const { t, i } of labelEdges) {
-      if (drawnEdges >= 55 || edges.get(i).hidden || (byPredicate.get(t.p) || 0) >= 5) continue;
-      const from = screen(t.s), to = screen(t.o);
-      if (!from || !to || Math.hypot(to.x - from.x, to.y - from.y) < 30) continue;
-      const label = t.p;
-      const x = (from.x + to.x) / 2, y = (from.y + to.y) / 2;
-      const textWidth = ctx.measureText(label).width * scale;
-      if (!free(x - textWidth / 2, y - 7, textWidth, 15)) continue;
-      const a = positions[nodeIds.get(t.s)], b = positions[nodeIds.get(t.o)];
-      ctx.textAlign = "center";
-      ctx.strokeText(label, (a.x + b.x) / 2, (a.y + b.y) / 2);
-      ctx.fillText(label, (a.x + b.x) / 2, (a.y + b.y) / 2);
-      ctx.textAlign = "left";
-      byPredicate.set(t.p, (byPredicate.get(t.p) || 0) + 1);
-      drawnEdges++;
-    }
-    ctx.restore();
-  });
-}
-
 // ---------------------------------------------------------- theme toggle
 const THEMES = {
   dark:  { font: "#e8e8ea", nodeBg: "#1e2129", edgeFont: "#9a9daa", hlBg: "#2c4a6e", bg: "#14161b",
            hlBorder: "#ffffff", edgeHl: "#ffffff", evFont: "#f0a0a0", evBg: "#3a1f1f" },
-  light: { font: "#253346", nodeBg: "#d5dee9", edgeFont: "#485568", hlBg: "#c9d9ed", bg: "#edf1f6",
+  light: { font: "#101827", nodeBg: "#d5dee9", edgeFont: "#253247", hlBg: "#c9d9ed", bg: "#edf1f6",
            hlBorder: "#365f9c", edgeHl: "#253346", evFont: "#a12720", evBg: "#f3d8d8" },
 };
 // The dark palette is vivid on charcoal but too pale on a light canvas.
