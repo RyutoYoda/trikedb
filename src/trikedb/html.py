@@ -377,19 +377,6 @@ _TEMPLATE = """<!DOCTYPE html>
   #sidebar #query-search-label { display: block; margin: 8px 0 5px;
     font-size: 12px; font-weight: 600; }
   #sidebar #search-count { display: block; min-height: 16px; text-align: right; }
-  #overview { position: fixed; top: calc(var(--hdr) + 16px); left: calc(var(--sidew) + 16px);
-    z-index: 8; width: min(340px, calc(100vw - var(--sidew) - 48px)); max-height: 55vh;
-    overflow-y: auto; box-sizing: border-box; padding: 13px; border: 1px solid var(--border);
-    border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgba(0,0,0,.16); }
-  #overview[hidden] { display: none; }
-  #overview h2 { margin: 0 0 5px; font-size: 14px; }
-  #overview p { margin: 0 0 10px; color: var(--dim); font-size: 11px; line-height: 1.45; }
-  #overview .items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-  #overview button { min-width: 0; padding: 7px; text-align: left; border: 1px solid var(--border);
-    border-radius: 7px; background: var(--bg); color: var(--text); cursor: pointer;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #overview button:hover, #overview button:focus-visible { border-color: #5a83b8; }
-  #overview .relations { margin-top: 10px; color: var(--dim); font-size: 11px; line-height: 1.5; }
   #sidebar #graphbar { position: static; display: none; flex-direction: column;
     align-items: stretch; gap: 5px; overflow: visible; padding: 0; border: 0;
     background: none; }
@@ -431,12 +418,10 @@ _TEMPLATE = """<!DOCTYPE html>
   body.sidebar-closed #sidebar { transform: translateX(-100%); }
   body.sidebar-closed #graph, body.sidebar-closed #strip,
   body.sidebar-closed #sparql { left: 0; }
-  body.sidebar-closed #overview { left: 16px; width: min(340px, calc(100vw - 32px)); }
   body.sidebar-closed.strip-on #graph { left: 0; }
   @media (max-width: 760px) {
     #sidebar { box-shadow: 12px 0 30px rgba(0,0,0,.3); }
     #graph, body.strip-on #graph, #strip, #sparql { left: 0; }
-    #overview { left: 16px; width: min(340px, calc(100vw - 32px)); }
     #subtitle { display: none; }
   }
 </style>
@@ -534,7 +519,6 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div id="graph"></div>
-<section id="overview" aria-label="Graph overview" hidden></section>
 
 <div id="strip">
   <div class="striphead" id="btn-fulllog" title="open the whole log in the panel">
@@ -986,7 +970,6 @@ function updateFocus() {
   if (workflowMode) applyWorkflowLayout();
   else workflowNodes = null;
   const wholeGraph = focusCenter === null && !workflowMode && queryHits === null;
-  syncOverview();
   unfocusButton.hidden = wholeGraph;
   unfocusButton.textContent = uiJa ? "← 全体に戻る" : "← Back to whole graph";
   const status = document.getElementById("focus-status");
@@ -1443,52 +1426,86 @@ if (gnames.length > 0) {
   mk("none", true, "hide all member graphs");
   document.getElementById("sparql").style.top = "94px";
 }
-// At an overview scale, 1000+ labels cannot fit on a canvas. Keep the
-// complete graph behind a readable, fixed-size summary instead of drawing
-// microscopic text or pretending the unlabeled lines explain themselves.
-const overviewEl = document.getElementById("overview");
-function syncOverview() {
-  overviewEl.hidden = !largeGraph || network.getScale() >= 0.3 ||
-    focusCenter !== null || workflowMode || queryHits !== null;
-}
+// Vis scales labels with the graph and stops drawing them below its label
+// threshold. Keep labels attached to their actual nodes/edges on the canvas,
+// but draw a bounded set at a minimum screen size when the whole large graph
+// is far away. Collision checks keep the result readable without a separate
+// overview card or thousands of overlapping words.
 if (largeGraph) {
-  const heading = document.createElement("h2");
-  heading.textContent = uiJa ? "全体マップ" : "Graph overview";
-  overviewEl.appendChild(heading);
-  const hint = document.createElement("p");
-  hint.textContent = uiJa
-    ? "この縮尺では個別の名前を読めません。ワークスペースを選ぶか、拡大して関係を確認してください。"
-    : "Individual labels cannot fit at this scale. Choose a workspace or zoom in to inspect relations.";
-  overviewEl.appendChild(hint);
-  if (gnames.length) {
-    const items = document.createElement("div");
-    items.className = "items";
-    for (const g of gnames) {
-      const count = TRIPLES.filter(t => t.graph === g).length;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.title = uiJa ? `${g} のみ表示。もう一度押すと全体に戻ります。`
-        : `Show only ${g}; click again to show all`;
-      button.innerHTML = `<span style="color:${GRAPHS[g]}">●</span> ${esc(g)} · ${count}`;
-      button.onclick = () => {
-        const onlyThis = gnames.every(name => name === g || hiddenGraphs.has(name));
-        gnames.forEach(name => setGraphHidden(name, !onlyThis && name !== g));
-        refreshVisibility();
-      };
-      items.appendChild(button);
+  const labelNodes = [...ids].sort((a, b) =>
+    (degree[b] || 0) - (degree[a] || 0) || a.localeCompare(b));
+  const labelEdges = TRIPLES.map((t, i) => ({ t, i })).sort((a, b) =>
+    (degree[b.t.s] || 0) + (degree[b.t.o] || 0) -
+    (degree[a.t.s] || 0) - (degree[a.t.o] || 0));
+  network.on("afterDrawing", ctx => {
+    if (focusCenter !== null || workflowMode || queryHits !== null) return;
+    const scale = network.getScale();
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    const canvas = document.getElementById("graph");
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    const positions = network.getPositions();
+    const screenCache = new Map(), occupied = [];
+    const screen = name => {
+      if (!screenCache.has(name)) {
+        const position = positions[nodeIds.get(name)];
+        screenCache.set(name, position ? network.canvasToDOM(position) : null);
+      }
+      return screenCache.get(name);
+    };
+    const free = (x, y, w, h) => {
+      if (x < 4 || y < 4 || x + w > width - 4 || y + h > height - 4) return false;
+      const rect = { x: x - 3, y: y - 3, w: w + 6, h: h + 6 };
+      if (occupied.some(r => rect.x < r.x + r.w && rect.x + rect.w > r.x &&
+          rect.y < r.y + r.h && rect.y + rect.h > r.y)) return false;
+      occupied.push(rect);
+      return true;
+    };
+    const light = document.body.classList.contains("light");
+    ctx.save();
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = light ? "#edf1f6" : "#14161b";
+    ctx.lineWidth = 4 / scale;
+    if (scale < 0.8) {
+      ctx.font = `${12 / scale}px -apple-system, sans-serif`;
+      ctx.fillStyle = light ? "#1b1e26" : "#e8e8ea";
+      let drawn = 0;
+      for (const name of labelNodes) {
+        if (drawn >= 110 || nodes.get(nodeIds.get(name)).hidden) continue;
+        const point = screen(name);
+        if (!point) continue;
+        const label = String((NODES_META[name] || {}).label || name).slice(0, 32);
+        const x = point.x + 6, y = point.y - 9;
+        const textWidth = ctx.measureText(label).width * scale;
+        if (!free(x, y - 7, textWidth, 15)) continue;
+        const position = positions[nodeIds.get(name)];
+        ctx.strokeText(label, position.x + 6 / scale, position.y - 9 / scale);
+        ctx.fillText(label, position.x + 6 / scale, position.y - 9 / scale);
+        drawn++;
+      }
     }
-    overviewEl.appendChild(items);
-  }
-  const relationCounts = new Map();
-  for (const t of TRIPLES) relationCounts.set(t.p, (relationCounts.get(t.p) || 0) + 1);
-  const common = [...relationCounts].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const relations = document.createElement("div");
-  relations.className = "relations";
-  relations.textContent = (uiJa ? "主な関係: " : "Common relations: ") +
-    common.map(([p, count]) => `${p} (${count})`).join(" · ");
-  overviewEl.appendChild(relations);
-  network.on("zoom", syncOverview);
-  requestAnimationFrame(syncOverview);
+    ctx.font = `${11 / scale}px -apple-system, sans-serif`;
+    ctx.fillStyle = light ? "#334155" : "#cbd5e1";
+    const byPredicate = new Map();
+    let drawnEdges = 0;
+    for (const { t, i } of labelEdges) {
+      if (drawnEdges >= 55 || edges.get(i).hidden || (byPredicate.get(t.p) || 0) >= 5) continue;
+      const from = screen(t.s), to = screen(t.o);
+      if (!from || !to || Math.hypot(to.x - from.x, to.y - from.y) < 30) continue;
+      const label = t.p;
+      const x = (from.x + to.x) / 2, y = (from.y + to.y) / 2;
+      const textWidth = ctx.measureText(label).width * scale;
+      if (!free(x - textWidth / 2, y - 7, textWidth, 15)) continue;
+      const a = positions[nodeIds.get(t.s)], b = positions[nodeIds.get(t.o)];
+      ctx.textAlign = "center";
+      ctx.strokeText(label, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      ctx.fillText(label, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      ctx.textAlign = "left";
+      byPredicate.set(t.p, (byPredicate.get(t.p) || 0) + 1);
+      drawnEdges++;
+    }
+    ctx.restore();
+  });
 }
 
 // ---------------------------------------------------------- theme toggle
