@@ -371,7 +371,25 @@ _TEMPLATE = """<!DOCTYPE html>
   #sidebar #nav-layers .btn.active::before { content: "☑ "; color: #7fd59c; }
   #sidebar #nav-layers .btn:not(.active)::before { content: "□ "; color: var(--dim); }
   #sidebar #search { width: 100%; box-sizing: border-box; }
+  #sidebar #query-search { width: 100%; box-sizing: border-box; padding: 8px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
+    color: var(--text); font-size: 12px; }
+  #sidebar #query-search-label { display: block; margin: 8px 0 5px;
+    font-size: 12px; font-weight: 600; }
   #sidebar #search-count { display: block; min-height: 16px; text-align: right; }
+  #overview { position: fixed; top: calc(var(--hdr) + 16px); left: calc(var(--sidew) + 16px);
+    z-index: 8; width: min(340px, calc(100vw - var(--sidew) - 48px)); max-height: 55vh;
+    overflow-y: auto; box-sizing: border-box; padding: 13px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px rgba(0,0,0,.16); }
+  #overview[hidden] { display: none; }
+  #overview h2 { margin: 0 0 5px; font-size: 14px; }
+  #overview p { margin: 0 0 10px; color: var(--dim); font-size: 11px; line-height: 1.45; }
+  #overview .items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  #overview button { min-width: 0; padding: 7px; text-align: left; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--bg); color: var(--text); cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #overview button:hover, #overview button:focus-visible { border-color: #5a83b8; }
+  #overview .relations { margin-top: 10px; color: var(--dim); font-size: 11px; line-height: 1.5; }
   #sidebar #graphbar { position: static; display: none; flex-direction: column;
     align-items: stretch; gap: 5px; overflow: visible; padding: 0; border: 0;
     background: none; }
@@ -413,10 +431,12 @@ _TEMPLATE = """<!DOCTYPE html>
   body.sidebar-closed #sidebar { transform: translateX(-100%); }
   body.sidebar-closed #graph, body.sidebar-closed #strip,
   body.sidebar-closed #sparql { left: 0; }
+  body.sidebar-closed #overview { left: 16px; width: min(340px, calc(100vw - 32px)); }
   body.sidebar-closed.strip-on #graph { left: 0; }
   @media (max-width: 760px) {
     #sidebar { box-shadow: 12px 0 30px rgba(0,0,0,.3); }
     #graph, body.strip-on #graph, #strip, #sparql { left: 0; }
+    #overview { left: 16px; width: min(340px, calc(100vw - 32px)); }
     #subtitle { display: none; }
   }
 </style>
@@ -457,6 +477,13 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="nav-workflows"></div>
   <h2 id="nav-title-search">Search</h2>
   <div id="nav-search"></div>
+  <details id="nav-advanced" class="nav-group">
+    <summary id="nav-title-advanced">Advanced queries</summary>
+    <p id="nav-query-help" class="nav-help">Search subjects, relations and objects, or write a SPARQL query.</p>
+    <label id="query-search-label" for="query-search">Search graph facts</label>
+    <input id="query-search" type="search" placeholder="Search subjects, relations, objects...">
+    <div id="nav-advanced-actions" class="nav-actions"></div>
+  </details>
   <details id="nav-workspaces" class="nav-group">
     <summary><span id="nav-title-workspaces">Workspaces</span> <span id="graph-filter-count"></span></summary>
     <div id="nav-graphs"></div>
@@ -472,11 +499,6 @@ _TEMPLATE = """<!DOCTYPE html>
   </details>
   <h2 id="nav-title-layers">Layers</h2>
   <div id="nav-layers" class="nav-actions"></div>
-  <details id="nav-advanced" class="nav-group">
-    <summary id="nav-title-advanced">Advanced queries</summary>
-    <p id="nav-query-help" class="nav-help">Write a SPARQL query, or turn the search term above into one and run it.</p>
-    <div id="nav-advanced-actions" class="nav-actions"></div>
-  </details>
 </aside>
 <div id="graphbar"></div>
 <section id="workflow-picker" hidden aria-label="workflow selector">
@@ -512,6 +534,7 @@ _TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <div id="graph"></div>
+<section id="overview" aria-label="Graph overview" hidden></section>
 
 <div id="strip">
   <div class="striphead" id="btn-fulllog" title="open the whole log in the panel">
@@ -561,11 +584,13 @@ if (uiJa) {
     "nav-title-layers": "表示レイヤー", "nav-title-advanced": "高度な検索",
     "nav-depth-label": "選択・SPARQL結果の表示範囲", "btn-workflow": "ワークフローを選ぶ",
     "nav-depth-help": "起点から何段先まで表示するか。大きいグラフは初期値2段。0は該当ノードだけ、1は直接つながる先まで、空欄は制限なし。",
-    "nav-query-help": "SPARQLを直接編集できます。検索語から作る場合は、主語・関係・目的語を対象にクエリを実行します。",
+    "nav-query-help": "主語・関係・目的語をまとめて検索できます。SPARQLを直接編集することもできます。",
+    "query-search-label": "グラフの事実を検索",
     "btn-sparql": "SPARQLクエリを開く",
     "btn-tosparql": "検索語からSPARQLを作って実行",
   })) document.getElementById(id).textContent = label;
   document.getElementById("search").placeholder = "ノードを検索…";
+  document.getElementById("query-search").placeholder = "主語・関係・目的語を検索…";
   document.getElementById("workflow-search").placeholder = "ワークフローを検索…";
   document.getElementById("focus-depth").placeholder = "空欄＝制限なし";
   document.getElementById("focus-status").textContent = "グラフ全体を表示中";
@@ -961,6 +986,7 @@ function updateFocus() {
   if (workflowMode) applyWorkflowLayout();
   else workflowNodes = null;
   const wholeGraph = focusCenter === null && !workflowMode && queryHits === null;
+  syncOverview();
   unfocusButton.hidden = wholeGraph;
   unfocusButton.textContent = uiJa ? "← 全体に戻る" : "← Back to whole graph";
   const status = document.getElementById("focus-status");
@@ -1417,6 +1443,53 @@ if (gnames.length > 0) {
   mk("none", true, "hide all member graphs");
   document.getElementById("sparql").style.top = "94px";
 }
+// At an overview scale, 1000+ labels cannot fit on a canvas. Keep the
+// complete graph behind a readable, fixed-size summary instead of drawing
+// microscopic text or pretending the unlabeled lines explain themselves.
+const overviewEl = document.getElementById("overview");
+function syncOverview() {
+  overviewEl.hidden = !largeGraph || network.getScale() >= 0.3 ||
+    focusCenter !== null || workflowMode || queryHits !== null;
+}
+if (largeGraph) {
+  const heading = document.createElement("h2");
+  heading.textContent = uiJa ? "全体マップ" : "Graph overview";
+  overviewEl.appendChild(heading);
+  const hint = document.createElement("p");
+  hint.textContent = uiJa
+    ? "この縮尺では個別の名前を読めません。ワークスペースを選ぶか、拡大して関係を確認してください。"
+    : "Individual labels cannot fit at this scale. Choose a workspace or zoom in to inspect relations.";
+  overviewEl.appendChild(hint);
+  if (gnames.length) {
+    const items = document.createElement("div");
+    items.className = "items";
+    for (const g of gnames) {
+      const count = TRIPLES.filter(t => t.graph === g).length;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = uiJa ? `${g} のみ表示。もう一度押すと全体に戻ります。`
+        : `Show only ${g}; click again to show all`;
+      button.innerHTML = `<span style="color:${GRAPHS[g]}">●</span> ${esc(g)} · ${count}`;
+      button.onclick = () => {
+        const onlyThis = gnames.every(name => name === g || hiddenGraphs.has(name));
+        gnames.forEach(name => setGraphHidden(name, !onlyThis && name !== g));
+        refreshVisibility();
+      };
+      items.appendChild(button);
+    }
+    overviewEl.appendChild(items);
+  }
+  const relationCounts = new Map();
+  for (const t of TRIPLES) relationCounts.set(t.p, (relationCounts.get(t.p) || 0) + 1);
+  const common = [...relationCounts].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const relations = document.createElement("div");
+  relations.className = "relations";
+  relations.textContent = (uiJa ? "主な関係: " : "Common relations: ") +
+    common.map(([p, count]) => `${p} (${count})`).join(" · ");
+  overviewEl.appendChild(relations);
+  network.on("zoom", syncOverview);
+  requestAnimationFrame(syncOverview);
+}
 
 // ---------------------------------------------------------- theme toggle
 const THEMES = {
@@ -1507,21 +1580,29 @@ TRIPLES.forEach(t => {
 });
 const searchBox = document.getElementById("search");
 const searchCount = document.getElementById("search-count");
+const querySearch = document.getElementById("query-search");
 const searchToSparql = document.getElementById("btn-tosparql");
-searchToSparql.disabled = !searchBox.value.trim();
+searchToSparql.disabled = !querySearch.value.trim();
+querySearch.addEventListener("input", () => {
+  searchToSparql.disabled = !querySearch.value.trim();
+});
+querySearch.addEventListener("keydown", event => {
+  if (event.key === "Enter" && querySearch.value.trim()) searchToSparql.click();
+});
 let searchState = { q: "", hits: [], i: -1 };
 searchBox.addEventListener("input", (e) => {
   const q = e.target.value.toLowerCase();
   searchState = { q, hits: q ? ids.filter(id => searchIndex[id].includes(q)) : [], i: -1 };
   searchCount.textContent = q ? `${searchState.hits.length}` : "";
-  searchToSparql.disabled = !q.trim();
 });
-// bridge: turn the current search into an editable SPARQL query
+// Advanced search has its own input beside the action. It does not depend on
+// the separate node finder or on text hidden elsewhere in the interface.
 searchToSparql.onclick = () => {
-  const q = searchBox.value.trim().toLowerCase().replace(/"/g, '\\"');
-  if (!q) return;
+  const term = querySearch.value.trim().toLowerCase();
+  if (!term) return;
+  const q = JSON.stringify(term);
   document.getElementById("sparql-input").value =
-    `SELECT ?s ?p ?o WHERE { ?s ?p ?o .\n  FILTER(CONTAINS(LCASE(STR(?s)), "${q}")\n      || CONTAINS(LCASE(STR(?p)), "${q}")\n      || CONTAINS(LCASE(STR(?o)), "${q}")) }`;
+    `SELECT ?s ?p ?o WHERE { ?s ?p ?o .\n  FILTER(CONTAINS(LCASE(STR(?s)), ${q})\n      || CONTAINS(LCASE(STR(?p)), ${q})\n      || CONTAINS(LCASE(STR(?o)), ${q})) }`;
   setSparqlOpen(true);
   document.getElementById("btn-run").click();
 };
