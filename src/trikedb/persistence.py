@@ -56,6 +56,7 @@ def reload(db) -> "TrikeDB":
     """
     db.nodes_meta = {}
     db.ontology = {}
+    db.predicate_descriptions_ja = {}
     db.predicate_rules = {}
     db._triples = []
     db.workspace = None
@@ -295,6 +296,8 @@ def load_workspace(db, graphs: dict) -> None:
         sub = type(db)(gpath, connection=db._connection)
         for k, v in sub.ontology.items():
             db.ontology.setdefault(k, v)
+        for k, v in sub.predicate_descriptions_ja.items():
+            db.predicate_descriptions_ja.setdefault(k, v)
         for k, rule in sub.predicate_rules.items():
             db.predicate_rules.setdefault(k, rule)
         for n, props in sub.nodes_meta.items():

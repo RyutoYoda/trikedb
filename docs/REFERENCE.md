@@ -71,7 +71,7 @@ ontology:              # optional predicate whitelist (+ descriptions)
     PROVIDES: "SaaS vendor -> ingestion job"   # a description documents
     # a shape is enforced: the edge written between the wrong node types
     # is refused on the way in, not stored and reported later
-    INGESTS_TO: {description: "job -> table", domain: job, range: table}
+    INGESTS_TO: {description: "job -> table", description_ja: "ジョブの取り込み先テーブル", domain: job, range: table}
 
 nodes:                 # optional free-form node properties
   salesflow-crm: {type: saas, label: SalesFlow, url: "https://...", plan: enterprise}

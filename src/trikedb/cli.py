@@ -658,8 +658,10 @@ def _cmd_ontology(args) -> int:
             )
         db.save()
     shown = {p: ({"description": desc,
-                  **{k: list(v) for k, v in db.predicate_rules[p].items()}}
-                 if p in db.predicate_rules else desc)
+                  **({"description_ja": db.predicate_descriptions_ja[p]}
+                     if p in db.predicate_descriptions_ja else {}),
+                  **{k: list(v) for k, v in db.predicate_rules.get(p, {}).items()}}
+                 if p in db.predicate_rules or p in db.predicate_descriptions_ja else desc)
              for p, desc in db.ontology.items()}
     print(json.dumps(shown, ensure_ascii=False, indent=2))
     return 0

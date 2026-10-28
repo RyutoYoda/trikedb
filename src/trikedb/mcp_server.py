@@ -348,8 +348,10 @@ def build_server(
         before writing rather than after being rejected."""
         return {
             p: ({"description": desc,
-                 **{k: list(v) for k, v in db.predicate_rules[p].items()}}
-                if p in db.predicate_rules else desc)
+                 **({"description_ja": db.predicate_descriptions_ja[p]}
+                    if p in db.predicate_descriptions_ja else {}),
+                 **{k: list(v) for k, v in db.predicate_rules.get(p, {}).items()}}
+                if p in db.predicate_rules or p in db.predicate_descriptions_ja else desc)
             for p, desc in db.ontology.items()
         }
 

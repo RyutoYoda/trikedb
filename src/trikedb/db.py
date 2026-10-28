@@ -103,6 +103,8 @@ class TrikeDB:
         self.nodes_meta: dict = {}
         #: predicate -> human description. Empty dict means free-form predicates.
         self.ontology: dict = {}
+        #: predicate -> Japanese description supplied by the source graph.
+        self.predicate_descriptions_ja: dict = {}
         #: predicate -> {"domain": (type, ...), "range": (type, ...)} for the
         #: predicates that declare one. Kept beside self.ontology rather than
         #: inside it so a description stays a plain string for everything
@@ -376,7 +378,8 @@ class TrikeDB:
             # not going to touch. Copying pointers instead is the same
             # guarantee at a thousandth of the cost.
             snapshot = (list(self._triples), dict(self.nodes_meta),
-                        dict(self.ontology), dict(self.predicate_rules))
+                        dict(self.ontology), dict(self.predicate_rules),
+                        dict(self.predicate_descriptions_ja))
             undo: list = []
             self._batch_undo.append(undo)
             self._batch_depth += 1
@@ -391,7 +394,7 @@ class TrikeDB:
                 for triple, before in reversed(undo):
                     triple.attrs = before
                 (self._triples, self.nodes_meta, self.ontology,
-                 self.predicate_rules) = snapshot
+                 self.predicate_rules, self.predicate_descriptions_ja) = snapshot
                 self._index = self._pidx = self._eidx = self._rdf_cache = None
                 raise
             finally:
@@ -857,6 +860,8 @@ class TrikeDB:
             # exported HTML was stamped with. See check().
             doc["links"] = {p: {k: list(v) for k, v in rule.items()}
                             for p, rule in self.predicate_rules.items()}
+        if self.predicate_descriptions_ja:
+            doc["predicate_descriptions_ja"] = self.predicate_descriptions_ja
         return hashlib.sha256(
             _json.dumps(doc, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()[:16]
