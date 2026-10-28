@@ -128,8 +128,14 @@ def declare_predicate(db, name: str, value: Any, *,
         return
     if not isinstance(value, dict):
         db.ontology[name] = str(value or "")
+        db.predicate_descriptions_ja.pop(name, None)
         return
     db.ontology[name] = str(value.get("description") or "")
+    ja = value.get("description_ja")
+    if ja:
+        db.predicate_descriptions_ja[name] = str(ja)
+    else:
+        db.predicate_descriptions_ja.pop(name, None)
     rule = {}
     for key in RULE_KEYS:
         want = value.get(key)
@@ -162,13 +168,16 @@ def declare_predicate(db, name: str, value: Any, *,
 def declaration(db, name: str) -> Any:
     """What this predicate looks like in the file: a string, or a shape."""
     rule = db.predicate_rules.get(name)
-    if not rule:
+    ja = db.predicate_descriptions_ja.get(name)
+    if not rule and not ja:
         return db.ontology[name]
     out: dict = {}
     if db.ontology[name]:
         out["description"] = db.ontology[name]
+    if ja:
+        out["description_ja"] = ja
     for key in RULE_KEYS:
-        want = rule.get(key)
+        want = (rule or {}).get(key)
         if want:
             out[key] = list(want) if len(want) > 1 else want[0]
     return out

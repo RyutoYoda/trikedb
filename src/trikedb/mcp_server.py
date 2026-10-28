@@ -346,12 +346,7 @@ def build_server(
         A predicate with `domain`/`range` is enforced, not documented: an
         edge written between the wrong node types is refused, so read this
         before writing rather than after being rejected."""
-        return {
-            p: ({"description": desc,
-                 **{k: list(v) for k, v in db.predicate_rules[p].items()}}
-                if p in db.predicate_rules else desc)
-            for p, desc in db.ontology.items()
-        }
+        return {p: rules.declaration(db, p) for p in db.ontology}
 
     @server.tool()
     @serialized

@@ -3,6 +3,13 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.47.2
+
+- Predicate declarations accept an optional `description_ja` alongside the
+  English `description`. YAML loading, saving, workspace unions, ontology
+  output, and generated HTML preserve it. The relation list and definition
+  panel show the Japanese meaning when the source graph provides one.
+
 ## 0.47.1
 
 - **Keep node text visible at Fit without enlarging it.** The HTML workbench

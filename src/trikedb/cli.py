@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .db import OntologyError, TrikeDB
+from . import rules
 from .storage import ConcurrentWriteError
 
 
@@ -657,10 +658,7 @@ def _cmd_ontology(args) -> int:
                 range=[t for t in rng.split("|") if t.strip()] or None,
             )
         db.save()
-    shown = {p: ({"description": desc,
-                  **{k: list(v) for k, v in db.predicate_rules[p].items()}}
-                 if p in db.predicate_rules else desc)
-             for p, desc in db.ontology.items()}
+    shown = {p: rules.declaration(db, p) for p in db.ontology}
     print(json.dumps(shown, ensure_ascii=False, indent=2))
     return 0
 

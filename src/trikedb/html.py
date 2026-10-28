@@ -1351,12 +1351,14 @@ for (const [p, color] of Object.entries(PREDICATES)) {
   el.setAttribute("aria-checked", "true");
   const r = RULES[p] || {};
   const description = r.description ? String(r.description) : "";
-  el.setAttribute("aria-label", description ? `${p}: ${description}` : p);
+  const descriptionJa = r.description_ja ? String(r.description_ja) : "";
+  el.setAttribute("aria-label", [p, descriptionJa, description].filter(Boolean).join(": "));
   const shape = RULE_ORDER.filter(k => (r[k] || []).length)
     .map(k => `${k}: ${r[k].join(", ")}`).join("\\n");
   el.title = `show/hide ${p} edges` + (shape ? `\\n\\n${shape}` : "");
   el.innerHTML = `<b style="background:${color}"></b><span class="relation-text">`
     + `<span class="relation-name">${esc(p)}</span>`
+    + (descriptionJa ? `<span class="relation-description">${esc(descriptionJa)}</span>` : "")
     + (description ? `<span class="relation-description">${esc(description)}</span>` : "")
     + `</span>`;
   el.onclick = () => {
@@ -1839,6 +1841,7 @@ function ruleHTML(p) {
   return `<div class="rel rule">
     <span class="pred" style="background:${PREDICATES[p] || "#5a83b8"}">${esc(p)}</span>
     ${r.n ? `<span class="when">${r.n} ${uiJa ? "トリプル" : `triple${r.n === 1 ? "" : "s"}`}</span>` : ""}
+    ${r.description_ja ? `<div class="attr">${esc(r.description_ja)}</div>` : ""}
     ${r.description ? `<div class="attr">${esc(r.description)}</div>` : ""}
     ${rows || `<div class="undeclared">${uiJa ? "追加の制約は宣言されていません" : "nothing declared \\u2014 anything may write this"}</div>`}
   </div>`;
@@ -2027,6 +2030,7 @@ def to_html(
     # leaving it out would make the page look stricter than the graph is.
     declared = dict(getattr(db, "ontology", {}) or {})
     predicate_rules = dict(getattr(db, "predicate_rules", {}) or {})
+    predicate_descriptions_ja = dict(getattr(db, "predicate_descriptions_ja", {}) or {})
     counts: dict = {}
     for t in db:
         counts[t.p] = counts.get(t.p, 0) + 1
@@ -2036,6 +2040,8 @@ def to_html(
         desc = declared.get(name) or ""
         if desc:
             entry["description"] = desc
+        if predicate_descriptions_ja.get(name):
+            entry["description_ja"] = predicate_descriptions_ja[name]
         for key, want in (predicate_rules.get(name) or {}).items():
             entry[key] = list(want)
         if counts.get(name):
