@@ -632,7 +632,10 @@ const jitter = (id, salt) => {
 
 // ---------------------------------------------------------------- graph
 const ids = [...new Set([...TRIPLES.flatMap(t => [t.s, t.o]), ...Object.keys(NODES_META)])];
-const largeGraph = ids.length > 500;
+// Edge labels and pointer interaction redraw the complete canvas. Treat a
+// graph as large before it becomes visibly sluggish, rather than waiting for
+// 500 nodes; the edge count matters too because labels are drawn per edge.
+const largeGraph = ids.length > 150 || TRIPLES.length > 250;
 // Never pass user names into the renderer's object-keyed internal indexes.
 const nodeIds = new Map(ids.map((name, i) => [name, i]));
 const visualIds = names => names.map(name => nodeIds.get(name));
@@ -832,7 +835,7 @@ if (!flow) {
 // Keep the original labels inside their nodes at Fit. Vis normally suppresses
 // them below its zoom threshold, leaving light boxes that look empty. The
 // graph still controls their size; we only keep them drawn at every scale.
-network.on("beforeDrawing", function () {
+if (!largeGraph) network.on("beforeDrawing", function () {
   for (const id in network.body.nodes) {
     const o = network.body.nodes[id].options;
     if (o && o.scaling && o.scaling.label) o.scaling.label.drawThreshold = 0;
