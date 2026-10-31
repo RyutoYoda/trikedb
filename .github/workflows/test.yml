@@ -39,3 +39,14 @@ jobs:
           python -m trikedb.cli check examples/graphs/trike/trike_workspace.yaml --html docs/index.html
           python -m trikedb.cli check examples/graphs/acme/acme_pipeline.yaml --html docs/pipeline.html
           python -m trikedb.cli check examples/graphs/freebase/freebase_workspace.yaml --html docs/workspace.html
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]" playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/browser_smoke.py

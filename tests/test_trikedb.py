@@ -698,7 +698,7 @@ def test_examples_load_and_query():
         "PROVIDES", "INGESTS_TO", "AFFECTED_BY", "RESTARTED",
         "SUPPLEMENTS", "MIGRATED_TO", "USES_JOB", "WRITES_TABLE",
         "REVIEWS_TABLE", "USES_PLATFORM", "IMPLEMENTS_MODEL",
-        "ENFORCES_POLICY", "SERVES_LAYER",
+        "ENFORCES_POLICY", "SERVES_LAYER", "READS_LAYER",
     }
     rows = acme.query(["?v PROVIDES ?j", "?j INGESTS_TO ?t"])
     assert {"v": "salesflow-crm", "j": "crm-sync-job", "t": "RAW_CRM_CONTACTS"} in rows

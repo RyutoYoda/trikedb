@@ -365,8 +365,8 @@ def run():
         assert page.evaluate("workflowMode") is True
         assert page.evaluate("focusCenter") is None
         assert page.locator("#btn-workflow").get_attribute("aria-pressed") == "true"
-        assert page.locator("#workflow-context").is_checked()
-        assert "順序には含めない" in page.locator("#workflow-context-row").inner_text()
+        assert not page.locator("#workflow-context").is_checked()
+        assert "関連部品をグラフに展開" in page.locator("#workflow-context-row").inner_text()
         assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["customer-refresh"][1])
         positions = page.evaluate("""() => Object.fromEntries(
           [...workflowNodes].map(name => [name, network.getPosition(nodeIds.get(name))]))""")
@@ -375,9 +375,11 @@ def run():
         visible_edges = page.evaluate("edges.get().filter(e => !e.hidden).map(e => e.id)")
         expected_edges = page.evaluate(
             "TRIPLES.map((t, i) => [t, i]).filter(([t, i]) => "
-            "(t.p === 'NEXT_STEP' && workflowNodes.has(t.s) && workflowNodes.has(t.o)) || "
-            "workflowContextGraph().edges.has(i)).map(([, i]) => i)")
+            "t.p === 'NEXT_STEP' && workflowNodes.has(t.s) && workflowNodes.has(t.o)"
+            ").map(([, i]) => i)")
         assert sorted(visible_edges) == sorted(expected_edges)
+        page.locator("#workflow-context").check()
+        page.wait_for_timeout(100)
         positions_with_context = page.evaluate("""() => ({
           step: network.getPosition(nodeIds.get('正規化')),
           warehouse: network.getPosition(nodeIds.get('Warehouse')),
