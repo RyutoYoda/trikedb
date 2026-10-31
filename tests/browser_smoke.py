@@ -100,7 +100,9 @@ def run():
         ev = page.evaluate(
             "edges.get(TRIPLES.findIndex(t => t.o === 'backfill sheet superseded'))")
         assert ev["label"] == "2025-07-02  \u25b8 pending-review"
-        assert ev["font"]["color"] == "#f7784f"
+        # The generated page starts in the light theme; event labels use the
+        # light-theme contrast colour rather than the dark-theme orange.
+        assert ev["font"]["color"] == "#b3261e"
         assert page.evaluate("eventEdgeIds.length") == 3
         # clicking a line opens the node it hangs off — it used to do nothing
         page.evaluate("network.selectEdges([0]); focusNode(TRIPLES[0].s)")
