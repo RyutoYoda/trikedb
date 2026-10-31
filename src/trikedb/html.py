@@ -1299,10 +1299,15 @@ function refreshVisibility(focusAlreadyUpdated = false, fitVisible = true) {
     return;
   }
   if (queryHits !== null) queryNodes = focusedNodesFrom(queryHits, focusDepth);
-  const shown = visibleNodes().filter(id => queryNodes === null || queryNodes.has(id));
+  const workflowContext = workflowContextGraph();
+  const workflowKeep = new Set(workflowNodes || []);
+  for (const id of workflowContext.nodes) workflowKeep.add(id);
+  const shown = visibleNodes().filter(id => workflowMode
+    ? workflowKeep.has(id)
+    : queryNodes === null || queryNodes.has(id));
   const keep = new Set(shown);
   nodes.update(ids.map(id => ({ id: nodeIds.get(id), hidden: !keep.has(id) })));
-  const contextEdges = workflowContextGraph().edges;
+  const contextEdges = workflowContext.edges;
   edges.update(TRIPLES.map((t, i) => {
     const filtered = hiddenPreds.has(t.p) || (t.graph && hiddenGraphs.has(t.graph));
     const sequence = workflowNodes && WORKFLOW_PREDICATES.includes(t.p) &&

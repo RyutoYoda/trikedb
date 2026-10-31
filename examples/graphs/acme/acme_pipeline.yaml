@@ -34,7 +34,7 @@ ontology:
 # technical context.
 workflows:
   daily-customer-data-refresh:
-    label: Daily customer data refresh
+    label: 顧客データ日次更新
     summary: Ingest CRM records, validate privacy-sensitive fields, and publish the customer table
     tags: [domain:customer-data, cadence:daily]
     workflow_facets:
@@ -44,22 +44,22 @@ workflows:
         values: [Data Platform]
     steps:
       - id: extract-customer-records
-        label: Extract customer records
+        label: 顧客レコード取得
         description: Run the CRM sync and land the latest contact records.
         next: [validate-customer-records]
       - id: validate-customer-records
-        label: Validate customer records
+        label: 顧客レコード検証
         description: Check schema, privacy constraints, and the latest CRM change event.
         next: [publish-customer-table, request-data-review]
       - id: request-data-review
-        label: Request data review
+        label: データレビュー依頼
         description: Route unresolved changes to the data-platform owner for review.
         next: [publish-customer-table]
       - id: publish-customer-table
-        label: Publish customer table
+        label: 顧客テーブル公開
         description: Make the validated table available to downstream analytics.
   daily-ad-spend-reconciliation:
-    label: Daily ad spend reconciliation
+    label: 広告費日次照合
     summary: Collect campaign spend, reconcile the warehouse total, and flag manual backfills
     tags: [domain:marketing-analytics, cadence:daily]
     workflow_facets:
@@ -69,22 +69,22 @@ workflows:
         values: [Finance reporting]
     steps:
       - id: collect-ad-spend
-        label: Collect ad spend
+        label: 広告費取得
         description: Run the daily collector and land campaign-level spend.
         next: [reconcile-ad-spend]
       - id: reconcile-ad-spend
-        label: Reconcile spend totals
+        label: 広告費合計照合
         description: Compare the feed with the warehouse total and check unit conversion.
         next: [publish-ad-spend, review-ad-spend]
       - id: review-ad-spend
-        label: Review exception
+        label: 例外レビュー
         description: Investigate a mismatch or manual backfill before publishing.
         next: [publish-ad-spend]
       - id: publish-ad-spend
-        label: Publish spend report
+        label: 広告費レポート公開
         description: Release the reconciled daily spend to reporting consumers.
   incident-response:
-    label: Ingestion incident response
+    label: 取込障害対応
     summary: Triage a failed ingestion job, restore service, and record the operator action
     tags: [domain:operations, cadence:on-demand]
     workflow_facets:
@@ -94,19 +94,19 @@ workflows:
         values: [Lambda]
     steps:
       - id: detect-ingestion-failure
-        label: Detect ingestion failure
+        label: 取込障害検知
         description: Identify a stalled or failed ingestion run from monitoring.
         next: [triage-ingestion-failure]
       - id: triage-ingestion-failure
-        label: Triage failure
+        label: 障害切り分け
         description: Check the job cursor, source API, and affected warehouse table.
         next: [restart-ingestion-job]
       - id: restart-ingestion-job
-        label: Restart ingestion job
+        label: 取込ジョブ再実行
         description: Restart the job and confirm that the next run is progressing.
         next: [record-incident-action]
       - id: record-incident-action
-        label: Record incident action
+        label: 対応記録
         description: Preserve the operator, timestamp, and resulting state in the graph.
 
 # node properties: type drives color + legend, everything else shows in
@@ -124,16 +124,16 @@ nodes:
   RAW_WEB_EVENTS: {type: table, schema: ACME_RAW, description: clickstream events, append-only}
   RAW_AD_SPEND_MANUAL: {type: table, schema: ACME_RAW, description: hand-maintained backfill sheet}
   LEGACY_CONTACTS_DUMP: {type: table, schema: ACME_LEGACY, deprecated: true}
-  cloud-data-warehouse: {type: platform, category: cloud DWH, role: analytical warehouse, description: governed cloud data platform}
-  elt-transformation-tool: {type: platform, category: ELT tool, role: transformation and testing, description: version-controlled data models}
-  bronze-layer: {type: data_layer, architecture: medallion, layer: bronze, description: raw immutable landing data}
-  silver-layer: {type: data_layer, architecture: medallion, layer: silver, description: cleaned and conformed data}
-  gold-layer: {type: data_layer, architecture: medallion, layer: gold, description: business-ready marts}
-  customer-dimension: {type: data_model, modeling: dimensional, kind: dimension, description: conformed customer dimension}
-  daily-spend-fact: {type: data_model, modeling: dimensional, kind: fact, description: daily campaign spend fact}
-  pii-policy: {type: policy, domain: data-governance, description: customer PII classification and access policy}
-  quality-policy: {type: policy, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
-  customer-semantic-layer: {type: semantic_layer, category: BI and semantic layer, description: governed metrics for customer and spend analytics}
+  cloud-data-warehouse: {type: platform, label: クラウドDWH, category: cloud DWH, role: analytical warehouse, description: governed cloud data platform}
+  elt-transformation-tool: {type: platform, label: ELT変換ツール, category: ELT tool, role: transformation and testing, description: version-controlled data models}
+  bronze-layer: {type: data_layer, label: Bronze層（生データ）, architecture: medallion, layer: bronze, description: raw immutable landing data}
+  silver-layer: {type: data_layer, label: Silver層（整形済み）, architecture: medallion, layer: silver, description: cleaned and conformed data}
+  gold-layer: {type: data_layer, label: Gold層（業務 mart）, architecture: medallion, layer: gold, description: business-ready marts}
+  customer-dimension: {type: data_model, label: 顧客ディメンション, modeling: dimensional, kind: dimension, description: conformed customer dimension}
+  daily-spend-fact: {type: data_model, label: 日次広告費ファクト, modeling: dimensional, kind: fact, description: daily campaign spend fact}
+  pii-policy: {type: policy, label: 個人情報管理ポリシー, domain: data-governance, description: customer PII classification and access policy}
+  quality-policy: {type: policy, label: データ品質ポリシー, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
+  customer-semantic-layer: {type: semantic_layer, label: 顧客BI／セマンティックレイヤー, category: BI and semantic layer, description: governed metrics for customer and spend analytics}
 
 triples:
   # The workflow's ordered steps are ordinary graph nodes. These context
