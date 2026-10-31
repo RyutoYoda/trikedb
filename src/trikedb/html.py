@@ -181,7 +181,9 @@ _TEMPLATE = """<!DOCTYPE html>
             background: var(--panel); border-bottom: 1px solid var(--border); }
   #brand { display: flex; align-items: center; flex: 0 0 auto; }
   #brand img { display: block; width: 124px; height: auto; }
-  body:not(.light) #brand { background: #f8f9fc; border-radius: 5px; padding: 2px 4px; }
+  /* The embedded logo is already transparent; do not add a light tile in
+     dark mode, otherwise the brand is left behind on a white rectangle. */
+  body:not(.light) #brand { background: transparent; border-radius: 0; padding: 0; }
   #header h1 { font-size: 15px; margin: 0; white-space: nowrap;
                max-width: min(44vw, 560px); overflow: hidden; text-overflow: ellipsis;
                border-left: 1px solid var(--border); padding-left: 12px; }
