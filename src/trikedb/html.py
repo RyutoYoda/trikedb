@@ -932,6 +932,10 @@ function applyFocusStyles() {
     const inFocus = !active || active.has(name);
     const inContext = contextGraph.nodes.has(name);
     return { id: n.id,
+      // A workflow view is a focused process diagram, not a faded overview.
+      // Keeping unrelated nodes mounted makes them show through the selected
+      // steps as ghost boxes, especially after hierarchical layout settles.
+      hidden: workflowMode ? !(inFocus || inContext) : false,
       color: inFocus || inContext
         ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
             highlight: { border: th.hlBorder, background: th.hlBg } }
