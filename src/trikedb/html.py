@@ -407,6 +407,8 @@ _TEMPLATE = """<!DOCTYPE html>
   #sidebar #workflow-tag-label { flex: 0 0 100%; }
   #sidebar #workflow-tag-filter { flex: 0 0 100%; box-sizing: border-box;
     width: 100%; max-width: 100%; }
+  #sidebar #nav-workflow-context { margin: 8px 0 2px; color: var(--dim); font-size: 11px; }
+  #sidebar #nav-workflow-context label { display: flex; gap: 6px; align-items: center; }
   #sidebar .lg.toggle:focus-visible { outline: 2px solid #8cb5f7;
     outline-offset: 3px; border-radius: 3px; }
   #sidebar #focus-depth { width: 100%; margin-top: 6px; }
@@ -460,6 +462,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <div id="nav-depth"></div>
   </div>
   <div id="nav-workflows"></div>
+  <div id="nav-workflow-context"></div>
   <h2 id="nav-title-search">Search</h2>
   <div id="nav-search"></div>
   <details id="nav-advanced" class="nav-group">
@@ -500,7 +503,6 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="workflow-results-count" class="hint" aria-live="polite"></div>
   <div id="workflow-list"></div>
   <button id="workflow-more" class="btn" type="button" hidden>さらに表示</button>
-  <label id="workflow-context-row" title="Expand tools, data objects, and other assets linked to workflow steps"><input id="workflow-context" type="checkbox">関連部品をグラフに展開</label>
 </section>
 
 <div id="sparql">
@@ -554,6 +556,7 @@ place("btn-events", "nav-layers");
 place("btn-onto", "nav-relation-guide");
 for (const id of ["btn-sparql", "btn-tosparql"]) place(id, "nav-advanced-actions");
 place("workflow-picker", "nav-workflows");
+place("workflow-context-row", "nav-workflow-context");
 place("graphbar", "nav-graphs");
 for (const id of ["legend-ctl", "legend"]) place(id, "nav-types");
 document.getElementById("focus-label").remove();
@@ -567,6 +570,7 @@ if (uiJa) {
     "nav-title-relations": "関係の種類",
     "nav-title-layers": "表示レイヤー", "nav-title-advanced": "高度な検索",
     "nav-depth-label": "選択・SPARQL結果の表示範囲", "btn-workflow": "ワークフローを選ぶ",
+    "workflow-context-row": "関連部品をグラフに展開",
     "nav-depth-help": "起点から何段先まで表示するか。大きいグラフは初期値2段。0は該当ノードだけ、1は直接つながる先まで、空欄は制限なし。",
     "nav-query-help": "主語・関係・目的語をまとめて検索できます。SPARQLを直接編集することもできます。",
     "query-search-label": "グラフの事実を検索",
