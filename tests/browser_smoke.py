@@ -204,7 +204,8 @@ def run():
         onto.to_html(rules_page)
         page.goto(rules_page.as_uri(), wait_until="networkidle")
         page.wait_for_selector("canvas")
-        page.locator("#nav-title-relations").click()
+        if page.locator("#nav-relations").get_attribute("open") is None:
+            page.locator("#nav-title-relations").click()
         page.click("#btn-onto")
         shown = page.locator("#detail-body").inner_text().lower()
         # every predicate, whether or not anything is declared about it
