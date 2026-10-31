@@ -961,7 +961,8 @@ function applyFocusStyles() {
       : !active || (active.has(t.s) && active.has(t.o));
     const event = isEventTriple(t);
     const color = inFocus || workflowContext ? themeColor(PREDICATES[t.p], light) : dim;
-    const font = { ...(edges.get(i).font || {}), vadjust: inFocus ? -9 : 0,
+    const font = { ...(edges.get(i).font || {}),
+      background: th.bg, vadjust: inFocus ? -9 : 0,
       color: inFocus ? (event ? EVENT_EDGE_FONT[light ? "light" : "dark"] : th.edgeFont)
         : workflowContext ? th.edgeFont : dim };
     // Direction is conveyed by the left-to-right layout and NEXT_STEP label.
