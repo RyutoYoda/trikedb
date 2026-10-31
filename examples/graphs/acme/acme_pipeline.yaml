@@ -23,6 +23,10 @@ ontology:
     USES_JOB: {description: "workflow step -> ingestion job", domain: process_step, range: job}
     WRITES_TABLE: {description: "workflow step -> warehouse table", domain: process_step, range: table}
     REVIEWS_TABLE: {description: "workflow step -> warehouse table under review", domain: process_step, range: table}
+    USES_PLATFORM: {description: "workflow step -> data platform component", domain: process_step, range: platform}
+    IMPLEMENTS_MODEL: {description: "workflow step -> data model", domain: process_step, range: data_model}
+    ENFORCES_POLICY: {description: "workflow step -> governance policy", domain: process_step, range: policy}
+    SERVES_LAYER: {description: "workflow step -> semantic layer", domain: process_step, range: semantic_layer}
 
 # The same graph can also describe an ordered operational workflow.  These
 # steps are deliberately separate from the jobs and tables below: the
@@ -120,6 +124,16 @@ nodes:
   RAW_WEB_EVENTS: {type: table, schema: ACME_RAW, description: clickstream events, append-only}
   RAW_AD_SPEND_MANUAL: {type: table, schema: ACME_RAW, description: hand-maintained backfill sheet}
   LEGACY_CONTACTS_DUMP: {type: table, schema: ACME_LEGACY, deprecated: true}
+  snowflake-warehouse: {type: platform, vendor: Snowflake, role: analytical warehouse, description: governed cloud data platform}
+  dbt-transform: {type: platform, vendor: dbt, role: transformation and testing, description: version-controlled SQL models}
+  bronze-layer: {type: data_layer, architecture: medallion, layer: bronze, description: raw immutable landing data}
+  silver-layer: {type: data_layer, architecture: medallion, layer: silver, description: cleaned and conformed data}
+  gold-layer: {type: data_layer, architecture: medallion, layer: gold, description: business-ready marts}
+  customer-dimension: {type: data_model, modeling: dimensional, kind: dimension, description: conformed customer dimension}
+  daily-spend-fact: {type: data_model, modeling: dimensional, kind: fact, description: daily campaign spend fact}
+  pii-policy: {type: policy, domain: data-governance, description: customer PII classification and access policy}
+  quality-policy: {type: policy, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
+  customer-semantic-layer: {type: semantic_layer, technology: dbt Semantic Layer, description: governed metrics for customer and spend analytics}
 
 triples:
   # The workflow's ordered steps are ordinary graph nodes. These context
@@ -137,6 +151,26 @@ triples:
   - {s: triage-ingestion-failure, p: USES_JOB, o: crm-sync-job}
   - {s: triage-ingestion-failure, p: REVIEWS_TABLE, o: RAW_CRM_CONTACTS}
   - {s: restart-ingestion-job, p: USES_JOB, o: crm-sync-job}
+  # Data-engineering components used by the workflows. These are context
+  # nodes, not extra ordered stages, so the workflow view can show both the
+  # process and the architecture it runs on.
+  - {s: extract-customer-records, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: extract-customer-records, p: SERVES_LAYER, o: bronze-layer}
+  - {s: validate-customer-records, p: USES_PLATFORM, o: dbt-transform}
+  - {s: validate-customer-records, p: ENFORCES_POLICY, o: pii-policy}
+  - {s: validate-customer-records, p: SERVES_LAYER, o: silver-layer}
+  - {s: publish-customer-table, p: IMPLEMENTS_MODEL, o: customer-dimension}
+  - {s: publish-customer-table, p: SERVES_LAYER, o: gold-layer}
+  - {s: publish-customer-table, p: SERVES_LAYER, o: customer-semantic-layer}
+  - {s: collect-ad-spend, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: collect-ad-spend, p: SERVES_LAYER, o: bronze-layer}
+  - {s: reconcile-ad-spend, p: USES_PLATFORM, o: dbt-transform}
+  - {s: reconcile-ad-spend, p: ENFORCES_POLICY, o: quality-policy}
+  - {s: publish-ad-spend, p: IMPLEMENTS_MODEL, o: daily-spend-fact}
+  - {s: publish-ad-spend, p: SERVES_LAYER, o: gold-layer}
+  - {s: publish-ad-spend, p: SERVES_LAYER, o: customer-semantic-layer}
+  - {s: triage-ingestion-failure, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: triage-ingestion-failure, p: ENFORCES_POLICY, o: quality-policy}
 
   # vendors -> ingestion jobs
   - {s: salesflow-crm, p: PROVIDES, o: crm-sync-job}
