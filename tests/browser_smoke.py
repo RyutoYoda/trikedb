@@ -62,6 +62,7 @@ def run():
         page.locator("#btn-workflow").click()
         page.locator("#workflow-list .workflow-option").click()
         assert page.evaluate("workflowMode") is True
+        assert not errors, errors
         assert page.evaluate("[...workflowNodes].sort()") == [
             "extract", "publish", "validate"
         ]
@@ -103,6 +104,7 @@ def run():
         # The generated page starts in the light theme; event labels use the
         # light-theme contrast colour rather than the dark-theme orange.
         assert ev["font"]["color"] == "#b3261e"
+        assert ev["font"]["background"] == "transparent"
         assert page.evaluate("eventEdgeIds.length") == 3
         # clicking a line opens the node it hangs off — it used to do nothing
         page.evaluate("network.selectEdges([0]); focusNode(TRIPLES[0].s)")

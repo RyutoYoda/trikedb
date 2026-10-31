@@ -820,13 +820,10 @@ const network = new vis.Network(document.getElementById("graph"), { nodes, edges
            color: { border: "#5a83b8", background: "#1e2129",
                     highlight: { border: "#ffffff", background: "#2c4a6e" } },
            shapeProperties: { borderRadius: 6 }, margin: 8 },
-  // A label is drawn at the middle of its line, so on a hub every edge
-  // of the same length puts its text in the same place and what you read
-  // is several predicates written on top of each other. An opaque plate
-  // behind the text means the top one stays a word instead of becoming
-  // a smear — and six identical labels stacked just look like one.
+  // Keep edge labels transparent. Opaque plates become mysterious blank
+  // rectangles when several lines cross or a label is clipped by zoom.
   edges: { arrows: "to", font: { color: "#9a9daa", size: 9, strokeWidth: 0,
-                                 background: "#14161b" },
+                                 background: "transparent" },
            smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: 0.4 } },
   interaction: { hover: !largeGraph, hideEdgesOnDrag: largeGraph,
                  hideEdgesOnZoom: largeGraph },
@@ -963,7 +960,7 @@ function applyFocusStyles() {
     const event = isEventTriple(t);
     const color = inFocus || workflowContext ? themeColor(PREDICATES[t.p], light) : dim;
     const font = { ...(edges.get(i).font || {}),
-      background: th.bg, vadjust: inFocus ? -9 : 0,
+      background: "transparent", vadjust: inFocus ? -9 : 0,
       color: inFocus ? (event ? EVENT_EDGE_FONT[light ? "light" : "dark"] : th.edgeFont)
         : workflowContext ? th.edgeFont : dim };
     // Direction is conveyed by the left-to-right layout and NEXT_STEP label.
@@ -1080,7 +1077,8 @@ function renderWorkflowPicker() {
       // Start with the ordered process only. Context assets are optional:
       // showing every table/tool edge by default makes shared assets draw
       // long diagonals across the workflow and hides the main sequence.
-      showWorkflowContext = false; workflowContextInput.checked = false;
+      showWorkflowContext = false;
+      if (workflowContextInput) workflowContextInput.checked = false;
       workflowPicker.hidden = true; workflowButton.classList.add("on");
       workflowButton.setAttribute("aria-expanded", "false");
       workflowButton.setAttribute("aria-pressed", "true");
