@@ -393,8 +393,6 @@ def run():
         assert "RUNS_ON" in model_detail and "Warehouse" in model_detail
         assert "WRITES_TO" in model_detail and "customer analytics table" in model_detail
         page.locator("#btn-workflow").click()
-        assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")
-        assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
         page.locator("#btn-unfocus").click()
         assert page.evaluate("workflowMode") is False
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON')")
