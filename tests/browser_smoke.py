@@ -25,6 +25,7 @@ def run():
         db.to_html(normal)
         page.goto(normal.as_uri(), wait_until="networkidle")
         page.wait_for_selector("canvas")
+        page.locator("#nav-title-advanced").click()
         page.locator("#btn-sparql").click()
         page.locator("#sparql-input").fill("SELECT ?s WHERE {?s t:INGESTS_TO t:CUSTOMERS}")
         page.locator("#btn-run").click()
