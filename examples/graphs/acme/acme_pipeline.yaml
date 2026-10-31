@@ -47,6 +47,18 @@ workflows:
       - id: extract-customer-records
         label: 顧客レコード取得
         description: Run the CRM sync and land the latest contact records.
+        next: [land-customer-bronze-table]
+      - id: land-customer-bronze-table
+        label: Bronze層：顧客テーブル格納
+        description: Store the source records as an immutable table in the cloud DWH.
+        next: [build-customer-model]
+      - id: build-customer-model
+        label: ELTモデル：顧客モデル
+        description: Define the version-controlled transformation model for customer data.
+        next: [run-customer-job]
+      - id: run-customer-job
+        label: ELTジョブ：顧客変換実行
+        description: Execute the transformation job and run data-quality checks.
         next: [validate-customer-records]
       - id: validate-customer-records
         label: 顧客レコード検証
@@ -157,6 +169,9 @@ nodes:
   quality-policy: {type: policy, label: データ品質ポリシー, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
   bi-tool: {type: platform, label: BIツール, category: BI tool, role: dashboards and self-service analysis, description: visualization and analytics interface}
   customer-semantic-layer: {type: semantic_layer, label: 顧客BI／セマンティックレイヤー, category: semantic layer, description: governed metrics for customer and spend analytics}
+  bronze-customer-table: {type: table, label: Bronze顧客テーブル, layer: bronze, schema: ACME_BRONZE, description: immutable customer source records}
+  customer-elt-model: {type: data_model, label: 顧客ELTモデル, modeling: dimensional, description: transformation model for customer records}
+  customer-elt-job: {type: job, label: 顧客ELTジョブ, category: ELT tool, description: scheduled customer transformation and quality checks}
 
 triples:
   # The workflow's ordered steps are ordinary graph nodes. These context
@@ -164,6 +179,12 @@ triples:
   # process without treating them as additional workflow stages.
   - {s: extract-customer-records, p: USES_JOB, o: crm-sync-job}
   - {s: extract-customer-records, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
+  - {s: land-customer-bronze-table, p: USES_PLATFORM, o: cloud-data-warehouse}
+  - {s: land-customer-bronze-table, p: WRITES_TABLE, o: bronze-customer-table}
+  - {s: build-customer-model, p: USES_PLATFORM, o: elt-transformation-tool}
+  - {s: build-customer-model, p: IMPLEMENTS_MODEL, o: customer-elt-model}
+  - {s: run-customer-job, p: USES_PLATFORM, o: elt-transformation-tool}
+  - {s: run-customer-job, p: USES_JOB, o: customer-elt-job}
   - {s: validate-customer-records, p: REVIEWS_TABLE, o: RAW_CRM_CONTACTS}
   - {s: publish-customer-table, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
   - {s: collect-ad-spend, p: USES_JOB, o: ads-spend-collector}
