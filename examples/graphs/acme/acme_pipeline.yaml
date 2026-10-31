@@ -54,6 +54,56 @@ workflows:
       - id: publish-customer-table
         label: Publish customer table
         description: Make the validated table available to downstream analytics.
+  daily-ad-spend-reconciliation:
+    label: Daily ad spend reconciliation
+    summary: Collect campaign spend, reconcile the warehouse total, and flag manual backfills
+    tags: [domain:marketing-analytics, cadence:daily]
+    workflow_facets:
+      - label: Data source
+        values: [Adastra Ads]
+      - label: Output
+        values: [Finance reporting]
+    steps:
+      - id: collect-ad-spend
+        label: Collect ad spend
+        description: Run the daily collector and land campaign-level spend.
+        next: [reconcile-ad-spend]
+      - id: reconcile-ad-spend
+        label: Reconcile spend totals
+        description: Compare the feed with the warehouse total and check unit conversion.
+        next: [publish-ad-spend, review-ad-spend]
+      - id: review-ad-spend
+        label: Review exception
+        description: Investigate a mismatch or manual backfill before publishing.
+        next: [publish-ad-spend]
+      - id: publish-ad-spend
+        label: Publish spend report
+        description: Release the reconciled daily spend to reporting consumers.
+  incident-response:
+    label: Ingestion incident response
+    summary: Triage a failed ingestion job, restore service, and record the operator action
+    tags: [domain:operations, cadence:on-demand]
+    workflow_facets:
+      - label: Owner
+        values: [On-call]
+      - label: Runtime
+        values: [Lambda]
+    steps:
+      - id: detect-ingestion-failure
+        label: Detect ingestion failure
+        description: Identify a stalled or failed ingestion run from monitoring.
+        next: [triage-ingestion-failure]
+      - id: triage-ingestion-failure
+        label: Triage failure
+        description: Check the job cursor, source API, and affected warehouse table.
+        next: [restart-ingestion-job]
+      - id: restart-ingestion-job
+        label: Restart ingestion job
+        description: Restart the job and confirm that the next run is progressing.
+        next: [record-incident-action]
+      - id: record-incident-action
+        label: Record incident action
+        description: Preserve the operator, timestamp, and resulting state in the graph.
 
 # node properties: type drives color + legend, everything else shows in
 # the detail panel and is queryable via SPARQL (?x t:type "table")
@@ -79,6 +129,14 @@ triples:
   - {s: extract-customer-records, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
   - {s: validate-customer-records, p: REVIEWS_TABLE, o: RAW_CRM_CONTACTS}
   - {s: publish-customer-table, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
+  - {s: collect-ad-spend, p: USES_JOB, o: ads-spend-collector}
+  - {s: collect-ad-spend, p: WRITES_TABLE, o: RAW_AD_SPEND_DAILY}
+  - {s: reconcile-ad-spend, p: REVIEWS_TABLE, o: RAW_AD_SPEND_DAILY}
+  - {s: review-ad-spend, p: REVIEWS_TABLE, o: RAW_AD_SPEND_MANUAL}
+  - {s: publish-ad-spend, p: WRITES_TABLE, o: RAW_AD_SPEND_DAILY}
+  - {s: triage-ingestion-failure, p: USES_JOB, o: crm-sync-job}
+  - {s: triage-ingestion-failure, p: REVIEWS_TABLE, o: RAW_CRM_CONTACTS}
+  - {s: restart-ingestion-job, p: USES_JOB, o: crm-sync-job}
 
   # vendors -> ingestion jobs
   - {s: salesflow-crm, p: PROVIDES, o: crm-sync-job}
