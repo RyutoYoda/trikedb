@@ -505,6 +505,8 @@ _TEMPLATE = """<!DOCTYPE html>
   <button id="workflow-more" class="btn" type="button" hidden>さらに表示</button>
 </section>
 
+<label id="workflow-context-row" title="Expand tools, data objects, and other assets linked to workflow steps"><input id="workflow-context" type="checkbox">関連部品をグラフに展開</label>
+
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
   <div class="row">
