@@ -694,8 +694,12 @@ def test_examples_load_and_query():
 
     examples = Path(__file__).resolve().parent.parent / "examples" / "graphs"
     acme = TrikeDB(examples / "acme" / "acme_pipeline.yaml")
-    assert set(acme.ontology) == {"PROVIDES", "INGESTS_TO", "AFFECTED_BY",
-                                  "RESTARTED", "SUPPLEMENTS", "MIGRATED_TO"}
+    assert set(acme.ontology) == {
+        "PROVIDES", "INGESTS_TO", "AFFECTED_BY", "RESTARTED",
+        "SUPPLEMENTS", "MIGRATED_TO", "USES_JOB", "WRITES_TABLE",
+        "REVIEWS_TABLE", "USES_PLATFORM", "IMPLEMENTS_MODEL",
+        "ENFORCES_POLICY", "SERVES_LAYER",
+    }
     rows = acme.query(["?v PROVIDES ?j", "?j INGESTS_TO ?t"])
     assert {"v": "salesflow-crm", "j": "crm-sync-job", "t": "RAW_CRM_CONTACTS"} in rows
     # the shipped example is what a visitor judges the action layer by, so it
