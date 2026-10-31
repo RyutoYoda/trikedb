@@ -1522,12 +1522,12 @@ def test_header_controls_stay_on_screen_in_a_narrow_window():
 def test_edge_labels_are_legible_on_a_hub():
     """Every edge label is drawn at the middle of its line, so a hub's fan
     of edges piles a dozen predicates into one spot and the demo page read
-    `lotiationlolationtivets`. Two things stop that: an opaque plate behind
-    the text, and a different vertical lane per edge of the same hub."""
+    `lotiationlolationtivets`. The labels stay transparent and use a
+    different vertical lane per edge of the same hub."""
     db = TrikeDB(autosave=False)
     db.add("a", "P", "b")
     html = db.to_html()
-    assert 'background: "#14161b"' in html     # the plate, dark
+    assert 'background: "transparent"' in html
     assert "background: th.bg" in html         # and it follows the theme
     # the lanes are gated on size: a small graph has no crowd to untangle,
     # and a label nudged off its own line for no reason is worse than none
