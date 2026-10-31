@@ -39,7 +39,7 @@ workflows:
     tags: [domain:customer-data, cadence:daily]
     workflow_facets:
       - label: Data source
-        values: [Salesflow CRM]
+        values: [CRM source]
       - label: Owner
         values: [Data Platform]
     steps:
@@ -64,7 +64,7 @@ workflows:
     tags: [domain:marketing-analytics, cadence:daily]
     workflow_facets:
       - label: Data source
-        values: [Adastra Ads]
+        values: [Advertising source]
       - label: Output
         values: [Finance reporting]
     steps:
@@ -124,8 +124,8 @@ nodes:
   RAW_WEB_EVENTS: {type: table, schema: ACME_RAW, description: clickstream events, append-only}
   RAW_AD_SPEND_MANUAL: {type: table, schema: ACME_RAW, description: hand-maintained backfill sheet}
   LEGACY_CONTACTS_DUMP: {type: table, schema: ACME_LEGACY, deprecated: true}
-  snowflake-warehouse: {type: platform, vendor: Snowflake, role: analytical warehouse, description: governed cloud data platform}
-  dbt-transform: {type: platform, vendor: dbt, role: transformation and testing, description: version-controlled SQL models}
+  cloud-data-warehouse: {type: platform, category: cloud DWH, role: analytical warehouse, description: governed cloud data platform}
+  elt-transformation-tool: {type: platform, category: ELT tool, role: transformation and testing, description: version-controlled data models}
   bronze-layer: {type: data_layer, architecture: medallion, layer: bronze, description: raw immutable landing data}
   silver-layer: {type: data_layer, architecture: medallion, layer: silver, description: cleaned and conformed data}
   gold-layer: {type: data_layer, architecture: medallion, layer: gold, description: business-ready marts}
@@ -133,7 +133,7 @@ nodes:
   daily-spend-fact: {type: data_model, modeling: dimensional, kind: fact, description: daily campaign spend fact}
   pii-policy: {type: policy, domain: data-governance, description: customer PII classification and access policy}
   quality-policy: {type: policy, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
-  customer-semantic-layer: {type: semantic_layer, technology: dbt Semantic Layer, description: governed metrics for customer and spend analytics}
+  customer-semantic-layer: {type: semantic_layer, category: BI and semantic layer, description: governed metrics for customer and spend analytics}
 
 triples:
   # The workflow's ordered steps are ordinary graph nodes. These context
@@ -154,22 +154,22 @@ triples:
   # Data-engineering components used by the workflows. These are context
   # nodes, not extra ordered stages, so the workflow view can show both the
   # process and the architecture it runs on.
-  - {s: extract-customer-records, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: extract-customer-records, p: USES_PLATFORM, o: cloud-data-warehouse}
   - {s: extract-customer-records, p: SERVES_LAYER, o: bronze-layer}
-  - {s: validate-customer-records, p: USES_PLATFORM, o: dbt-transform}
+  - {s: validate-customer-records, p: USES_PLATFORM, o: elt-transformation-tool}
   - {s: validate-customer-records, p: ENFORCES_POLICY, o: pii-policy}
   - {s: validate-customer-records, p: SERVES_LAYER, o: silver-layer}
   - {s: publish-customer-table, p: IMPLEMENTS_MODEL, o: customer-dimension}
   - {s: publish-customer-table, p: SERVES_LAYER, o: gold-layer}
   - {s: publish-customer-table, p: SERVES_LAYER, o: customer-semantic-layer}
-  - {s: collect-ad-spend, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: collect-ad-spend, p: USES_PLATFORM, o: cloud-data-warehouse}
   - {s: collect-ad-spend, p: SERVES_LAYER, o: bronze-layer}
-  - {s: reconcile-ad-spend, p: USES_PLATFORM, o: dbt-transform}
+  - {s: reconcile-ad-spend, p: USES_PLATFORM, o: elt-transformation-tool}
   - {s: reconcile-ad-spend, p: ENFORCES_POLICY, o: quality-policy}
   - {s: publish-ad-spend, p: IMPLEMENTS_MODEL, o: daily-spend-fact}
   - {s: publish-ad-spend, p: SERVES_LAYER, o: gold-layer}
   - {s: publish-ad-spend, p: SERVES_LAYER, o: customer-semantic-layer}
-  - {s: triage-ingestion-failure, p: USES_PLATFORM, o: snowflake-warehouse}
+  - {s: triage-ingestion-failure, p: USES_PLATFORM, o: cloud-data-warehouse}
   - {s: triage-ingestion-failure, p: ENFORCES_POLICY, o: quality-policy}
 
   # vendors -> ingestion jobs
