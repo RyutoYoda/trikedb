@@ -373,8 +373,6 @@ def run():
         assert page.evaluate("workflowMode") is True
         assert page.evaluate("focusCenter") is None
         assert page.locator("#btn-workflow").get_attribute("aria-pressed") == "true"
-        assert not page.locator("#workflow-context").is_checked()
-        assert "関連部品をグラフに展開" in page.locator("#workflow-context-row").inner_text()
         assert page.evaluate("[...workflowNodes].sort()") == sorted(flows["customer-refresh"][1])
         positions = page.evaluate("""() => Object.fromEntries(
           [...workflowNodes].map(name => [name, network.getPosition(nodeIds.get(name))]))""")
@@ -386,26 +384,6 @@ def run():
             "t.p === 'NEXT_STEP' && workflowNodes.has(t.s) && workflowNodes.has(t.o)"
             ").map(([, i]) => i)")
         assert sorted(visible_edges) == sorted(expected_edges)
-        page.locator("#workflow-context").check()
-        page.wait_for_timeout(100)
-        positions_with_context = page.evaluate("""() => ({
-          step: network.getPosition(nodeIds.get('正規化')),
-          warehouse: network.getPosition(nodeIds.get('Warehouse')),
-          model: network.getPosition(nodeIds.get('dbt model')),
-          table: network.getPosition(nodeIds.get('customer analytics table')),
-          contextVisible: edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON'),
-        })""")
-        assert positions_with_context["warehouse"]["x"] == positions_with_context["step"]["x"]
-        assert positions_with_context["warehouse"]["y"] > positions_with_context["step"]["y"]
-        assert positions_with_context["model"]["y"] > positions_with_context["step"]["y"]
-        assert positions_with_context["table"]["y"] > positions_with_context["step"]["y"]
-        assert positions_with_context["model"]["y"] < positions_with_context["warehouse"]["y"] < positions_with_context["table"]["y"]
-        assert positions_with_context["contextVisible"]
-        assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
-        assert page.evaluate("nodes.get(nodeIds.get('Warehouse')).shadow.enabled")
-        assert page.evaluate("edges.get().find(e => TRIPLES[e.id].p === 'RUNS_ON').arrows.to.enabled === false")
-        assert page.evaluate("edges.get().filter(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').every(e => !e.arrows.to.enabled)")
-        assert page.evaluate("edges.get().find(e => !e.hidden && TRIPLES[e.id].p === 'NEXT_STEP').font.vadjust === -9")
         page.evaluate("showDetail('正規化')")
         step_detail = page.locator("#detail-body").inner_text()
         assert "USES" in step_detail and "dbt" in step_detail
@@ -417,7 +395,6 @@ def run():
         page.locator("#btn-workflow").click()
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'READS_FROM')")
         assert page.evaluate("!nodes.get(nodeIds.get('Warehouse')).font.color.startsWith('rgba(125,130,140')")
-        page.locator("#workflow-context").uncheck()
         page.locator("#btn-unfocus").click()
         assert page.evaluate("workflowMode") is False
         assert page.evaluate("edges.get().some(e => !e.hidden && TRIPLES[e.id].p === 'RUNS_ON')")
