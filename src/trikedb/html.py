@@ -462,7 +462,9 @@ _TEMPLATE = """<!DOCTYPE html>
     <div id="nav-depth"></div>
   </div>
   <div id="nav-workflows"></div>
-  <div id="nav-workflow-context"></div>
+  <div id="nav-workflow-context">
+    <label id="workflow-context-row" title="Expand tools, data objects, and other assets linked to workflow steps"><input id="workflow-context" type="checkbox">関連部品をグラフに展開</label>
+  </div>
   <h2 id="nav-title-search">Search</h2>
   <div id="nav-search"></div>
   <details id="nav-advanced" class="nav-group">
@@ -504,8 +506,6 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="workflow-list"></div>
   <button id="workflow-more" class="btn" type="button" hidden>さらに表示</button>
 </section>
-
-<label id="workflow-context-row" title="Expand tools, data objects, and other assets linked to workflow steps"><input id="workflow-context" type="checkbox">関連部品をグラフに展開</label>
 
 <div id="sparql">
   <textarea id="sparql-input" spellcheck="false">SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 20</textarea>
@@ -558,7 +558,6 @@ place("btn-events", "nav-layers");
 place("btn-onto", "nav-relation-guide");
 for (const id of ["btn-sparql", "btn-tosparql"]) place(id, "nav-advanced-actions");
 place("workflow-picker", "nav-workflows");
-place("workflow-context-row", "nav-workflow-context");
 place("graphbar", "nav-graphs");
 for (const id of ["legend-ctl", "legend"]) place(id, "nav-types");
 document.getElementById("focus-label").remove();
