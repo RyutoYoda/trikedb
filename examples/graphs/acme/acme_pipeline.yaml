@@ -27,6 +27,7 @@ ontology:
     IMPLEMENTS_MODEL: {description: "workflow step -> data model", domain: process_step, range: data_model}
     ENFORCES_POLICY: {description: "workflow step -> governance policy", domain: process_step, range: policy}
     SERVES_LAYER: {description: "workflow step -> semantic layer", domain: process_step, range: semantic_layer}
+    READS_LAYER: {description: "workflow step -> medallion data layer", domain: process_step, range: data_layer}
 
 # The same graph can also describe an ordered operational workflow.  These
 # steps are deliberately separate from the jobs and tables below: the
@@ -108,6 +109,27 @@ workflows:
       - id: record-incident-action
         label: 対応記録
         description: Preserve the operator, timestamp, and resulting state in the graph.
+  bi-metric-serving:
+    label: BIメトリクス提供
+    summary: Gold層のデータを指標化し、利用者向けの分析ビューとして提供する
+    tags: [domain:analytics, cadence:daily]
+    workflow_facets:
+      - label: 入力
+        values: [Gold層]
+      - label: 提供先
+        values: [BIツール]
+    steps:
+      - id: select-gold-data
+        label: Gold層データ選択
+        description: Select certified customer and spend marts for analytics.
+        next: [define-bi-metrics]
+      - id: define-bi-metrics
+        label: 指標定義
+        description: Define governed dimensions, measures, and business terms.
+        next: [publish-bi-metrics]
+      - id: publish-bi-metrics
+        label: BI指標公開
+        description: Publish the semantic model to dashboards and self-service analysis.
 
 # node properties: type drives color + legend, everything else shows in
 # the detail panel and is queryable via SPARQL (?x t:type "table")
@@ -133,7 +155,8 @@ nodes:
   daily-spend-fact: {type: data_model, label: 日次広告費ファクト, modeling: dimensional, kind: fact, description: daily campaign spend fact}
   pii-policy: {type: policy, label: 個人情報管理ポリシー, domain: data-governance, description: customer PII classification and access policy}
   quality-policy: {type: policy, label: データ品質ポリシー, domain: data-governance, description: freshness, uniqueness, and reconciliation rules}
-  customer-semantic-layer: {type: semantic_layer, label: 顧客BI／セマンティックレイヤー, category: BI and semantic layer, description: governed metrics for customer and spend analytics}
+  bi-tool: {type: platform, label: BIツール, category: BI tool, role: dashboards and self-service analysis, description: visualization and analytics interface}
+  customer-semantic-layer: {type: semantic_layer, label: 顧客BI／セマンティックレイヤー, category: semantic layer, description: governed metrics for customer and spend analytics}
 
 triples:
   # The workflow's ordered steps are ordinary graph nodes. These context
@@ -161,14 +184,17 @@ triples:
   - {s: validate-customer-records, p: SERVES_LAYER, o: silver-layer}
   - {s: publish-customer-table, p: IMPLEMENTS_MODEL, o: customer-dimension}
   - {s: publish-customer-table, p: SERVES_LAYER, o: gold-layer}
-  - {s: publish-customer-table, p: SERVES_LAYER, o: customer-semantic-layer}
   - {s: collect-ad-spend, p: USES_PLATFORM, o: cloud-data-warehouse}
   - {s: collect-ad-spend, p: SERVES_LAYER, o: bronze-layer}
   - {s: reconcile-ad-spend, p: USES_PLATFORM, o: elt-transformation-tool}
   - {s: reconcile-ad-spend, p: ENFORCES_POLICY, o: quality-policy}
   - {s: publish-ad-spend, p: IMPLEMENTS_MODEL, o: daily-spend-fact}
   - {s: publish-ad-spend, p: SERVES_LAYER, o: gold-layer}
-  - {s: publish-ad-spend, p: SERVES_LAYER, o: customer-semantic-layer}
+  - {s: select-gold-data, p: READS_LAYER, o: gold-layer}
+  - {s: select-gold-data, p: IMPLEMENTS_MODEL, o: customer-dimension}
+  - {s: define-bi-metrics, p: SERVES_LAYER, o: customer-semantic-layer}
+  - {s: publish-bi-metrics, p: USES_PLATFORM, o: bi-tool}
+  - {s: publish-bi-metrics, p: SERVES_LAYER, o: customer-semantic-layer}
   - {s: triage-ingestion-failure, p: USES_PLATFORM, o: cloud-data-warehouse}
   - {s: triage-ingestion-failure, p: ENFORCES_POLICY, o: quality-policy}
 
