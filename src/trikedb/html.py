@@ -1254,7 +1254,7 @@ workflowMore.addEventListener("click", () => {
   workflowResultLimit += WORKFLOW_PAGE_SIZE;
   renderWorkflowPicker();
 });
-workflowContextInput.addEventListener("change", () => {
+if (workflowContextInput) workflowContextInput.addEventListener("change", () => {
   showWorkflowContext = workflowContextInput.checked;
   refreshVisibility();
   if (workflowMode) network.fit({ nodes: workflowFrameIds(), animation: QUICK_CAMERA });
