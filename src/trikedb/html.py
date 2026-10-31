@@ -1069,7 +1069,10 @@ function renderWorkflowPicker() {
       focusCenter = null; focusNodes = null;
       queryHits = null;
       selectedWorkflow = workflow.id; workflowMode = true;
-      showWorkflowContext = true; workflowContextInput.checked = true;
+      // Start with the ordered process only. Context assets are optional:
+      // showing every table/tool edge by default makes shared assets draw
+      // long diagonals across the workflow and hides the main sequence.
+      showWorkflowContext = false; workflowContextInput.checked = false;
       workflowPicker.hidden = true; workflowButton.classList.add("on");
       workflowButton.setAttribute("aria-expanded", "false");
       workflowButton.setAttribute("aria-pressed", "true");
