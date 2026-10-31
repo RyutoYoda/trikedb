@@ -500,7 +500,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <div id="workflow-results-count" class="hint" aria-live="polite"></div>
   <div id="workflow-list"></div>
   <button id="workflow-more" class="btn" type="button" hidden>さらに表示</button>
-  <label id="workflow-context-row" title="Show tools, data objects, and other nodes linked to workflow steps in a separate context lane"><input id="workflow-context" type="checkbox">工程に紐づくツール・データも表示（順序には含めない）</label>
+  <label id="workflow-context-row" title="Expand tools, data objects, and other assets linked to workflow steps"><input id="workflow-context" type="checkbox">関連部品をグラフに展開</label>
 </section>
 
 <div id="sparql">
