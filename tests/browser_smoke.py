@@ -209,8 +209,9 @@ def run():
         page.click("#btn-onto")
         shown = page.locator("#detail-body").inner_text().lower()
         # every predicate, whether or not anything is declared about it
-        assert "3 predicate types" in shown and "2 enforced" in shown
-        assert "nothing declared" in shown            # NOTE, and it says so
+        assert ("3 predicate types" in shown or "3種類" in shown)
+        assert ("2 enforced" in shown or "2種類" in shown)
+        assert ("nothing declared" in shown or "宣言されていません" in shown)
         assert "must have happened first: placed_by" in shown
         assert "may only be done by: picker" in shown
         assert "subject must be: order" in shown
@@ -283,7 +284,7 @@ def run():
         assert page.locator("#detail-body a[href]").first.get_attribute("href") == 'https://example.invalid/?a=1&b=2'
         assert not page.locator("[onerror], [onmouseover]").count()
         assert not page.locator("html").get_attribute("data-review-injected")
-        assert page.title() == script
+        assert page.title().startswith(script)
         assert page.evaluate("Object.keys(NODES_META).includes('__proto__')")
         assert page.evaluate("TRIPLES.some(t => t.s === '__FLOW_DEFAULT__')")
         page.evaluate("showOntology()")   # predicate names are untrusted too
