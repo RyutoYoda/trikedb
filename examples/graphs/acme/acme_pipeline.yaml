@@ -20,6 +20,40 @@ ontology:
     RESTARTED: {description: "ingestion job -> what an operator did to it", domain: job}
     SUPPLEMENTS: {description: "table -> table it fills gaps for", domain: table, range: table}
     MIGRATED_TO: {description: "deprecated table -> its replacement", domain: table, range: table}
+    USES_JOB: {description: "workflow step -> ingestion job", domain: process_step, range: job}
+    WRITES_TABLE: {description: "workflow step -> warehouse table", domain: process_step, range: table}
+    REVIEWS_TABLE: {description: "workflow step -> warehouse table under review", domain: process_step, range: table}
+
+# The same graph can also describe an ordered operational workflow.  These
+# steps are deliberately separate from the jobs and tables below: the
+# workflow is the human/operator process, while the linked nodes provide its
+# technical context.
+workflows:
+  daily-customer-data-refresh:
+    label: Daily customer data refresh
+    summary: Ingest CRM records, validate privacy-sensitive fields, and publish the customer table
+    tags: [domain:customer-data, cadence:daily]
+    workflow_facets:
+      - label: Data source
+        values: [Salesflow CRM]
+      - label: Owner
+        values: [Data Platform]
+    steps:
+      - id: extract-customer-records
+        label: Extract customer records
+        description: Run the CRM sync and land the latest contact records.
+        next: [validate-customer-records]
+      - id: validate-customer-records
+        label: Validate customer records
+        description: Check schema, privacy constraints, and the latest CRM change event.
+        next: [publish-customer-table, request-data-review]
+      - id: request-data-review
+        label: Request data review
+        description: Route unresolved changes to the data-platform owner for review.
+        next: [publish-customer-table]
+      - id: publish-customer-table
+        label: Publish customer table
+        description: Make the validated table available to downstream analytics.
 
 # node properties: type drives color + legend, everything else shows in
 # the detail panel and is queryable via SPARQL (?x t:type "table")
@@ -38,6 +72,14 @@ nodes:
   LEGACY_CONTACTS_DUMP: {type: table, schema: ACME_LEGACY, deprecated: true}
 
 triples:
+  # The workflow's ordered steps are ordinary graph nodes. These context
+  # edges let the workbench show the technical jobs and tables beside the
+  # process without treating them as additional workflow stages.
+  - {s: extract-customer-records, p: USES_JOB, o: crm-sync-job}
+  - {s: extract-customer-records, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
+  - {s: validate-customer-records, p: REVIEWS_TABLE, o: RAW_CRM_CONTACTS}
+  - {s: publish-customer-table, p: WRITES_TABLE, o: RAW_CRM_CONTACTS}
+
   # vendors -> ingestion jobs
   - {s: salesflow-crm, p: PROVIDES, o: crm-sync-job}
   - {s: adastra-ads, p: PROVIDES, o: ads-spend-collector}
