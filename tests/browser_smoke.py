@@ -35,6 +35,23 @@ def run():
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
 
+        # At Fit, large graphs still need node names. A performance change
+        # once gated the threshold override on !largeGraph and left only
+        # anonymous boxes in the overview.
+        large = TrikeDB()
+        for i in range(151):
+            large.add(f"NODE_{i}", "LINKS_TO", f"NODE_{i + 1}")
+        large_page = Path(root) / "large-labels.html"
+        large.to_html(large_page)
+        page.goto(large_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        page.wait_for_function("""() => Object.values(network.body.nodes).some(
+            n => n.options.scaling?.label?.drawThreshold === 0)""")
+        assert page.evaluate("largeGraph") is True
+        assert page.evaluate("""Object.values(network.body.nodes).every(
+            n => n.options.scaling?.label?.drawThreshold === 0)""")
+        assert not errors, errors
+
         # --- dedicated workflow YAML is the same searchable RDF graph ----
         workflow_yaml = Path(root) / "customer-refresh.yaml"
         workflow_yaml.write_text("""workflows:
@@ -59,6 +76,7 @@ def run():
         page.goto(workflow_page.as_uri(), wait_until="networkidle")
         page.wait_for_selector("canvas")
         assert page.locator("#btn-workflow").is_visible()
+        assert page.locator("#workflow-context").count() == 1
         page.locator("#btn-workflow").click()
         page.locator("#workflow-list .workflow-option").click()
         assert page.evaluate("workflowMode") is True
@@ -414,9 +432,10 @@ def run():
         page.locator("#btn-workflow").click()
         count_text = page.locator("#workflow-results-count").inner_text()
         assert count_text
-        assert page.locator("#workflow-list .workflow-option").count() == 40
+        page_size = page.evaluate("WORKFLOW_PAGE_SIZE")
+        assert page.locator("#workflow-list .workflow-option").count() == page_size
         page.locator("#workflow-more").click()
-        assert page.locator("#workflow-list .workflow-option").count() == 80
+        assert page.locator("#workflow-list .workflow-option").count() == 2 * page_size
         page.locator("#workflow-search").fill("workflow-0500")
         count_text = page.locator("#workflow-results-count").inner_text()
         assert "1" in count_text

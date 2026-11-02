@@ -1548,7 +1548,8 @@ def test_nodes_carry_no_scaling_option():
         # the threshold is lowered on the objects vis built, per frame,
         # because vis puts the default back whenever a node is updated
         assert "o.scaling.label.drawThreshold = 0" in html
-        assert 'if (!largeGraph) network.on("beforeDrawing"' in html
+        assert 'network.on("beforeDrawing"' in html
+        assert 'if (!largeGraph) network.on("beforeDrawing"' not in html
 
 
 def test_flow_columns_yield_to_an_explicit_level():
