@@ -35,6 +35,23 @@ def run():
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
 
+        # At Fit, large graphs still need node names. A performance change
+        # once gated the threshold override on !largeGraph and left only
+        # anonymous boxes in the overview.
+        large = TrikeDB()
+        for i in range(151):
+            large.add(f"NODE_{i}", "LINKS_TO", f"NODE_{i + 1}")
+        large_page = Path(root) / "large-labels.html"
+        large.to_html(large_page)
+        page.goto(large_page.as_uri(), wait_until="networkidle")
+        page.wait_for_selector("canvas")
+        page.wait_for_function("""() => Object.values(network.body.nodes).some(
+            n => n.options.scaling?.label?.drawThreshold === 0)""")
+        assert page.evaluate("largeGraph") is True
+        assert page.evaluate("""Object.values(network.body.nodes).every(
+            n => n.options.scaling?.label?.drawThreshold === 0)""")
+        assert not errors, errors
+
         # --- dedicated workflow YAML is the same searchable RDF graph ----
         workflow_yaml = Path(root) / "customer-refresh.yaml"
         workflow_yaml.write_text("""workflows:

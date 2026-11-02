@@ -836,10 +836,11 @@ if (!flow) {
   });
 }
 
-// Keep the original labels inside their nodes at Fit. Vis normally suppresses
-// them below its zoom threshold, leaving light boxes that look empty. The
-// graph still controls their size; we only keep them drawn at every scale.
-if (!largeGraph) network.on("beforeDrawing", function () {
+// Keep node names visible at Fit, including large graphs. The overview already
+// skips edge labels and hover redraws there; suppressing node text as well
+// leaves a canvas of anonymous boxes. Do not set scaling in network options:
+// vis rewrites it and can turn the measured font size into NaN.
+network.on("beforeDrawing", function () {
   for (const id in network.body.nodes) {
     const o = network.body.nodes[id].options;
     if (o && o.scaling && o.scaling.label) o.scaling.label.drawThreshold = 0;
