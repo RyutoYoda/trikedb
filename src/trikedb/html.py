@@ -959,7 +959,7 @@ function applyFocusStyles() {
       // A workflow view is a focused process diagram, not a faded overview.
       // Keeping unrelated nodes mounted makes them show through the selected
       // steps as ghost boxes, especially after hierarchical layout settles.
-      hidden: workflowMode ? !(inFocus || inContext) : false,
+      ...(workflowMode ? { hidden: !(inFocus || inContext) } : {}),
       color: inFocus || inContext
         ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
             highlight: { border: th.hlBorder, background: th.hlBg } }
@@ -1430,6 +1430,7 @@ if (typeNames.length) {
   ctl.style.display = "flex";
   const mk = (label, off, title) => {
     const b = document.createElement("button");
+    b.id = off ? "type-select-none" : "type-select-all";
     b.className = "selbtn"; b.textContent = label; b.title = title;
     b.onclick = () => { typeNames.forEach(ty => setTypeHidden(ty, off)); refreshVisibility(); };
     ctl.appendChild(b);
@@ -1451,6 +1452,7 @@ if (gnames.length > 0) {
   const bar = document.getElementById("graphbar");
   bar.style.display = "flex";
   const tag = document.createElement("span");
+  tag.id = "workspace-filter-label";
   tag.className = "lg"; tag.textContent = "workspace:";
   tag.title = "this view is a workspace: a read-only union of member graphs — click a chip to show/hide one";
   bar.appendChild(tag);
@@ -1467,6 +1469,7 @@ if (gnames.length > 0) {
   }
   const mk = (label, hidden, title) => {
     const b = document.createElement("button");
+    b.id = hidden ? "workspace-select-none" : "workspace-select-all";
     b.className = "selbtn"; b.textContent = label; b.title = title;
     b.style.marginLeft = label === "all" ? "6px" : "0";
     b.onclick = () => { gnames.forEach(g => setGraphHidden(g, hidden)); refreshVisibility(); };
@@ -1842,7 +1845,8 @@ function tickHTML(t, i) {
   </div>`;
 }
 if (timeline.length) {
-  document.getElementById("stripcount").textContent = timeline.length + " events";
+  document.getElementById("stripcount").textContent = timeline.length
+    + (uiJa ? " 件" : " events");
   rail.innerHTML = timeline.map(tickHTML).join("");
   document.body.classList.add("strip-on");
   btnEvents.classList.add("active");
@@ -2003,6 +2007,7 @@ document.getElementById("btn-language").onclick = () => {
   url.searchParams.set("lang", uiJa ? "ja" : "en");
   history.replaceState(history.state, "", url);
   applyStaticLanguage();
+  updateFilterControlsLanguage();
   updateThemeButton();
   updateFocus();
   if (!workflowPicker.hidden) renderWorkflowPicker();
@@ -2016,6 +2021,24 @@ document.getElementById("btn-language").onclick = () => {
   setSparqlOpen(sparqlPanel.classList.contains("open"));
   if (trail.length) drawPanel();
 };
+function updateFilterControlsLanguage() {
+  const labels = {
+    "type-select-all": ["すべて", "all", "すべてのノード種別を表示", "show all node types"],
+    "type-select-none": ["なし", "none", "すべてのノード種別を非表示", "hide all node types"],
+    "workspace-select-all": ["すべて", "all", "すべてのグラフを表示", "show all member graphs"],
+    "workspace-select-none": ["なし", "none", "すべてのグラフを非表示", "hide all member graphs"],
+    "workspace-filter-label": ["ワークスペース:", "workspace:",
+      "この画面は複数のグラフをまとめたものです。クリックで表示を切り替えます。",
+      "this view is a workspace: a read-only union of member graphs — click a chip to show/hide one"],
+  };
+  for (const [id, values] of Object.entries(labels)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = values[uiJa ? 0 : 1];
+    el.title = values[uiJa ? 2 : 3];
+  }
+}
+updateFilterControlsLanguage();
 </script>
 <!-- trikedb:hash:__CONTENT_HASH__ -->
 </body>
