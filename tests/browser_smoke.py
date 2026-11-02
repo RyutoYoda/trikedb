@@ -76,6 +76,7 @@ def run():
         page.goto(workflow_page.as_uri(), wait_until="networkidle")
         page.wait_for_selector("canvas")
         assert page.locator("#btn-workflow").is_visible()
+        assert page.locator("#workflow-context").count() == 1
         page.locator("#btn-workflow").click()
         page.locator("#workflow-list .workflow-option").click()
         assert page.evaluate("workflowMode") is True
@@ -431,9 +432,10 @@ def run():
         page.locator("#btn-workflow").click()
         count_text = page.locator("#workflow-results-count").inner_text()
         assert count_text
-        assert page.locator("#workflow-list .workflow-option").count() == 40
+        page_size = page.evaluate("WORKFLOW_PAGE_SIZE")
+        assert page.locator("#workflow-list .workflow-option").count() == page_size
         page.locator("#workflow-more").click()
-        assert page.locator("#workflow-list .workflow-option").count() == 80
+        assert page.locator("#workflow-list .workflow-option").count() == 2 * page_size
         page.locator("#workflow-search").fill("workflow-0500")
         count_text = page.locator("#workflow-results-count").inner_text()
         assert "1" in count_text
