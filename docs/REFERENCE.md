@@ -826,8 +826,10 @@ The header embeds the TrikeDB logo. Set the graph title beside it with
   and type filters, workflow selection, and node-focus range; the right panel holds
   details. The menu button collapses the explorer. Focus still mutes out-of-range
   nodes and edges instead of removing them.
-  The explorer uses Japanese labels when the browser language is Japanese;
-  `?lang=ja` also selects them explicitly.
+  The explorer uses Japanese labels when the browser language is Japanese.
+  The header's language button switches Japanese and English in place, retaining
+  the selected node, workflow, filters, and open detail panel. The choice is
+  reflected in the URL as `?lang=ja` or `?lang=en` for shared links.
 - the relation filter holds a separate definitions button. Advanced queries
   hold the SPARQL editor and search-to-SPARQL action; the latter is disabled
   until a search term is entered and searches subjects, predicates, and objects.

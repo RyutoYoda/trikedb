@@ -451,6 +451,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <button class="btn" id="btn-unfocus" title="clear the selection and return to the whole graph" hidden>← 全体に戻る</button>
     <button class="btn" id="btn-fit">Fit</button>
     <button class="btn" id="btn-theme" title="switch to dark mode">dark</button>
+    <button class="btn" id="btn-language" type="button" title="Switch to Japanese">日本語</button>
   </div>
 </div>
 
@@ -528,7 +529,7 @@ _TEMPLATE = """<!DOCTYPE html>
 
 <div id="strip">
   <div class="striphead" id="btn-fulllog" title="open the whole log in the panel">
-    <span class="striptitle">action log</span>
+    <span class="striptitle" id="strip-title">action log</span>
     <span class="stripcount" id="stripcount"></span>
   </div>
   <div id="striprail"></div>
@@ -564,28 +565,46 @@ place("graphbar", "nav-graphs");
 for (const id of ["legend-ctl", "legend"]) place(id, "nav-types");
 document.getElementById("focus-label").remove();
 place("focus-depth", "nav-depth");
-const uiJa = (new URLSearchParams(location.search).get("lang") || navigator.language)
+let uiJa = (new URLSearchParams(location.search).get("lang") || navigator.language)
   .toLowerCase().startsWith("ja");
-if (uiJa) {
-  for (const [id, label] of Object.entries({
-    "nav-title-view": "表示", "nav-title-search": "検索",
-    "nav-title-workspaces": "ワークスペース", "nav-title-types": "ノード種別",
-    "nav-title-relations": "関係の種類",
-    "nav-title-layers": "表示レイヤー", "nav-title-advanced": "高度な検索",
-    "nav-depth-label": "選択・SPARQL結果の表示範囲", "btn-workflow": "ワークフローを選ぶ",
-    "workflow-context-label": "関連部品をグラフに展開",
-    "nav-depth-help": "起点から何段先まで表示するか。大きいグラフは初期値2段。0は該当ノードだけ、1は直接つながる先まで、空欄は制限なし。",
-    "nav-query-help": "主語・関係・目的語をまとめて検索できます。SPARQLを直接編集することもできます。",
-    "query-search-label": "グラフの事実を検索",
-    "btn-sparql": "SPARQLクエリを開く",
-    "btn-tosparql": "検索語からSPARQLを作って実行",
-  })) document.getElementById(id).textContent = label;
-  document.getElementById("search").placeholder = "ノードを検索…";
-  document.getElementById("query-search").placeholder = "主語・関係・目的語を検索…";
-  document.getElementById("workflow-search").placeholder = "ワークフローを検索…";
-  document.getElementById("focus-depth").placeholder = "空欄＝制限なし";
-  document.getElementById("focus-status").textContent = "グラフ全体を表示中";
+const UI_TEXT = {
+  "nav-title-view": ["表示", "View"], "nav-title-search": ["検索", "Search"],
+  "nav-title-workspaces": ["ワークスペース", "Workspaces"],
+  "nav-title-types": ["ノード種別", "Node types"],
+  "nav-title-relations": ["関係の種類", "Relations"],
+  "nav-title-layers": ["表示レイヤー", "Layers"],
+  "nav-title-advanced": ["高度な検索", "Advanced queries"],
+  "nav-depth-label": ["選択・SPARQL結果の表示範囲", "Node and SPARQL result range"],
+  "btn-workflow": ["ワークフローを選ぶ", "Choose workflow"],
+  "workflow-context-label": ["関連部品をグラフに展開", "Expand related assets in graph"],
+  "nav-depth-help": ["起点から何段先まで表示するか。大きいグラフは初期値2段。0は該当ノードだけ、1は直接つながる先まで、空欄は制限なし。",
+    "How many links from a selected node or SPARQL match to show? Large graphs start at 2; 0 shows matches only, blank means unlimited."],
+  "nav-query-help": ["主語・関係・目的語をまとめて検索できます。SPARQLを直接編集することもできます。",
+    "Search subjects, relations and objects, or write a SPARQL query."],
+  "query-search-label": ["グラフの事実を検索", "Search graph facts"],
+  "btn-tosparql": ["検索語からSPARQLを作って実行", "Search with SPARQL"],
+  "workflow-picker-title": ["ワークフローを選択", "Choose a workflow"],
+  "workflow-picker-close": ["閉じる", "Close"],
+  "workflow-tag-label": ["分類タグ", "Tag"],
+  "workflow-more": ["さらに表示", "Show more"],
+  "btn-run": ["実行", "Run"], "strip-title": ["変更履歴", "Action log"],
+};
+function applyStaticLanguage() {
+  document.documentElement.lang = uiJa ? "ja" : "en";
+  for (const [id, labels] of Object.entries(UI_TEXT))
+    document.getElementById(id).textContent = labels[uiJa ? 0 : 1];
+  for (const [id, labels] of Object.entries({
+    search: ["ノードを検索…", "search nodes..."],
+    "query-search": ["主語・関係・目的語を検索…", "Search subjects, relations, objects..."],
+    "workflow-search": ["ワークフローを検索…", "search workflows..."],
+    "focus-depth": ["空欄＝制限なし", "blank = unlimited"],
+  })) document.getElementById(id).placeholder = labels[uiJa ? 0 : 1];
+  const button = document.getElementById("btn-language");
+  button.textContent = uiJa ? "English" : "日本語";
+  button.title = uiJa ? "Switch to English" : "日本語に切り替える";
+  button.setAttribute("aria-label", button.title);
 }
+applyStaticLanguage();
 if (matchMedia("(max-width: 760px)").matches) document.body.classList.add("sidebar-closed");
 const sidebarToggle = document.getElementById("btn-sidebar");
 sidebarToggle.setAttribute("aria-expanded", String(!document.body.classList.contains("sidebar-closed")));
@@ -1027,15 +1046,18 @@ function renderWorkflowPicker() {
   const definitions = workflowDefinitions();
   const tags = [...new Set(definitions.flatMap(w => w.tags))].sort();
   const previousTag = workflowTagFilterEl.value;
-  workflowTagFilterEl.replaceChildren(new Option("すべて", ""));
+  workflowTagFilterEl.replaceChildren(new Option(uiJa ? "すべて" : "All", ""));
   for (const tag of tags) workflowTagFilterEl.add(new Option(displayWorkflowTag(tag), tag));
   if (tags.includes(previousTag)) workflowTagFilterEl.value = previousTag;
   else workflowTagFilterEl.value = "";
   workflowPickerHint.textContent = workflowMode
-    ? `「${(NODES_META[selectedWorkflow] || {}).label || selectedWorkflow}」を表示中です。別のワークフローを選ぶと切り替わります。`
+    ? (uiJa ? `「${(NODES_META[selectedWorkflow] || {}).label || selectedWorkflow}」を表示中です。別のワークフローを選ぶと切り替わります。`
+      : `Showing "${(NODES_META[selectedWorkflow] || {}).label || selectedWorkflow}". Choose another workflow to switch.`)
     : focusCenter !== null
-      ? "ノードにフォーカス中です。ワークフローを選ぶと、選んだ工程列の表示に切り替わります。"
-      : "全体表示中です。選ぶと、そのワークフローの工程列に切り替わります。";
+      ? (uiJa ? "ノードにフォーカス中です。ワークフローを選ぶと、選んだ工程列の表示に切り替わります。"
+        : "A node is selected. Choose a workflow to show its steps.")
+      : (uiJa ? "全体表示中です。選ぶと、そのワークフローの工程列に切り替わります。"
+        : "Showing the whole graph. Choose a workflow to show its steps.");
   const term = workflowSearch.value.trim().toLocaleLowerCase();
   const filterTag = workflowTagFilterEl.value;
   const matching = definitions.filter(w => (!filterTag || w.tags.includes(filterTag)) &&
@@ -1044,17 +1066,21 @@ function renderWorkflowPicker() {
   workflowList.replaceChildren();
   if (!matching.length) {
     const empty = document.createElement("div"); empty.className = "hint";
-    empty.textContent = "No matching workflows"; workflowList.appendChild(empty);
+    empty.textContent = uiJa ? "一致するワークフローはありません" : "No matching workflows";
+    workflowList.appendChild(empty);
   }
   workflowResultsCount.textContent = matching.length
-    ? `${matching.length}件中 ${shown.length}件を表示` : "0件";
+    ? (uiJa ? `${matching.length}件中 ${shown.length}件を表示`
+      : `Showing ${shown.length} of ${matching.length}`) : (uiJa ? "0件" : "0 workflows");
   workflowMore.hidden = shown.length >= matching.length;
-  workflowMore.textContent = `さらに表示（${Math.min(WORKFLOW_PAGE_SIZE, matching.length - shown.length)}件）`;
+  workflowMore.textContent = uiJa
+    ? `さらに表示（${Math.min(WORKFLOW_PAGE_SIZE, matching.length - shown.length)}件）`
+    : `Show ${Math.min(WORKFLOW_PAGE_SIZE, matching.length - shown.length)} more`;
   for (const workflow of shown) {
     const option = document.createElement("button");
     option.type = "button"; option.className = "workflow-option";
     option.classList.toggle("selected", selectedWorkflow === workflow.id);
-    option.textContent = workflow.label + " · " + workflow.steps.size + "工程";
+    option.textContent = workflow.label + " · " + workflow.steps.size + (uiJa ? "工程" : " steps");
     if (workflow.summary) {
       const summary = document.createElement("span");
       summary.className = "workflow-summary"; summary.textContent = workflow.summary;
@@ -1068,8 +1094,8 @@ function renderWorkflowPicker() {
     }
     const tags = document.createElement("small");
     tags.textContent = workflow.tags.length
-      ? "分類: " + workflow.tags.map(displayWorkflowTag).join(" · ")
-      : "分類タグなし";
+      ? (uiJa ? "分類: " : "Tags: ") + workflow.tags.map(displayWorkflowTag).join(" · ")
+      : (uiJa ? "分類タグなし" : "No tags");
     option.appendChild(tags);
     option.onclick = () => {
       focusCenter = null; focusNodes = null;
@@ -1092,7 +1118,8 @@ function renderWorkflowPicker() {
 function displayWorkflowTag(tag) {
   const [rawCategory, ...rawValue] = String(tag).split(":");
   if (!rawValue.length) return String(tag);
-  const category = ({domain: "領域", saas: "SaaS", platform: "基盤"})[rawCategory.toLowerCase()] || rawCategory;
+  const category = (uiJa ? {domain: "領域", saas: "SaaS", platform: "基盤"}
+    : {domain: "Domain", saas: "SaaS", platform: "Platform"})[rawCategory.toLowerCase()] || rawCategory;
   return `${category}: ${rawValue.join(":")}`;
 }
 const WORKFLOW_ASSET_TYPES = new Set([
@@ -1494,7 +1521,11 @@ function applyTheme(name, persist = true) {
   applyFocusStyles();
   network.setSelection(sel);
   if (persist) { try { localStorage.setItem("trikedb-theme", name); } catch (e) {} }
+  updateThemeButton();
+}
+function updateThemeButton() {
   const themeButton = document.getElementById("btn-theme");
+  const name = document.body.classList.contains("light") ? "light" : "dark";
   const nextTheme = name === "light" ? "dark" : "light";
   themeButton.textContent = uiJa ? (nextTheme === "dark" ? "ダーク" : "ライト") : nextTheme;
   themeButton.title = uiJa
@@ -1832,7 +1863,7 @@ btnEvents.onclick = () => {
 document.getElementById("btn-fulllog").onclick = () => showTimeline();
 
 function logHTML() {
-  return `<h2>action log</h2><h3>${timeline.length} event${timeline.length === 1 ? "" : "s"} &middot; newest first</h3>`
+  return `<h2>${uiJa ? "変更履歴" : "action log"}</h2><h3>${timeline.length} ${uiJa ? "件 · 新しい順" : `event${timeline.length === 1 ? "" : "s"} · newest first`}</h3>`
     + timeline.map(timelineHTML).join("");
 }
 function showTimeline() { openPanel("log", ""); }
@@ -1963,6 +1994,27 @@ document.getElementById("btn-run").onclick = async () => {
   } catch (err) {
     box.innerHTML = `<div class="err">${esc(err.message || err)}</div>`;
   }
+};
+// Keep graph selection, filters, camera, and open panels while switching UI
+// language. The URL records the choice so a shared link opens the same UI.
+document.getElementById("btn-language").onclick = () => {
+  uiJa = !uiJa;
+  const url = new URL(location.href);
+  url.searchParams.set("lang", uiJa ? "ja" : "en");
+  history.replaceState(history.state, "", url);
+  applyStaticLanguage();
+  updateThemeButton();
+  updateFocus();
+  if (!workflowPicker.hidden) renderWorkflowPicker();
+  if (timeline.length) {
+    btnEvents.textContent = (uiJa ? "変更履歴" : "events") + " \\u00b7 " + timeline.length;
+    document.getElementById("stripcount").textContent = timeline.length
+      + (uiJa ? " 件" : " events");
+  }
+  if (ruleNames.length) btnOnto.textContent =
+    (uiJa ? "関係の説明・ルールを見る" : "View relation definitions") + " \\u00b7 " + ruleNames.length;
+  setSparqlOpen(sparqlPanel.classList.contains("open"));
+  if (trail.length) drawPanel();
 };
 </script>
 <!-- trikedb:hash:__CONTENT_HASH__ -->

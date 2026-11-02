@@ -15,7 +15,7 @@ def run():
         chrome = Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
         browser = pw.chromium.launch(headless=True, **(
             {"executable_path": str(chrome)} if chrome.exists() else {}))
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page = browser.new_page(viewport={"width": 1280, "height": 900}, locale="en-US")
         errors = []
         page.on("pageerror", lambda e: errors.append(e.stack))
         db = TrikeDB()
@@ -23,7 +23,7 @@ def run():
         db.set_node("CUSTOMERS", type="table", pii=True)
         normal = Path(root) / "normal.html"
         db.to_html(normal)
-        page.goto(normal.as_uri(), wait_until="networkidle")
+        page.goto(normal.as_uri() + "?lang=en", wait_until="networkidle")
         page.wait_for_selector("canvas")
         page.locator("#nav-title-advanced").click()
         page.locator("#btn-sparql").click()
@@ -34,6 +34,19 @@ def run():
         page.locator("#btn-sparql").click()
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
+
+        # Switching language keeps the selected node and open detail panel.
+        page.evaluate("focusNode('CUSTOMERS')")
+        page.locator("#btn-language").click()
+        assert page.locator("#nav-title-view").text_content() == "表示"
+        assert page.evaluate("focusCenter") == "CUSTOMERS"
+        assert page.locator("#detail").evaluate("el => el.classList.contains('open')")
+        assert page.evaluate("new URL(location.href).searchParams.get('lang')") == "ja"
+        page.locator("#btn-language").click()
+        assert page.locator("#nav-title-view").text_content() == "View"
+        assert page.evaluate("focusCenter") == "CUSTOMERS"
+        assert page.evaluate("new URL(location.href).searchParams.get('lang')") == "en"
+        assert not errors, errors
 
         # At Fit, large graphs still need node names. A performance change
         # once gated the threshold override on !largeGraph and left only
@@ -80,6 +93,9 @@ def run():
         page.locator("#btn-workflow").click()
         page.locator("#workflow-list .workflow-option").click()
         assert page.evaluate("workflowMode") is True
+        page.locator("#btn-language").click()
+        assert page.evaluate("workflowMode") is True
+        assert page.locator("#workflow-context").count() == 1
         assert not errors, errors
         assert page.evaluate("[...workflowNodes].sort()") == [
             "extract", "publish", "validate"
@@ -357,7 +373,7 @@ def run():
         mixed_page = Path(root) / "mixed-workflows.html"
         mixed.to_html(mixed_page, workflow_predicates=["NEXT_STEP"],
                       workflow_membership_predicate="HAS_STEP")
-        page.goto(mixed_page.as_uri(), wait_until="networkidle")
+        page.goto(mixed_page.as_uri() + "?lang=ja", wait_until="networkidle")
         page.wait_for_selector("canvas")
         assert page.locator("#btn-workflow").is_visible()
         assert page.evaluate("TRIPLES.length") > 20
