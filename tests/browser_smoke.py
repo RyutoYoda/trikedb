@@ -118,6 +118,9 @@ def run():
         # the node wears the state the last event left it in
         assert page.evaluate("currentState('RAW_SPEND')") == "pending-review"
         assert page.evaluate("eventsOf['RAW_SPEND'].length") == 2
+        page.locator("#btn-language").click()
+        assert page.locator("#stripcount").text_content() == str(page.evaluate("timeline.length")) + " 件"
+        page.locator("#btn-language").click()
         assert page.evaluate("timeOf(eventsOf['RAW_SPEND'][0])") == "2025-07-02"  # newest first
         # a real node that an event points at is still a real node
         assert page.evaluate("eventNodes.has('Operation Bagration')") is False
@@ -499,6 +502,15 @@ def run():
         assert not moved(steady, view()), (
             "a predicate toggle hides no node, but the camera moved anyway",
             steady, view())
+        # Focus styling must not undo workspace visibility filters.
+        page.evaluate("hiddenPreds.clear(); refreshVisibility(); startFocus('L0')")
+        assert page.evaluate("nodes.get(nodeIds.get('R0')).hidden") is True
+        page.locator("#btn-language").click()
+        assert page.locator("#workspace-select-all").text_content() == "すべて"
+        assert page.locator("#workspace-select-none").text_content() == "なし"
+        assert page.evaluate("nodes.get(nodeIds.get('R0')).hidden") is True
+        page.locator("#btn-language").click()
+        assert page.locator("#workspace-select-all").text_content() == "all"
         assert not errors, errors
 
         browser.close()
