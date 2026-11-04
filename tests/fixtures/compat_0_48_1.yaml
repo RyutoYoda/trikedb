@@ -1,0 +1,6 @@
+# Written by the published trikedb 0.48.1 Python API.
+nodes:
+  sales: {type: service, label: Sales service}
+  orders: {type: table, pii: false}
+triples:
+- {s: sales, p: USES, o: orders, prov: fixture, note: shared graph}
