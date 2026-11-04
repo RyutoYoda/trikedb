@@ -1,0 +1,57 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version already merged into main (for example, 0.48.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REQUESTED_VERSION: ${{ inputs.version }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: Check requested version
+        run: |
+          test "$(uv version --short)" = "$REQUESTED_VERSION"
+      - name: Build distributions
+        run: uv build --no-sources
+      - name: Smoke test wheel
+        run: uv run --isolated --no-project --with dist/*.whl python -c 'import os, trikedb; assert trikedb.__version__ == os.environ["REQUESTED_VERSION"]'
+      - name: Smoke test source distribution
+        run: uv run --isolated --no-project --with dist/*.tar.gz python -c 'import os, trikedb; assert trikedb.__version__ == os.environ["REQUESTED_VERSION"]'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish distributions
+        run: uv publish --trusted-publishing always
