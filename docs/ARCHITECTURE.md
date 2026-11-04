@@ -16,7 +16,7 @@ flowchart TB
 
     WA("agent<br/>MCP")
     WC("app<br/>REST · Python")
-    WI("bulk import<br/>CSV · Markdown · YAML")
+    WI("bulk import<br/>CSV · Markdown · YAML<br/>Turtle · N-Triples · JSON-LD<br/>optional SHACL before save")
     WP("program<br/>SPARQL UPDATE")
     G{{"declaration & write guard<br/>vocabulary · domain → range · requires · by<br/>type changes re-check edges · batch settles atomically"}}
     C("<b>ONE document</b><br/>triples · nodes · predicate declarations")
@@ -27,10 +27,10 @@ flowchart TB
         SW("table row<br/>snowflake:// · bigquery://")
     end
     PO("oxigraph<br/>SPARQL SELECT · ASK")
-    PR("rdflib.Graph<br/>updates · owlrl · pyshacl · exports")
+    PR("rdflib.Graph<br/>updates · owlrl · pyshacl<br/>Turtle · JSON-LD export")
     PN("networkx<br/>graph algorithms")
     PV("SQL views<br/>over the warehouse row")
-    PD("no engine at all<br/>JSON-LD · the document inside the page")
+    PD("no engine at all<br/>the document inside the page")
     subgraph query["<b>query & retrieval</b> — derived, never stored"]
         direction TB
         QAPI["user API<br/>sparql · query/match · find · search"]
@@ -86,11 +86,16 @@ copies. Solid arrows move or persist the document; dotted arrows are built on
 demand. The guard protects supported API writes; hand-edited files and raw
 `load`/`save` remain document-shape validation paths.
 
+The native YAML workflow notation remains in the one stored document as
+triples and node metadata. RDF files are interchange formats, not another
+storage layer. Import with optional SHACL shapes stages the changes in memory
+and saves only after validation succeeds.
+
 ## Data and projections
 
 `Triple` stores `s`, `p`, `o`, edge attributes and optional `rdf_terms`. Existing documents retain the legacy mapping: names become IRIs under `urn:trikedb:` (http/https/urn stay absolute); whitespace-containing objects become literals. Explicit RDF terms preserve IRIs, blank nodes, literal datatypes and language tags. Use an explicit IRI object for entity names with spaces.
 
-`_statements()` defines the RDF projection. rdflib and Oxigraph consume it; JSON-LD serializes the same projection. Node properties become literals; a string `type` also becomes `rdf:type` for standard class targets. Edge attributes attach to generated blank-node statements. These synthetic triples are readable in UPDATE WHERE but cannot be deleted through SPARQL. NetworkX and warehouse views independently expose a lexical property-graph projection from the document. They are not lossless RDF datasets; KG_NODE includes metadata-only nodes and all edge endpoints.
+`_statements()` defines the RDF projection. rdflib and Oxigraph consume it; Turtle and JSON-LD serialize the same projection. Node properties become literals; a string `type` also becomes `rdf:type` for standard class targets. Edge attributes attach to generated blank-node statements. These synthetic triples are readable in UPDATE WHERE but cannot be deleted through SPARQL. NetworkX and warehouse views independently expose a lexical property-graph projection from the document. They are not lossless RDF datasets; KG_NODE includes metadata-only nodes and all edge endpoints.
 
 ## Writes and failures
 

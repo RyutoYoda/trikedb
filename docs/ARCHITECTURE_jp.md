@@ -16,7 +16,7 @@ flowchart TB
 
     WA("エージェント<br/>MCP")
     WC("アプリ<br/>REST · Python")
-    WI("一括import<br/>CSV · Markdown · YAML")
+    WI("一括import<br/>CSV · Markdown · YAML<br/>Turtle · N-Triples · JSON-LD<br/>任意のSHACL検証後に保存")
     WP("プログラム<br/>SPARQL UPDATE")
     G{{"宣言・書き込みガード<br/>語彙 · domain → range · requires · by<br/>型変更は既存edgeを再検査 · batchは原子的に確定"}}
     C("<b>1つの文書</b><br/>triples · nodes · 述語の宣言")
@@ -27,10 +27,10 @@ flowchart TB
         SW("テーブル行<br/>snowflake:// · bigquery://")
     end
     PO("oxigraph<br/>SPARQL SELECT · ASK")
-    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · export")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl<br/>Turtle · JSON-LD出力")
     PN("networkx<br/>グラフアルゴリズム")
     PV("SQL view<br/>warehouse rowの上")
-    PD("エンジンなし<br/>JSON-LD · ページ内の文書")
+    PD("エンジンなし<br/>ページ内の文書")
     subgraph query["<b>クエリ・検索</b> — 導出されるview・保存しない"]
         direction TB
         QAPI["ユーザーAPI<br/>sparql · query/match · find · search"]
@@ -85,11 +85,15 @@ flowchart TB
 必要なときだけ作るものは点線です。ガードは対応するAPI書き込みを守りますが、
 手編集ファイルとrawな`load`/`save`は文書の形だけを検証します。
 
+独自のYAMLによるワークフロー記法は、トリプルとノード属性として同じ1つの文書に残ります。
+RDFファイルは交換形式であり、別の保存層ではありません。取り込み時にSHACL shapesを指定した場合は、
+変更をメモリ上で検証し、成功した場合だけ保存します。
+
 ## データと投影
 
 `Triple`はs/p/o・edge属性・任意の`rdf_terms`を保存します。既存文書は従来どおり、名前を`urn:trikedb:`配下のIRIにし（http/https/urnは絶対値）、空白入りobjectはliteralにします。明示RDF termはIRI・blank node・literalのdatatype/languageを保持します。空白入りエンティティ名にはobjectを明示IRIにしてください。
 
-`_statements()`がRDF投影を定義し、rdflib・Oxigraph・JSON-LDが共有します。node属性はliteralになり、文字列の`type`は標準のクラス指定に使える`rdf:type`にもなります。edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXとSQL viewは文書から独立に文字列表現のproperty graphを作り、無損失RDF datasetではありません。KG_NODEはメタデータだけのnodeと全edge端点を含みます。
+`_statements()`がRDF投影を定義し、rdflib・Oxigraphが利用し、Turtle・JSON-LDは同じ投影を出力します。node属性はliteralになり、文字列の`type`は標準のクラス指定に使える`rdf:type`にもなります。edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXとSQL viewは文書から独立に文字列表現のproperty graphを作り、無損失RDF datasetではありません。KG_NODEはメタデータだけのnodeと全edge端点を含みます。
 
 ## 更新と失敗
 

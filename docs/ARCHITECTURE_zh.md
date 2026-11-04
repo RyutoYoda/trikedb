@@ -16,7 +16,7 @@ flowchart TB
 
     WA("agent<br/>MCP")
     WC("应用<br/>REST · Python")
-    WI("批量导入<br/>CSV · Markdown · YAML")
+    WI("批量导入<br/>CSV · Markdown · YAML<br/>Turtle · N-Triples · JSON-LD<br/>可选的SHACL验证后保存")
     WP("程序<br/>SPARQL UPDATE")
     G{{"声明与写入守卫<br/>词汇 · domain → range · requires · by<br/>类型变化重新检查边 · batch原子地完成"}}
     C("<b>一份文档</b><br/>triples · nodes · 谓词声明")
@@ -27,10 +27,10 @@ flowchart TB
         SW("表行<br/>snowflake:// · bigquery://")
     end
     PO("oxigraph<br/>SPARQL SELECT · ASK")
-    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl · 导出")
+    PR("rdflib.Graph<br/>更新 · owlrl · pyshacl<br/>导出Turtle · JSON-LD")
     PN("networkx<br/>图算法")
     PV("SQL views<br/>warehouse row之上")
-    PD("没有引擎<br/>JSON-LD · 页面内的文档")
+    PD("没有引擎<br/>页面内的文档")
     subgraph query["<b>查询与检索</b> — 派生视图 · 从不存储"]
         direction TB
         QAPI["用户API<br/>sparql · query/match · find · search"]
@@ -84,11 +84,15 @@ flowchart TB
 视图，而不是额外副本。实线表示文档移动或持久化，虚线表示按需生成。守卫保护
 受支持的 API 写入；手工编辑的文件以及原始`load`/`save`只进行文档形状验证。
 
+原生YAML中的工作流表示仍以三元组和节点元数据保存在同一份文档中。
+RDF文件是交换格式，而不是另一层存储。导入时如果指定SHACL shapes，
+会先在内存中验证变更，仅在验证成功后保存。
+
 ## 数据与投影
 
 Triple保存s/p/o、边属性和可选rdf_terms。旧文档保留原映射：名称变为urn:trikedb:下的IRI（http/https/urn保持绝对值），含空白的object为literal。显式RDF term保留IRI、blank node、literal的datatype/language。含空格实体应显式声明IRI object。
 
-_statements()定义rdflib、Oxigraph和JSON-LD共享的RDF投影。节点属性是literal，字符串`type`还会投影为`rdf:type`，供标准类目标使用。边属性挂在生成的blank-node statement上。UPDATE WHERE能读取合成元数据，但SPARQL不能删除它们。NetworkX和SQL view分别从文档构建词法property graph，不是无损RDF dataset。KG_NODE包含仅有元数据的节点及所有边端点。
+_statements()定义RDF投影，供rdflib和Oxigraph使用；Turtle和JSON-LD输出同一投影。节点属性是literal，字符串`type`还会投影为`rdf:type`，供标准类目标使用。边属性挂在生成的blank-node statement上。UPDATE WHERE能读取合成元数据，但SPARQL不能删除它们。NetworkX和SQL view分别从文档构建词法property graph，不是无损RDF dataset。KG_NODE包含仅有元数据的节点及所有边端点。
 
 ## 更新与失败
 
