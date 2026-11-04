@@ -945,6 +945,7 @@ function focusedNodesFrom(centers, depth) {
 function focusedNodes(center, depth) { return focusedNodesFrom([center], depth); }
 function applyFocusStyles() {
   const active = workflowMode ? workflowNodes : (focusNodes || queryNodes);
+  const visible = workflowMode ? new Set(visibleNodes()) : null;
   const light = document.body.classList.contains("light"), th = THEMES[light ? "light" : "dark"];
   const contextGraph = workflowMode ? workflowContextGraph(active) : { nodes: new Set(), edges: new Set() };
   const overview = largeGraph && !active;
@@ -959,7 +960,7 @@ function applyFocusStyles() {
       // A workflow view is a focused process diagram, not a faded overview.
       // Keeping unrelated nodes mounted makes them show through the selected
       // steps as ghost boxes, especially after hierarchical layout settles.
-      ...(workflowMode ? { hidden: !(inFocus || inContext) } : {}),
+      ...(workflowMode ? { hidden: !visible.has(name) || !(inFocus || inContext) } : {}),
       color: inFocus || inContext
         ? { border: ev ? "#f74f4f" : base, background: ev ? th.evBg : th.nodeBg,
             highlight: { border: th.hlBorder, background: th.hlBg } }

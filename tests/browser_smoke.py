@@ -358,6 +358,8 @@ def run():
             else:
                 for a, b in zip(steps, steps[1:]):
                     mixed.add(a, "NEXT_STEP", b)
+        # One step has another type so hiding it leaves the workflow selected.
+        mixed.set_node("公開", type="task", level=5, replace=True)
         # Non-workflow knowledge remains in the graph as realistic context.
         for name, typ in (("Warehouse", "platform"), ("dbt", "tool"),
                           ("dbt model", "dbt_model"), ("CRM", "saas"),
@@ -429,6 +431,9 @@ def run():
         model_detail = page.locator("#detail-body").inner_text()
         assert "RUNS_ON" in model_detail and "Warehouse" in model_detail
         assert "WRITES_TO" in model_detail and "customer analytics table" in model_detail
+        page.evaluate("setTypeHidden('task', true); refreshVisibility()")
+        assert page.evaluate("nodes.get(nodeIds.get('公開')).hidden") is True
+        assert page.evaluate("nodes.get(nodeIds.get('検証')).hidden") is False
         page.locator("#btn-workflow").click()
         page.locator("#btn-unfocus").click()
         assert page.evaluate("workflowMode") is False

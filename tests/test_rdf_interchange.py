@@ -37,6 +37,22 @@ def test_standard_rdf_import_preserves_term_kinds_and_round_trips(tmp_path, suff
     assert reloaded.import_file(rdf_path) == 0
 
 
+def test_blank_nodes_from_separate_rdf_files_keep_separate_identities(tmp_path):
+    document = '@prefix ex: <https://example.org/> . ex:alice ex:knows [ ex:name "Bob" ] .'
+    first = tmp_path / "first.ttl"
+    second = tmp_path / "second.ttl"
+    first.write_text(document, encoding="utf-8")
+    second.write_text(document, encoding="utf-8")
+
+    db = TrikeDB(tmp_path / "people.yaml")
+    assert db.import_file(first) == 2
+    assert db.import_file(second) == 2
+    assert db.import_file(first) == 0
+    friends = list(db.to_rdflib(node_props=False, edge_attrs=False).objects(EX.alice, EX.knows))
+    assert len(friends) == 2
+    assert all(isinstance(friend, BNode) for friend in friends)
+
+
 def test_cli_turtle_export_and_shacl_validation_of_imported_rdf(tmp_path):
     pytest.importorskip("pyshacl")
     source = tmp_path / "people.ttl"
