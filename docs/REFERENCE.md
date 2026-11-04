@@ -1223,17 +1223,16 @@ return the untouched value.
   ranges — against the `urn:trikedb:` namespace. `trikedb validate` is
   CI-ready.
 
-  **Target on the property, not on a class.** A node's `type` is a node
-  *property*, so it projects as `t:type "table"` — a literal, not
-  `rdf:type t:table`. A shape written the idiomatic way starts with
-  `sh:targetClass`, matches nothing, and reports `Conforms: True`: the
-  check passes because it never ran. Use `sh:targetSubjectsOf t:type`
-  (every node that has a type) or a SPARQL-based target instead.
+  A string node `type` projects both as the existing `t:type "Employee"`
+  property and as `rdf:type t:Employee`. Standard `sh:targetClass` and
+  `sh:class` shapes can therefore select and check typed nodes. The
+  `t:type` property remains available to existing SPARQL queries and
+  `sh:targetSubjectsOf` shapes. Validation runs only when explicitly called.
 
   ```turtle
-  t:ContractShape a sh:NodeShape ;
-    sh:targetSubjectsOf t:type ;          # not sh:targetClass
-    sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .
+  t:EmployeeShape a sh:NodeShape ;
+    sh:targetClass t:Employee ;
+    sh:property [ sh:path t:employeeId ; sh:minCount 1 ] .
   ```
 - **OWL-RL** (`[owl]`): declare characteristics, materialize what
   follows. Inference is *materialization, not magic*: derived facts land

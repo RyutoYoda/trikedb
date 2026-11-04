@@ -88,7 +88,7 @@ flowchart TB
 
 Triple保存s/p/o、边属性和可选rdf_terms。旧文档保留原映射：名称变为urn:trikedb:下的IRI（http/https/urn保持绝对值），含空白的object为literal。显式RDF term保留IRI、blank node、literal的datatype/language。含空格实体应显式声明IRI object。
 
-_statements()定义rdflib、Oxigraph和JSON-LD共享的RDF投影。节点属性是literal，边属性挂在生成的blank-node statement上。UPDATE WHERE能读取合成元数据，但SPARQL不能删除它们。NetworkX和SQL view分别从文档构建词法property graph，不是无损RDF dataset。KG_NODE包含仅有元数据的节点及所有边端点。
+_statements()定义rdflib、Oxigraph和JSON-LD共享的RDF投影。节点属性是literal，字符串`type`还会投影为`rdf:type`，供标准类目标使用。边属性挂在生成的blank-node statement上。UPDATE WHERE能读取合成元数据，但SPARQL不能删除它们。NetworkX和SQL view分别从文档构建词法property graph，不是无损RDF dataset。KG_NODE包含仅有元数据的节点及所有边端点。
 
 ## 更新与失败
 
