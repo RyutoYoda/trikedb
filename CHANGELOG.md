@@ -3,6 +3,12 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.48.1
+
+- Keep blank nodes from separate RDF source files distinct while preserving
+  stable identifiers when the same file is imported again.
+- Keep workflow steps hidden when their node type or workspace is filtered out.
+
 ## 0.48.0
 
 - Import local Turtle, N-Triples, and JSON-LD while preserving RDF term kinds,

@@ -17,6 +17,7 @@ into something the graph can look at.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -33,7 +34,7 @@ def read_rdf(path: Union[str, Path]) -> List[dict]:
     parses them. Its JSON-LD parser otherwise resolves those references over
     the network, which is surprising for an import of a local file.
     """
-    from rdflib import Graph
+    from rdflib import BNode, Graph
     from rdflib.compare import to_canonical_graph
 
     from .model import Triple
@@ -47,8 +48,18 @@ def read_rdf(path: Union[str, Path]) -> List[dict]:
     # Turtle's [] blank nodes have parser-generated identifiers. Canonical
     # labels keep an unchanged source from churning YAML diffs on reimport.
     graph = to_canonical_graph(graph)
+    # A blank node is scoped to its source RDF document. Canonical labels
+    # alone collide when two files contain the same anonymous subgraph; a
+    # stable source namespace keeps repeated imports idempotent without
+    # silently identifying unrelated resources across files.
+    source_id = hashlib.sha256(path.resolve().as_uri().encode("utf-8")).hexdigest()[:24]
+
+    def scoped(term):
+        return BNode(f"s{source_id}_{term}") if isinstance(term, BNode) else term
+
     return [Triple.from_rdf(*row).to_dict() for row in sorted(
-        graph, key=lambda row: tuple(term.n3() for term in row)
+        (tuple(scoped(term) for term in row) for row in graph),
+        key=lambda row: tuple(term.n3() for term in row)
     )]
 
 
