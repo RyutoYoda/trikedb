@@ -82,7 +82,7 @@ flowchart TB
 
 按从上到下阅读：核心是一份文档，存储是选定的一个目的地，投影是按需生成的
 视图，而不是额外副本。实线表示文档移动或持久化，虚线表示按需生成。守卫保护
-受支持的 API 写入；手工编辑的文件以及原始`load`/`save`只进行文档形状验证。
+受支持的 API 写入；手工编辑的文件默认可用于修复，`audit`和可选严格加载会拒绝错误。
 
 原生YAML中的工作流表示仍以三元组和节点元数据保存在同一份文档中。
 RDF文件是交换格式，而不是另一层存储。导入时如果指定SHACL shapes，
@@ -96,7 +96,7 @@ _statements()定义RDF投影，供rdflib和Oxigraph使用；Turtle和JSON-LD输�
 
 ## 更新与失败
 
-非空ontology在add、import、SPARQL INSERT时检查谓词；HTTP(S)绝对谓词是RDF/OWL词汇的例外。手工编辑及load/save不强制白名单，load只验证文档形状。reload从存储文档重建ontology。
+非空ontology在add、import、SPARQL INSERT时检查谓词；HTTP(S)绝对谓词是RDF/OWL词汇的例外。普通加载允许修复手工编辑的文件；`audit()`将未声明谓词报告为错误，`validate_on_load=True`在打开和重载时拒绝所有audit错误。SHACL验证独立进行。reload从存储文档重建ontology。
 
 API返回的Triple和属性是独立副本。通过API修改以使缓存失效；直接修改nodes_meta、ontology或内部字段不提供缓存一致性。batch在其主体或最终save失败时回滚事实、属性及ontology，也支持嵌套。它不是分布式事务，内部显式save及外部副作用不能撤销。
 
@@ -166,7 +166,7 @@ import使用同一个`add()`路径。在`batch()`或批量导入期间，可能�
 也会重新检查已有的边。类型未知时不靠猜测判为无效，而由`audit()`报告未解决的情况。
 
 边界是有意设计的：API的`add`、`act`、import及受支持的SPARQL insert执行适用的检查。
-手工编辑的YAML以及原始`load()` / `save()`只检查形状和语法，不执行谓词白名单。
+普通加载只检查形状和语法以便修复；audit报告未声明谓词，严格加载拒绝audit错误。
 
 ### 守卫在代码中实际做什么
 

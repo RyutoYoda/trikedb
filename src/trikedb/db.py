@@ -75,6 +75,7 @@ class TrikeDB:
         read_only: bool = False,
         connection=None,
         sparql_engine: Optional[str] = None,
+        validate_on_load: bool = False,
     ):
         self._lock = RLock()  # shared by server adapters, never serialized
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
@@ -93,6 +94,10 @@ class TrikeDB:
         #: through, for hosts that cannot open one themselves. Ignored for
         #: file-backed graphs, which have nothing to connect to.
         self._connection = connection
+        #: Opt-in fail-closed loading for reviewed graphs. The default stays
+        #: repairable: an old or hand-edited file can still be opened and
+        #: fixed through the public API before CI turns this gate on.
+        self.validate_on_load = bool(validate_on_load)
         #: True for workspace unions and for read_only=True — mutations are
         #: refused. A reader that cannot write is the point when the graph is
         #: shared: an app serving a warehouse-backed graph has no business
@@ -159,6 +164,17 @@ class TrikeDB:
             else:
                 self.ontology = {str(p): "" for p in ontology}
         persistence.load_if_present(self)
+        if self.validate_on_load:
+            errors = [finding for finding in self.audit()
+                      if finding["severity"] == "error"]
+            if errors:
+                details = "; ".join(
+                    f"{finding['kind']}: {finding['detail']}" for finding in errors[:5]
+                )
+                raise OntologyError(
+                    f"{self.path}: strict load rejected {len(errors)} audit error(s): "
+                    f"{details}"
+                )
 
     # ------------------------------------------------------------------- io
     #

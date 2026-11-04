@@ -22,7 +22,7 @@ from collections import defaultdict
 from .model import TIME_ATTRS
 from .rules import unmet as _unmet
 
-ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration",
+ERROR_KINDS = {"duplicate-triple", "undeclared-predicate", "link-contradicts-declaration",
                "precondition-unmet", "action-has-no-actor",
                "actor-contradicts-declaration"}
 
@@ -30,6 +30,18 @@ ERROR_KINDS = {"duplicate-triple", "link-contradicts-declaration",
 def audit(db) -> list:
     """Return findings as [{"kind", "severity", "detail"}, ...]."""
     findings = []
+
+    # Hand-edited YAML bypasses add()/import's vocabulary guard. Report it
+    # here so CI and opt-in strict loading can reject the same typo without
+    # preventing ordinary load() from opening an old graph for repair.
+    if db.ontology:
+        for t in db:
+            if (t.p not in db.ontology
+                    and not t.p.startswith(("http://", "https://"))):
+                findings.append({
+                    "kind": "undeclared-predicate", "severity": "error",
+                    "detail": f"({t.s} {t.p} {t.o}) uses {t.p!r}, not declared in ontology",
+                })
 
     # 1. identical (s, p, o) appearing more than once (e.g. in two
     #    workspace member graphs) — a real duplicate, not a warning

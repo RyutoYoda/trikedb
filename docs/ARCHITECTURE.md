@@ -83,8 +83,8 @@ flowchart TB
 Read the diagram top to bottom: the core is one document, storage is one
 chosen destination, and projections are derived views rather than additional
 copies. Solid arrows move or persist the document; dotted arrows are built on
-demand. The guard protects supported API writes; hand-edited files and raw
-`load`/`save` remain document-shape validation paths.
+demand. The guard protects supported API writes; hand-edited files open for
+repair by default, while `audit` and opt-in strict loading reject audit errors.
 
 The native YAML workflow notation remains in the one stored document as
 triples and node metadata. RDF files are interchange formats, not another
@@ -99,7 +99,7 @@ and saves only after validation succeeds.
 
 ## Writes and failures
 
-With a nonempty ontology, `add`, imports and SPARQL insertions check predicates. Absolute HTTP(S) predicates are an intentional exception for RDF/OWL vocabulary. Hand-edited files and `load`/`save` do not enforce this whitelist: loading validates document shape, not ontology membership. `reload()` rebuilds ontology from the stored document.
+With a nonempty ontology, `add`, imports and SPARQL insertions check predicates. Absolute HTTP(S) predicates are an intentional exception for RDF/OWL vocabulary. Ordinary load keeps hand-edited files repairable; `audit()` reports undeclared predicates as errors, and `validate_on_load=True` rejects all audit errors at open/reload. This is separate from SHACL validation. `reload()` rebuilds ontology from the stored document.
 
 Public Triple/property returns are detached snapshots. Mutate through APIs to invalidate query caches; direct changes to `nodes_meta`, `ontology` or internal fields are unsupported as cache-coherent writes. `batch()` rolls back in-memory triples, metadata and ontology if its body or final save fails, including nested batches. It is not a distributed transaction; explicit saves or external side effects inside it cannot be undone.
 
@@ -178,8 +178,9 @@ when a type is added later. Unknown types are not guessed invalid; `audit()`
 reports the unresolved case.
 
 The boundary is deliberate: API `add`, `act`, imports and supported SPARQL
-insertions enforce applicable checks. Hand-edited YAML and raw `load()` /
-`save()` check shape and syntax, but do not run the predicate whitelist.
+insertions enforce applicable checks. Ordinary load checks shape and syntax
+while allowing repair; audit reports undeclared predicates, and strict load
+refuses audit errors.
 
 ### What the guard actually does in code
 
