@@ -155,6 +155,11 @@ db = TrikeDB("graph.yaml")
 db.to_html("graph.html")
 ```
 
+For a page that opens from `file://` without network access, use
+`db.to_html("graph.html", offline=True)` or
+`trike ui generate graph.yaml --offline -o graph.html`. This embeds pinned
+vis-network and Oxigraph JS/WASM assets and makes the HTML larger.
+
 Or generate it from the command line with `trikedb ui graph.yaml`. The picker
 searches workflow names and filters by one `tags` value. Select a workflow to
 see its ordered process, then use **全体表示** to return to the whole graph.

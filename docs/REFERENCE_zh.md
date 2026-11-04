@@ -728,7 +728,10 @@ Lambda，十个全部落地。在引入条件写之前，落地的是四个，�
 
 ## HTML 工作台
 
-`to_html()` / `trike ui generate` 产出一个单文件、依赖 CDN 的页面：
+`to_html()` / `trike ui generate` 生成单个 HTML 文件。默认从 CDN 加载
+vis-network 和 Oxigraph。Python 的 `offline=True` 或
+`trike ui generate --offline`（旧 `trikedb html` 也支持）会嵌入固定版本的
+JS/WASM 和许可证声明；文件更大，但可从无网络的 `file://` 打开，包括 SPARQL。
 
 - 力导向聚类，或者从左到右的流程（`--layout auto` 按图的形状自己选）；
   workspace 会把每个成员图铺成自己的一格，并带上按图过滤的 chip

@@ -767,7 +767,11 @@ OAUTH_ISSUER=https://idp.example.com/
 
 ## HTMLワークベンチ
 
-`to_html()` / `trike ui generate` がCDN依存の単一ファイルのページを生成する:
+`to_html()` / `trike ui generate` は単一HTMLを生成する。通常はvis-networkと
+OxigraphをCDNから読み込む。Pythonの `offline=True`、または
+`trike ui generate --offline`（旧 `trikedb html` でも可）では、固定バージョンの
+JS/WASMとライセンス表示を埋め込む。ファイルは大きくなるが、SPARQLを含め
+ネット接続なしの `file://` から動く。
 
 ヘッダーには同梱のTrikeDBロゴを表示し、横のグラフ名は `--title` または
 `to_html(title=...)` で変更できる。ロゴは生成HTMLへ埋め込むため別ファイルは不要。

@@ -213,6 +213,8 @@ def main(argv=None) -> int:
                         help="comma-separated directed predicates that define workflow order")
     p_html.add_argument("--workflow-membership-predicate", default=None, metavar="P",
                         help="predicate from workflow definition nodes to member steps")
+    p_html.add_argument("--offline", action="store_true",
+                        help="embed browser engines so the exported HTML works without network access")
 
     p_ui = sub.add_parser(
         "ui", help="open the graph in a browser; `ui generate` writes the file instead"
@@ -238,6 +240,8 @@ def main(argv=None) -> int:
                       help="comma-separated directed predicates that define workflow order")
     p_ui.add_argument("--workflow-membership-predicate", default=None, metavar="P",
                       help="predicate from workflow definition nodes to member steps")
+    p_ui.add_argument("--offline", action="store_true",
+                      help="embed browser engines (generate only; larger output)")
 
     sub._choices_actions = [a for a in sub._choices_actions if a.dest != "html"]
 
@@ -791,15 +795,19 @@ def _cmd_ui(args) -> int:
         out = args.out or _default_html_out(path)
         db.to_html(out, title=title, event_predicates=events, layout=args.layout,
                    workflow_predicates=workflow_preds,
-                   workflow_membership_predicate=args.workflow_membership_predicate)
+                   workflow_membership_predicate=args.workflow_membership_predicate,
+                   offline=args.offline)
         print(f"wrote {out}")
         return 0
     if args.out:
         raise SystemExit("error: -o writes a file — did you mean `trike ui generate`?")
+    if args.offline:
+        raise SystemExit("error: --offline writes a file — use `trike ui generate --offline`")
     out = Path(tempfile.gettempdir()) / f"trikedb-{db.content_hash()}.html"
     db.to_html(out, title=title, event_predicates=events, layout=args.layout,
                workflow_predicates=workflow_preds,
-               workflow_membership_predicate=args.workflow_membership_predicate)
+               workflow_membership_predicate=args.workflow_membership_predicate,
+               offline=args.offline)
     webbrowser.open(out.as_uri())
     print(f"opened {path} → {out}", file=sys.stderr)
     return 0
@@ -817,7 +825,8 @@ def _cmd_html(args) -> int:
     ]
     db.to_html(out, title=title, event_predicates=events, layout=args.layout,
                workflow_predicates=workflow_preds,
-               workflow_membership_predicate=args.workflow_membership_predicate)
+               workflow_membership_predicate=args.workflow_membership_predicate,
+               offline=args.offline)
     print(f"wrote {out}")
     return 0
 

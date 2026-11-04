@@ -817,7 +817,11 @@ in [SCALING.md](SCALING.md).)
 
 ## The HTML workbench
 
-`to_html()` / `trike ui generate` produce a single-file, CDN-dependent page:
+`to_html()` / `trike ui generate` produce a single-file page. By default it
+loads vis-network and Oxigraph from CDNs. Pass `offline=True` in Python or
+`--offline` to `trike ui generate` (also supported by legacy `trikedb html`)
+to embed pinned JS/WASM assets and license notices. The larger output opens
+from `file://` without network access, including SPARQL.
 
 The header embeds the TrikeDB logo. Set the graph title beside it with
 `--title` or `to_html(title=...)`; the exported HTML needs no separate logo file.

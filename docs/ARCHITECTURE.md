@@ -133,7 +133,7 @@ Query caches rebuild after API mutations. Semantic embeddings are cached per sen
 
 ## HTML and verification
 
-The workbench is distributed as one HTML file but loads vis-network and Oxigraph WASM from external CDNs; it is not fully offline. Graph data is encoded as script-safe JSON and escaped according to DOM context. Internal numeric visualization IDs avoid special-name collisions; original names remain visible. Nonfinite numeric properties display as text.
+The workbench is distributed as one HTML file. It loads vis-network and Oxigraph WASM from CDNs by default; `offline=True` embeds pinned JS/WASM assets and license notices for network-free `file://` use. Graph data is encoded as script-safe JSON and escaped according to DOM context. Internal numeric visualization IDs avoid special-name collisions; original names remain visible. Nonfinite numeric properties display as text.
 
 `tests/test_review_regressions.py` covers audit failures and RDF/storage edge cases; `tests/browser_smoke.py` exercises a fresh browser against ordinary and hostile graph data. Release verification also tests packaged sdists and the declared dependency floor. Fake storage tests establish protocol behavior, not live cloud durability. See [the API reference](REFERENCE.md) and [benchmarks](../benchmarks/README.md) for contracts and measurement limits.
 
