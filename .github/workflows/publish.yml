@@ -20,12 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: refs/tags/v${{ inputs.version }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: false
       - name: Check requested version
         run: |
+          test "$(git describe --tags --exact-match)" = "v$REQUESTED_VERSION"
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
           test "$(uv version --short)" = "$REQUESTED_VERSION"
       - name: Build distributions
         run: uv build --no-sources
@@ -53,5 +58,31 @@ jobs:
         with:
           name: dist
           path: dist/
+      - name: Attest distributions for PyPI
+        uses: astral-sh/attest-action@39b6ce43875c196a579e31635b11aa2a2036384a # v0.0.7
       - name: Publish distributions
         run: uv publish --trusted-publishing always
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attested-dist
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: attested-dist
+          path: dist/
+      - name: Publish GitHub release from the existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum dist/*.whl dist/*.tar.gz > dist/SHA256SUMS
+          gh release create "v$REQUESTED_VERSION" dist/* \
+            --verify-tag --generate-notes --title "TrikeDB v$REQUESTED_VERSION"
