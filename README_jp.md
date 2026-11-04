@@ -188,6 +188,21 @@ TrikeDBロゴと `--title` で変更できるグラフ名を表示する。SPARQ
 必要になったときそこにあり、それまでは何のコストにもならない。
 [リファレンス](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)参照。
 
+## 標準RDFと受け渡す
+
+編集とレビューにはYAMLを使い続ける。Turtle、N-Triples、JSON-LDを取り込み、
+ほかのツールに標準RDFを書き出せる。任意のSHACL形状ファイルを指定すると、
+保存前に取り込み後のグラフを検証する:
+
+```bash
+trikedb import graph.yaml external.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+```
+
+書き出し・クエリ・検証では同じ安定したbase IRIを使う。用語の対応と往復の限界は
+[RDF受け渡しの仕様](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md#標準rdfとの受け渡し)を参照。
+HTMLワークベンチは変わらない。
+
 ## それから、締める
 
 読む価値のあるグラフは、ゴミが混ざらないグラフだけだ。何を言ってよいかを

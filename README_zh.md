@@ -180,6 +180,20 @@ HTML 工作台的左侧集中放置搜索、筛选和 SPARQL；顶部显示内�
 其余的——推理、SHACL、工作区、S3 与数仓存储、HTTP 服务——需要时就在那里，
 不需要时不花任何代价。见[参考手册](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_zh.md)。
 
+## 与标准 RDF 交换数据
+
+继续用 YAML 编辑和审查。可导入 Turtle、N-Triples 或 JSON-LD，再导出标准
+RDF 图供其他工具使用。可选的 SHACL 形状文件会在保存前验证合并后的图：
+
+```bash
+trikedb import graph.yaml external.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+```
+
+导出、查询和验证应使用同一个稳定的 base IRI。术语映射及往返限制见
+[RDF 交换约定](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_zh.md#标准-rdf-交换)。
+HTML 工作台保持不变。
+
 ## 然后，把它锁紧
 
 只有装不进垃圾的图谱才值得读。声明什么话可以说，于是每一条写入路径——你自己的、
