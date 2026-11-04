@@ -55,6 +55,98 @@ def test_reload_replaces_ontology(tmp_path):
     assert db.ontology == {'NEW': 'new'}
 
 
+def test_local_writers_refuse_to_overwrite_a_newer_graph(tmp_path):
+    from trikedb.storage import ConcurrentWriteError
+
+    path = tmp_path / 'graph.yaml'
+    first = TrikeDB(path)
+    second = TrikeDB(path)
+    first.add('first', 'P', 'value')
+    with pytest.raises(ConcurrentWriteError):
+        second.add('second', 'P', 'value')
+    assert {t.s for t in TrikeDB(path)} == {'first'}
+    second.reload()
+    second.add('second', 'P', 'value')
+    assert {t.s for t in TrikeDB(path)} == {'first', 'second'}
+
+
+def test_simultaneous_local_saves_only_commit_one_version(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from trikedb import storage
+
+    path = tmp_path / 'graph.yaml'
+    TrikeDB(path).save()
+    token = storage.version(path)
+    entered, release = Event(), Event()
+    real_write = storage._atomic_write
+
+    def slow_write(target, text):
+        entered.set()
+        assert release.wait(3)
+        return real_write(target, text)
+
+    with patch.object(storage, '_atomic_write', side_effect=slow_write):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(storage.write_text, path, 'triples: []\n# first\n', token)
+            assert entered.wait(3)
+            second = pool.submit(storage.write_text, path, 'triples: []\n# second\n', token)
+            release.set()
+            first.result()
+            with pytest.raises(storage.ConcurrentWriteError):
+                second.result()
+    assert path.read_text().endswith('# first\n')
+
+
+def test_mcp_reads_and_writes_after_a_human_changes_the_file(tmp_path):
+    pytest.importorskip('mcp')
+    import asyncio
+    from trikedb.mcp_server import build_server
+
+    path = tmp_path / 'graph.yaml'
+    TrikeDB(path).add('initial', 'P', 'value')
+    server = build_server(path)
+    path.write_text('triples:\n- {s: human, p: P, o: value}\n')
+
+    async def call(name, args):
+        result = await server.call_tool(name, args)
+        blocks = result[0] if isinstance(result, tuple) else result
+        return json.loads(blocks[0].text) if blocks else []
+
+    call_result = asyncio.run(call('match', {'s': 'human'}))
+    assert 'human' in json.dumps(call_result)
+    asyncio.run(call('add_triple', {'s': 'agent', 'p': 'P', 'o': 'value'}))
+    assert {t.s for t in TrikeDB(path)} == {'human', 'agent'}
+
+
+def test_rest_reads_after_an_external_edit(tmp_path):
+    from starlette.testclient import TestClient
+    from trikedb.serve import build_app
+
+    path = tmp_path / 'graph.yaml'
+    TrikeDB(path).add('initial', 'P', 'value')
+    with TestClient(build_app(path, with_mcp=False)) as client:
+        path.write_text('triples:\n- {s: human, p: P, o: value}\n')
+        result = client.post('/sparql', json={'query': 'ASK {t:human t:P t:value}'})
+        assert result.status_code == 200
+        assert result.json() == {'ask': True}
+
+
+def test_failed_reload_keeps_old_snapshot_and_refuses_to_overwrite_bad_yaml(tmp_path):
+    from trikedb.storage import ConcurrentWriteError
+
+    path = tmp_path / 'graph.yaml'
+    db = TrikeDB(path)
+    db.add('good', 'P', 'value')
+    path.write_text('triples: [broken\n')
+    with pytest.raises(ValueError):
+        db.reload()
+    assert ('good', 'P', 'value') in db
+    with pytest.raises(ConcurrentWriteError):
+        db.add('agent', 'P', 'value')
+    assert path.read_text() == 'triples: [broken\n'
+
+
 def test_returned_triple_is_a_detached_snapshot():
     db = TrikeDB()
     t = db.add('a', 'P', 'b', score=1)

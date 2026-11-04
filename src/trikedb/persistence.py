@@ -48,28 +48,36 @@ def load_if_present(db) -> None:
 
 
 def reload(db) -> "TrikeDB":
-    """Throw away the in-memory graph and read it again from storage.
+    """Replace the in-memory graph only after the new document is valid.
 
     The way out of a ``ConcurrentWriteError``: someone else's version is
     now the real one, so pick it up and re-apply whatever you were doing
     on top of it.
     """
-    db.nodes_meta = {}
-    db.ontology = {}
-    db.predicate_descriptions_ja = {}
-    db.predicate_rules = {}
-    db._triples = []
-    db.workspace = None
-    db.read_only = db._read_only_requested   # a reload must not grant writes
-    db._version = None
-    db._rdf_cache = None
-    # Not just for tidiness: the length check in _spo_index cannot see a
-    # replacement that happens to be the same length, and a stale entry
-    # would make add() think a triple is already there and drop it.
-    db._index = db._pidx = db._eidx = None
-    if db.path is not None and _exists(db.path, db._connection):
-        load(db)
+    fresh = type(db)(
+        db.path, autosave=db.autosave, read_only=db._read_only_requested,
+        connection=db._connection, sparql_engine=db.sparql_engine,
+    )
+    # Parsing can fail when a person is halfway through an edit. Keep the
+    # old snapshot and its token in that case, so reads never see an empty
+    # graph and a later write still conflicts with the changed file.
+    for name in ("nodes_meta", "ontology", "predicate_descriptions_ja",
+                 "predicate_rules", "_triples", "workspace", "read_only",
+                 "_version", "_rdf_cache", "_index", "_index_len",
+                 "_pidx", "_eidx", "_pidx_len", "_pending"):
+        setattr(db, name, getattr(fresh, name))
     return db
+
+
+def reload_local_if_changed(db) -> None:
+    """Keep a long-running server's local snapshot in sync with file edits.
+
+    Call under the graph lock, before handling a request. Python callers
+    retain explicit reload semantics; stale Python writes fail on save.
+    """
+    if (isinstance(db.path, Path) and db.workspace is None
+            and _version_of(db.path, db._connection) != db._version):
+        reload(db)
 
 
 def load(db) -> None:
@@ -338,11 +346,11 @@ def save(db, path: Union[str, Path, None] = None):
     """Write the graph back out. Plain triples stay on one line.
 
     Works for local paths, remote URLs (s3://, ...) and warehouse rows
-    (snowflake://) alike. On S3 and in a warehouse the write is
+    (snowflake://) alike. On local files, S3 and in a warehouse the write is
     conditional on the stored graph still being the one this copy was
     read from: if another writer got there first, nothing is written and
     ``ConcurrentWriteError`` is raised — call ``reload()`` and re-apply.
-    Backends without conditional writes stay last-write-wins.
+    Other remote backends without conditional writes stay last-write-wins.
 
     Files get YAML, because a person reads those. A warehouse row gets
     JSON, so SQL can see inside it; see ``storage.serialization``.

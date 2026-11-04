@@ -11,7 +11,7 @@ Every feature, and how to use it. For the design rationale see
 
 API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions; manually edited files are not schema-checked on load.
 
-Local writes replace complete files atomically but independent local processes are last-write-wins. One HTTP server shares and serializes REST/MCP state; external edits still require reload. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. Exported HTML requires network access to vis-network/Oxigraph CDNs. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
+Local writes compare the file's content hash under a per-file lock before atomic replacement; stale saves raise `ConcurrentWriteError`. MCP/REST reload a local file changed by another writer before each request. Python callers use `reload()` after a conflict. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. Exported HTML requires network access to vis-network/Oxigraph CDNs. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
 
 
 **Performance numbers below are historical measurements on their recorded hardware and version, not freshly measured guarantees for this release.**
@@ -788,15 +788,13 @@ to interpret.
 
 Two limits worth knowing:
 
-- **Only S3 and warehouse backends enforce it.** `gs://`, `az://` and
-  plain `https://` have no conditional write yet, so they stay
-  last-write-wins. Local files are unguarded too — the assumption there is
-  one process.
-- **Long-running replicas don't see each other.** The MCP tools hold one
-  graph instance for the life of the process and only re-read it when a
-  write conflicts. A replica that never writes never notices another
-  replica's writes; restart it, or serve read-only replicas from a graph
-  that changes through review rather than through agents.
+- **Other remote files remain last-write-wins.** `gs://`, `az://` and
+  plain `https://` have no conditional write yet. Local locks coordinate
+  TrikeDB processes sharing the same user cache on one host; an external
+  editor that ignores the lock can still race a save.
+- **Long-running remote replicas don't see every change.** MCP/REST check
+  local files before requests, but remote replicas keep their in-memory
+  snapshot until a write conflict or explicit reload.
 
 ## How an agent should read a graph
 

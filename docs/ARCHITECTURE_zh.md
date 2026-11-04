@@ -102,11 +102,11 @@ API返回的Triple和属性是独立副本。通过API修改以使缓存失效�
 
 ## 持久化与并发
 
-本地save先写入同目录临时文件并fsync，再replace。保留已有权限和symlink目标，新文件权限0600。replace前失败保留旧内容。不保证目录fsync级断电耐久性或多进程CAS；独立本地writer仍为last-write-wins。
+本地save先在用户缓存中的每文件锁下比较内容哈希，再写入同目录临时文件并fsync、replace。保留已有权限和symlink目标，新文件权限0600。replace前失败保留旧内容。同一主机、同一用户的TrikeDB进程可以协调，但忽略该锁的外部程序若同时写入仍可能竞态。不保证目录fsync级断电耐久性。
 
 S3使用条件单次PUT（ETag/If-Match或不存在时创建），SQL使用version条件和影响行数。write返回自身提交token，保存后不通过HEAD误用其他writer的token。S3条件multipart不支持，其他fsspec后端无CAS保证。
 
-同一serve进程中的REST/MCP共享TrikeDB并在可重入锁下串行操作。MCP遇到条件保存冲突后reload并重放操作。不同进程不共享内存；Python调用者须自行同步，外部编辑须reload。read_only保护公开API，不限制任意Python内存操作。
+同一serve进程中的REST/MCP共享TrikeDB并在可重入锁下串行操作。每次请求前检查本地文件内容哈希并重载外部编辑。MCP遇到条件保存冲突后reload并重放操作。不同进程不共享内存；Python调用者须自行同步，并在冲突后reload。read_only保护公开API，不限制任意Python内存操作。
 
 ## 模块与分层
 

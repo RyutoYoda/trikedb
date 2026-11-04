@@ -4,17 +4,17 @@ Everything above this layer talks in terms of read_text/write_text/exists
 on a path-or-URL. Adding a new backend (a new URL scheme, caching, ...)
 happens here and nowhere else.
 
-This layer also carries the only concurrency control trikedb has. A save
-rewrites the whole file, so two writers that both read version N produce
-two different N+1s and one of them disappears. Where the backend can say
-"only if it is still what I read" — S3 conditional PUT — ``write_text``
-says it, and a lost write surfaces as ``ConcurrentWriteError`` instead of
-as missing data nobody notices.
+This layer carries the storage concurrency checks. A save rewrites the whole
+document, so local files compare a content hash under a stable lock; S3 and
+SQL use their native conditional writes. A lost race surfaces as
+``ConcurrentWriteError`` instead of disappearing silently.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import contextmanager
+import hashlib
 import os
 import stat
 import tempfile
@@ -205,6 +205,11 @@ def version(path, connection=None):
     store = _sql_store(path, connection)
     if store is not None:
         return store.version()
+    if not is_remote(path):
+        try:
+            return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except FileNotFoundError:
+            return None
     target = _conditional_fs(path)
     if target is None:
         return None
@@ -256,7 +261,7 @@ def write_text(path, text: str, expect=_UNCHECKED, connection=None):
     refused if the object now exists. Omit ``expect`` for the old
     last-write-wins behaviour.
 
-    Backends that cannot express the condition fall back to an ordinary
+    Other remote backends that cannot express the condition fall back to an ordinary
     write; the guarantee is only as good as the storage underneath.
     """
     store = _sql_store(path, connection)
@@ -303,15 +308,62 @@ def write_text(path, text: str, expect=_UNCHECKED, connection=None):
         with _fsspec().open(path, "w", encoding="utf-8") as f:
             f.write(text)
     else:
-        _atomic_write(Path(path), text)
+        path = Path(path).resolve()
+        with _local_lock(path):
+            if expect is not _UNCHECKED and version(path) != expect:
+                raise ConcurrentWriteError(
+                    f"{path} changed since it was read - "
+                    "re-read the graph and re-apply the change"
+                )
+            _atomic_write(path, text)
+            # Return the bytes *we* committed. A later stat/read could pick
+            # up an external editor's version and grant a stale writer its
+            # token, the same mistake avoided by S3's returned ETag.
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@contextmanager
+def _local_lock(path: Path):
+    """Keep compare-and-replace together across TrikeDB processes.
+
+    The lock has its own stable inode: locking the graph would fail after
+    atomic replacement, because the next writer would lock a new inode.
+    Keep it in the user's cache, so a graph remains a single reviewable file.
+    Never delete a lock while a process could still be holding its inode.
+    """
+    root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    lock_dir = root / "trikedb" / "locks"
+    lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = lock_dir / hashlib.sha256(os.fsencode(path)).hexdigest()
+    with open(lock_path, "a+b") as lock:
+        if os.name == "nt":
+            import msvcrt
+            if lock.tell() == 0:
+                lock.write(b"\0")
+                lock.flush()
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def _atomic_write(path: Path, text: str) -> None:
     """Replace complete bytes on the same filesystem; preserve existing mode.
 
     Resolve symlinks so a save updates their target as ordinary open() did.
-    A failed write/flush/replace leaves the old file intact. This is not a
-    multi-process compare-and-swap or a cross-filesystem transaction.
+    A failed write/flush/replace leaves the old file intact. The caller's
+    lock and version check coordinate same-host TrikeDB processes; this
+    function alone is not a transaction against an external editor.
     """
     path = path.resolve()
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None

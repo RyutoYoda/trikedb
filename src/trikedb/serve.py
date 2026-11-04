@@ -46,6 +46,7 @@ def build_app(
     from starlette.responses import HTMLResponse, JSONResponse, Response
     from starlette.routing import Mount, Route
 
+    from . import persistence
     from .db import TrikeDB
 
     #: Opened once, like the MCP tools do. Rebuilding it per request meant
@@ -108,6 +109,7 @@ def build_app(
             return refusal
         try:
             with graph._lock:
+                persistence.reload_local_if_changed(graph)
                 return HTMLResponse(graph.to_html(title=f"trikedb — {path}"))
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
@@ -122,6 +124,7 @@ def build_app(
             return JSONResponse({"error": 'expected {"query": "..."}'}, status_code=400)
         try:
             with graph._lock:
+                persistence.reload_local_if_changed(graph)
                 result = graph.sparql(query)
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
