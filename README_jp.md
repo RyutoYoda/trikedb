@@ -151,6 +151,11 @@ db = TrikeDB("graph.yaml")
 db.to_html("graph.html")
 ```
 
+ネット接続なしで `file://` から開く配布用HTMLは
+`db.to_html("graph.html", offline=True)` または
+`trike ui generate graph.yaml --offline -o graph.html` で作る。
+固定バージョンのvis-networkとOxigraph JS/WASMを埋め込むため、ファイルは大きくなる。
+
 コマンドラインなら `trikedb ui graph.yaml` で生成できる。選択パネルでは名前を
 検索し、`tags` の値で絞り込める。ワークフローを選ぶと工程が順序付きで表示され、
 **← 全体に戻る**でグラフ全体へ戻る。独自の述語を使う場合は、`to_html()` の

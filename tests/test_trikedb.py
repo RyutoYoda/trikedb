@@ -1123,6 +1123,21 @@ def test_a_node_can_be_given_a_name(tmp_path):
     assert "checkout-api" in page
 
 
+def test_html_offline_export_embeds_browser_engines(tmp_path):
+    from trikedb.cli import main
+
+    graph = tmp_path / "graph.yaml"
+    graph.write_text("triples:\n  - {s: CRM, p: INGESTS_TO, o: CUSTOMERS}\n")
+    page = tmp_path / "offline.html"
+    assert main(["ui", "generate", str(graph), "--offline", "-o", str(page)]) == 0
+    rendered = page.read_text()
+    assert "vis-network@9.1.9" not in rendered
+    assert "cdn.jsdelivr.net/npm/oxigraph" not in rendered
+    assert "new vis.Network" in rendered
+    assert "trikedb-oxigraph-module" in rendered
+    assert "trikedb-oxigraph-wasm" in rendered
+
+
 def test_cli_node_can_set_a_name(tmp_path, capsys):
     from trikedb.cli import main
 

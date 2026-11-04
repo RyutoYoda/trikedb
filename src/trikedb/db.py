@@ -973,6 +973,7 @@ class TrikeDB:
         layout: str = "auto",
         workflow_predicates=None,
         workflow_membership_predicate: str | None = None,
+        offline: bool = False,
     ) -> str:
         """Render the workbench. See html.to_html.
 
@@ -985,7 +986,8 @@ class TrikeDB:
         return to_html(self, path=path, title=title,
                        event_predicates=event_predicates, layout=layout,
                        workflow_predicates=workflow_predicates,
-                       workflow_membership_predicate=workflow_membership_predicate)
+                       workflow_membership_predicate=workflow_membership_predicate,
+                       offline=offline)
 
     # ------------------------------------------------------------- protocol
 

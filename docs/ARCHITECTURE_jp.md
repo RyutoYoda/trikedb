@@ -127,7 +127,7 @@ API更新後はクエリキャッシュを再構築します。意味検索は�
 
 ## HTMLと検証
 
-配布物はHTML1個ですがvis-networkとOxigraph WASMをCDNから取得するため、完全オフラインではありません。グラフはscript-safe JSONと文脈別DOMエスケープで出力します。描画内部は数値ID、表示は元の名前を使い、特殊名との衝突を避けます。非有限数は文字列として表示します。
+配布物はHTML1個です。通常はvis-networkとOxigraph WASMをCDNから取得しますが、`offline=True` では固定バージョンのJS/WASMとライセンス表示を埋め込み、ネット接続なしで `file://` から使えます。グラフはscript-safe JSONと文脈別DOMエスケープで出力します。描画内部は数値ID、表示は元の名前を使い、特殊名との衝突を避けます。非有限数は文字列として表示します。
 
 tests/test_review_regressions.pyは監査での不具合とRDF・保存境界、tests/browser_smoke.pyは通常・悪意ある入力を新規ブラウザで検証します。公開前の検証はsdistと依存下限も対象にします。fake storageテストはプロトコルの検証で、実クラウド耐久性の証明ではありません。[API](REFERENCE_jp.md)と[測定条件](../benchmarks/README_jp.md)も参照してください。
 

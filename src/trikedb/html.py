@@ -2055,6 +2055,7 @@ def to_html(
     layout: str = "auto",
     workflow_predicates=None,
     workflow_membership_predicate: str | None = None,
+    offline: bool = False,
 ) -> str:
     """Render the graph to a single-file interactive HTML workbench (CDN dependencies).
 
@@ -2082,6 +2083,9 @@ def to_html(
     Both are explicit because TrikeDB does not assign business meaning to a
     vocabulary by default. Workflow selection uses membership; only order
     predicates position and connect steps.
+
+    offline: embed pinned vis-network and Oxigraph JS/WASM assets in the page,
+    so graph rendering and SPARQL work without network access after export.
     """
     predicates = db.predicates()
     colors = {p: PALETTE[i % len(PALETTE)] for i, p in enumerate(predicates)}
@@ -2207,6 +2211,8 @@ def to_html(
     }
     # Replacement values are data, and must never be expanded as templates.
     html = re.sub(r"__([A-Z_]+)__", lambda m: replacements[m[1]], _TEMPLATE)
+    if offline:
+        html = _embed_offline_assets(html)
     if path is not None:
         from . import storage, storage_sql
 
@@ -2222,3 +2228,43 @@ def to_html(
         # was never going to exist.
         storage.write_text(path, html)
     return html
+
+
+def _embed_offline_assets(html: str) -> str:
+    """Replace the two CDN dependencies with packaged, pinned browser assets."""
+    assets = files("trikedb").joinpath("assets")
+    vis = assets.joinpath("vis-network-9.1.9.min.js").read_text(encoding="utf-8")
+    module = assets.joinpath("oxigraph-0.4.11-web.js").read_bytes()
+    wasm = assets.joinpath("oxigraph-0.4.11-web_bg.wasm").read_bytes()
+    notices = "\n".join(
+        assets.joinpath(name).read_text(encoding="utf-8")
+        for name in ("vis-network-LICENSE-MIT.txt", "oxigraph-LICENSE-MIT.txt")
+    )
+    # A literal closing script tag inside a vendor bundle would terminate the
+    # inline script in HTML. Escape it even if the pinned bundle lacks one.
+    vis = re.sub(r"</script", r"<\\/script", vis, flags=re.IGNORECASE)
+    cdn_vis = '<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>'
+    assert cdn_vis in html
+    html = html.replace(cdn_vis, f"<script>\n{vis}\n</script>", 1)
+    cdn_oxigraph = 'const mod = await import("https://cdn.jsdelivr.net/npm/oxigraph@0.4.11/web.js");\n  await mod.default();'
+    assert cdn_oxigraph in html
+    # Blob module import works on file:// pages. Pass the bundled WASM bytes
+    # explicitly, avoiding Oxigraph's default fetch(new URL(..., import.meta.url)).
+    loader = (
+        'const source = Uint8Array.from(atob(document.getElementById("trikedb-oxigraph-module").textContent), c => c.charCodeAt(0));\n'
+        '  const url = URL.createObjectURL(new Blob([source], {type: "text/javascript"}));\n'
+        '  let mod;\n'
+        '  try { mod = await import(url); } finally { URL.revokeObjectURL(url); }\n'
+        '  const wasm = Uint8Array.from(atob(document.getElementById("trikedb-oxigraph-wasm").textContent), c => c.charCodeAt(0));\n'
+        '  await mod.default(wasm);'
+    )
+    html = html.replace(cdn_oxigraph, loader, 1)
+    payload = (
+        '<script type="text/plain" id="trikedb-oxigraph-module">'
+        + base64.b64encode(module).decode("ascii") + '</script>\n'
+        '<script type="text/plain" id="trikedb-oxigraph-wasm">'
+        + base64.b64encode(wasm).decode("ascii") + '</script>\n'
+        '<!-- Bundled third-party assets: vis-network 9.1.9 and Oxigraph 0.4.11.\n'
+        + notices.replace("--", "- -") + '\n-->'
+    )
+    return html.replace("</body>", payload + "\n</body>", 1)

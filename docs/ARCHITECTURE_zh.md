@@ -126,7 +126,7 @@ API更新使查询缓存失效。语义搜索按句缓存embedding，只重新�
 
 ## HTML与验证
 
-工作台可作为一个HTML文件分发，但依赖CDN的vis-network和Oxigraph WASM，并非完全离线。图数据使用script-safe JSON及按上下文转义的DOM输出。内部绘图ID为数值，显示保留原名称，避免特殊名冲突。非有限数值显示为文字。
+工作台可作为一个HTML文件分发。默认从CDN加载vis-network和Oxigraph WASM；`offline=True` 嵌入固定版本的JS/WASM及许可证声明，可在无网络时从 `file://` 使用。图数据使用script-safe JSON及按上下文转义的DOM输出。内部绘图ID为数值，显示保留原名称，避免特殊名冲突。非有限数值显示为文字。
 
 tests/test_review_regressions.py覆盖审计问题及RDF/存储边界；tests/browser_smoke.py在新浏览器中测试正常和恶意数据。发布前验证也测试sdist及依赖下限。fake storage测试说明协议行为，不证明云服务耐久性。参见[API](REFERENCE.md)与[测量限制](../benchmarks/README_zh.md)。
 

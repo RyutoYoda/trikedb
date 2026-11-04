@@ -24,4 +24,5 @@ bench_out/
 output/
 tmp/
 assets/
+!src/trikedb/assets/
 *.bak-*

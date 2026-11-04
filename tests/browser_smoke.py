@@ -35,6 +35,24 @@ def run():
         page.evaluate("showDetail('CUSTOMERS')")
         assert "pii: true" in page.locator("#detail-body").inner_text()
 
+        # The distributable page must work from file:// with network disabled,
+        # including the deferred Oxigraph WASM query engine.
+        offline = Path(root) / "offline.html"
+        db.to_html(offline, offline=True)
+        offline_context = browser.new_context(offline=True)
+        offline_page = offline_context.new_page()
+        offline_errors = []
+        offline_page.on("pageerror", lambda e: offline_errors.append(e.stack))
+        offline_page.goto(offline.as_uri() + "?lang=en")
+        offline_page.wait_for_selector("canvas")
+        offline_page.locator("#nav-title-advanced").click()
+        offline_page.locator("#btn-sparql").click()
+        offline_page.locator("#sparql-input").fill("SELECT ?s WHERE {?s t:INGESTS_TO t:CUSTOMERS}")
+        offline_page.locator("#btn-run").click()
+        offline_page.wait_for_function("document.querySelector('#results').textContent.includes('CRM')")
+        assert not offline_errors, offline_errors
+        offline_context.close()
+
         # Switching language keeps the selected node and open detail panel.
         page.evaluate("focusNode('CUSTOMERS')")
         page.locator("#btn-language").click()

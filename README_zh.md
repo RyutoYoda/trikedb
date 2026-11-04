@@ -146,6 +146,11 @@ db = TrikeDB("graph.yaml")
 db.to_html("graph.html")
 ```
 
+若要在无网络时直接从 `file://` 打开，可用
+`db.to_html("graph.html", offline=True)` 或
+`trike ui generate graph.yaml --offline -o graph.html`。该模式嵌入固定版本的
+vis-network 和 Oxigraph JS/WASM，因此 HTML 文件更大。
+
 也可以运行 `trikedb ui graph.yaml` 从命令行生成。选择器可搜索工作流名称，并按一个
 `tags` 值过滤。选择工作流后会显示有序流程；点击**全图**返回完整图谱。若使用自定义
 词汇，可向 `to_html()` 传入 `workflow_predicates` 和
