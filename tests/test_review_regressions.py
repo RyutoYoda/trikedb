@@ -1,6 +1,7 @@
 """Regression coverage for the September repository and PyPI audit."""
 import json
 from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -409,3 +410,28 @@ def test_cli_edge_boolean_attributes_roundtrip(tmp_path):
     attrs = next(TrikeDB(path).triples()).attrs
     assert attrs['deprecated'] is False
     assert attrs['verified'] is True
+
+
+def test_published_0_48_1_yaml_remains_editable(tmp_path):
+    """A released YAML document must survive a newer read/edit/save cycle."""
+    from shutil import copyfile
+
+    from trikedb import TrikeDB
+
+    source = Path(__file__).parent / "fixtures" / "compat_0_48_1.yaml"
+    target = tmp_path / "compat.yaml"
+    copyfile(source, target)
+    graph = TrikeDB(target, validate_on_load=True)
+    assert graph.node("sales") == {"type": "service", "label": "Sales service"}
+    assert graph.node("orders") == {"type": "table", "pii": False}
+    edge = next(graph.triples())
+    assert edge.attrs == {"prov": "fixture", "note": "shared graph"}
+    graph.add("orders", "SOURCED_FROM", "raw_orders", prov="fixture")
+    graph.save()
+    reopened = TrikeDB(target, validate_on_load=True)
+    assert len(reopened) == 2
+    assert reopened.node("sales") == graph.node("sales")
+    assert {t.spo() for t in reopened} == {
+        ("sales", "USES", "orders"),
+        ("orders", "SOURCED_FROM", "raw_orders"),
+    }

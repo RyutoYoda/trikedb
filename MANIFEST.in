@@ -2,6 +2,7 @@ include README*.md CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE
 recursive-include src *.py py.typed
 recursive-include src/trikedb/assets *.js *.wasm *.txt
 recursive-include tests *.py
+recursive-include tests/fixtures *.yaml
 recursive-include examples *.yaml *.csv *.md *.ipynb *.py
 recursive-include benchmarks *.py *.json *.md
 recursive-include docs *.md
