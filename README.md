@@ -228,6 +228,21 @@ Everything else — inference, SHACL, workspaces, S3 and warehouse storage, the
 HTTP server — is there when you need it and costs nothing until then.
 See [the reference](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
 
+## Exchange with standard RDF
+
+Keep YAML for editing and review. Import Turtle, N-Triples, or JSON-LD, then
+export a standard RDF graph for other tools. An optional SHACL shapes file
+checks the combined graph before the import is saved:
+
+```bash
+trikedb import graph.yaml external.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+```
+
+Use the same stable base IRI for exports, queries, and validation. See the
+[RDF interchange contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#standard-rdf-interchange)
+for the term mapping and round-trip limits. The HTML workbench is unchanged.
+
 ## Then lock it down
 
 A graph is only worth reading if it cannot fill up with junk. Declare what may

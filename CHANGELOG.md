@@ -3,7 +3,7 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
-## Unreleased
+## 0.48.0
 
 - Import local Turtle, N-Triples, and JSON-LD while preserving RDF term kinds,
   datatypes, languages, and blank nodes. Export Turtle and use a consistent
@@ -12,8 +12,6 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   The HTML workbench and the native YAML editing format are unchanged.
 - Escape URI-template braces and other RDF-forbidden characters in native
   absolute URL names when projecting them as RDF IRIs; YAML names stay intact.
-
-## 0.48.0
 
 - Standard SHACL class shapes now validate node `type` metadata through an
   `rdf:type` RDF projection. Existing `t:type` literal queries and stored YAML
