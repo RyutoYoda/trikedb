@@ -342,7 +342,7 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 重複なしの項ヘルパー |
 | `set_node(name, **props)` / `node(name)` | ノードプロパティ(キー数無制限。`label`/`type`/`level` はUIで意味を持つ)。SPARQLからリテラルとして参照可。既存の `type` の変更は拒否される(同名の別物が黙って上書きし合うため) — 意図的に変えるなら `replace=True` |
 | `batch()` | コンテキストマネージャ。中では自由に変更し、抜けるときに1回だけ保存。`autosave=True` のままだと1変更ごとに全体を書き直すので、大量投入では二次になる |
-| `import_file(path)` | CSV/TSV(s,p,oヘッダ)・Markdown(s/p/o表)・別のYAMLグラフをマージ |
+| `import_file(path)` | CSV/TSV(s,p,oヘッダ)・Markdown(s/p/o表)・YAML・Turtle・N-Triples・JSON-LDをマージ |
 | `read_file(path)` | ソースファイルが持つトリプルを、追加せずにdictで返す — `import_file` を2つに割ったもの。マージする前に中身を判定できる |
 | `preview(incoming)` | その行がグラフに何をするかを、実際にはせずに返す: 1行につき判定1つ(`conflict` / `rejected` / `update` / `new` / `same`)と、その理由と対象トリプル。`add()` が走らせる検査を、同じ順番で走らせるので、プレビューが通った書き込みが後で落ちることはない |
 | `extract_prompt(text, relevant_to=, limit=, prompt=)` | ドキュメント用の抽出プロンプトを「このグラフ」から組み立てる: 宣言済みの述語(使ってよいのはこれだけ)と、すでにあるノード名(この綴りを再利用する)。`relevant_to` を渡すと、先頭 `limit` 件ではなく意味検索で提示ノードを選ぶ(`[semantic]` extra)。`prompt` は `trikedb.prompts` の名前 |
@@ -371,9 +371,9 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb add FILE S P O [-a k=v]...` | 属性つきでトリプル追加 |
 | `trikedb rm FILE [-s] [-p] [-o]` | パターン一致を削除 |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | パターン結合(表 or `--json`) |
-| `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1読み書き(書き込みは永続化) |
+| `trikedb sparql FILE "SELECT/INSERT..." [--base IRI]` | SPARQL 1.1読み書き(書き込みは永続化) |
 | `trikedb search FILE "クエリ" [-k N]` | 意味検索 — 事実とノードを意味でランク付け(`[semantic]` extra) |
-| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | CSV/TSV/Markdown/YAMLソースをマージ。`--dry-run` は各行が何をするかだけ言って何も書かず、止まるものがあればexit 1 |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json] [--shapes SHAPES.ttl] [--base IRI]` | CSV/TSV/Markdown/YAML/Turtle/N-Triples/JSON-LDをマージ。`--shapes` は指定したbase IRIで保存前に候補全体を検証。`--dry-run` は書き込みなしで差分を表示。両オプションは併用不可 |
 | `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | このグラフ自身の述語とノードから組み立てた抽出プロンプトを出力する。何も呼び出さない — モデルはあなたのもの。`DOC` は `.docx` かテキストファイル。`.docx` は zip を開いて読むだけなので依存は増えず、見出し・箇条書き・表は Markdown として残る |
 | `trikedb node FILE NAME [-a k=v]...` | ノード表示(プロパティ+入出エッジ)/プロパティ設定 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 語彙の表示/拡張。`--link INGESTS_TO=job>table` は形を宣言し、以後強制する。どちらの側も空でよく、`a\|b` で複数型 |
@@ -382,8 +382,9 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb stats FILE` | 述語別トリプル数・ノード数 |
 | `trike ui [FILE]` | ワークベンチをブラウザで開く。ファイル指定は省略可: `workspace.yaml` か `graph.yaml` があればそれ、無ければディレクトリ内の唯一のグラフ、それも無ければ唯一のワークスペース（ユニオンは他を含むので競合候補ではない） |
 | `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 配布用にワークベンチを書き出す。(`trikedb html` も同じ動作のまま残してあるが、名前は `ui` の下に移した) |
-| `trikedb jsonld FILE` | JSON-LDを標準出力へ |
-| `trikedb validate FILE SHAPES.ttl` | SHACL検証。違反でexit 1(CI向き) |
+| `trikedb turtle FILE [--base IRI]` | Turtleを標準出力へ |
+| `trikedb jsonld FILE [--base IRI]` | JSON-LDを標準出力へ |
+| `trikedb validate FILE SHAPES.ttl [--base IRI]` | SHACL検証。違反でexit 1(CI向き) |
 | `trikedb infer FILE [--apply]` | OWL-RL推論。`--apply` でタグ付き永続化 |
 | `trikedb check FILE [--html PATH]` | パース確認+HTML鮮度検出(埋め込みハッシュ照合) |
 | `trikedb audit FILE [--json] [--strict]` | 健全性所見。errorでexit 1(`--strict`で警告も) |
@@ -1103,6 +1104,33 @@ trikedb が自分からネットワークに出るのはここだけで、しか
   推論は**魔法ではなく実体化** — 導出された事実は `inferred: true` タグ付きで
   YAMLに書かれ、diffでレビューできる。その場限りの推移閉包なら
   SPARQLのプロパティパス(`t:INHERITS+`)でOWL不要
+
+## 標準RDFとの受け渡し
+
+編集用の正本は引き続きYAMLで、HTMLワークベンチの動作は変わりません。
+標準RDFのTurtle（`.ttl`）、N-Triples（`.nt`）、JSON-LD（`.jsonld`）を
+取り込み、TurtleとJSON-LDを書き出せます。往復で保証するのは**RDFグラフの同型性**です。
+IRI、空白ノード、データ型付き・言語タグ付きリテラルは保持します。
+空白ノードのラベルやトリプルの順序は同一性の対象ではありません。
+
+```bash
+trikedb import graph.yaml source.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+trikedb jsonld graph.yaml --base https://example.org/kg/ > graph.jsonld
+trikedb validate graph.yaml shapes.ttl --base https://example.org/kg/
+```
+
+独自名には安定したbase IRIを一つ決め、エクスポート・SPARQL・SHACLで
+同じ値を使ってください。既定値の`urn:trikedb:`は互換性のために残ります。
+取り込んだ絶対IRIは`rdf_terms`で保持します。文字列のノード`type`は
+`t:type`と`rdf:type`の両方に、ノードプロパティはRDFリテラルに、
+属性付き関係はRDFのreificationに変換します。`--shapes`は保存前に
+候補全体を検証し、`[shacl]`追加機能が必要です。JSON-LDの外部`@context`は
+暗黙のネットワークアクセスを防ぐため取り込み時に拒否します。
+
+RDFからの再取り込みはTrikeDBの編集用構造を復元しません。オントロジー宣言、
+編集可能なノードプロパティ、関係の属性は通常のRDF事実として入ります。
+編集・レビューにはYAMLを保持してください。名前付きRDFグラフは対象外です。
 
 ## YAMLは必ず手で書くのか
 

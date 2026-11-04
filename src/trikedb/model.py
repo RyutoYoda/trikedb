@@ -274,6 +274,11 @@ def _term_match(pattern: Optional[str], value: str) -> bool:
 #: still need `<urn:trikedb:Baltic%20states>`; a space cannot be in an IRI.
 _IRI_ESCAPES = {chr(c): f"%{c:02X}" for c in list(range(0x21)) + [0x7F]}
 _IRI_ESCAPES.update({c: f"%{ord(c):02X}" for c in '"<>{}|\\^`%#?'})
+# Absolute URLs keep their structural characters (`?`, `#`, and existing
+# percent escapes), but URI templates and whitespace cannot appear literally
+# in an RDF IRI. Native YAML retains the original spelling.
+_ABSOLUTE_IRI_ESCAPES = {chr(c): f"%{c:02X}" for c in list(range(0x21)) + [0x7F]}
+_ABSOLUTE_IRI_ESCAPES.update({c: f"%{ord(c):02X}" for c in '"<>{}|\\^`'})
 
 
 def _iri(name: str, base: str) -> str:
@@ -317,7 +322,9 @@ def _unique(items) -> list:
 
 
 def _iri_node(name, base):
-    return name if name.startswith(("http://", "https://", "urn:")) else _iri(name, base)
+    if name.startswith(("http://", "https://", "urn:")):
+        return "".join(_ABSOLUTE_IRI_ESCAPES.get(c, c) for c in name)
+    return _iri(name, base)
 
 
 def _validate_rdf_terms(terms):

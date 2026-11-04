@@ -327,7 +327,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True 是默认值
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | 去重的词项辅助方法 |
 | `set_node(name, **props)` / `node(name)` | 节点属性（键数不限；`label`/`type`/`level` 在 UI 上有含义）。在 SPARQL 里作为字面量可查。修改已有的 `type` 会被拒绝（两个同名的东西会悄悄互相覆盖）—— 确实要改就传 `replace=True` |
 | `batch()` | 上下文管理器：随便改，退出时保存一次。否则 `autosave=True` 会在每次变更时重写整个文件，在批量导入下是平方级的 |
-| `import_file(path)` | 从 CSV/TSV（表头为 s,p,o）、Markdown（s/p/o 表格）或另一张 YAML 图合并进来 |
+| `import_file(path)` | 合并 CSV/TSV（s,p,o 表头）、Markdown（s/p/o 表格）、YAML、Turtle、N-Triples 或 JSON-LD |
 | `read_file(path)` | 把一个来源文件里的三元组以 dict 返回，但不写进去 —— `import_file` 拆成两半，好让一份来源在合并之前先被判一遍 |
 | `preview(incoming)` | 这些行会对图做什么，但不去做：每行一个判定（`conflict` / `rejected` / `update` / `new` / `same`），带上理由和对应的三元组。跑的是 `add()` 会跑的那些检查，顺序也一样，所以预览过了的写入不会在真写的时候失败 |
 | `extract_prompt(text, relevant_to=, limit=, prompt=)` | 为一份文档生成抽取提示词，从**这张图**里搭出来：它声明的谓词（只能用这些）和它已经有的节点名（要沿用的写法）。`relevant_to` 让候选节点由语义搜索挑，而不是取前 `limit` 个（`[semantic]` extra）；`prompt` 指定 `trikedb.prompts` 里的哪一份 |
@@ -358,9 +358,9 @@ API 能做的事，命令行都能做（`pip install trikedb`，或者
 | `trikedb add FILE S P O [-a k=v]...` | 添加一条带属性的三元组 |
 | `trikedb rm FILE [-s] [-p] [-o]` | 删除匹配的三元组 |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | 模式连接（表格或 `--json`） |
-| `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 读写（写入会落盘） |
+| `trikedb sparql FILE "SELECT/INSERT..." [--base IRI]` | SPARQL 1.1 读写（写入会落盘） |
 | `trikedb search FILE "query" [-k N]` | 对事实和节点做语义搜索（`[semantic]` extra） |
-| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | 合并 CSV/TSV/Markdown/YAML 来源。`--dry-run` 只说每行会做什么、什么都不写，有被挡住的就以 1 退出 |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json] [--shapes SHAPES.ttl] [--base IRI]` | 合并 CSV/TSV/Markdown/YAML/Turtle/N-Triples/JSON-LD。`--shapes` 用指定的 base IRI 在保存前验证候选图；`--dry-run` 只预览、不写入。两者不能同时使用 |
 | `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | 打印这份文档的抽取提示词，由这张图自己的谓词和节点搭成。它不调用任何东西 —— 模型是你的。`DOC` 可以是 `.docx` 或任意文本文件；读 `.docx` 只是打开那个 zip，不引入依赖，标题、列表项和表格会作为 Markdown 保留 |
 | `trikedb node FILE NAME [-a k=v]...` | 显示一个节点（属性 + 边）或设置属性 |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | 显示 / 扩展述语词表。`--link INGESTS_TO=job>table` 声明一个形状并即刻生效；任意一侧都可以留空，也可以用 `a\|b` 写多个类型 |
@@ -369,8 +369,9 @@ API 能做的事，命令行都能做（`pip install trikedb`，或者
 | `trikedb stats FILE` | 每个述语的三元组数、节点数 |
 | `trike ui [FILE]` | 在浏览器里打开工作台。文件参数可选：有 `workspace.yaml` 或 `graph.yaml` 就用它，否则用目录里唯一的那张图，再否则用其中唯一的那个 workspace（union 不算竞争候选 —— 它本来就包含其他几张） |
 | `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free]` | 把工作台写成一个可以发布的文件。（`trikedb html` 仍然可用、效果相同，只是名字挪到了 `ui` 下面） |
-| `trikedb jsonld FILE` | JSON-LD 输出到 stdout |
-| `trikedb validate FILE SHAPES.ttl` | SHACL；有违规则退出码 1（适合 CI） |
+| `trikedb turtle FILE [--base IRI]` | Turtle 输出到 stdout |
+| `trikedb jsonld FILE [--base IRI]` | JSON-LD 输出到 stdout |
+| `trikedb validate FILE SHAPES.ttl [--base IRI]` | SHACL；有违规则退出码 1（适合 CI） |
 | `trikedb infer FILE [--apply]` | OWL-RL 推理；`--apply` 会把带标记的事实落盘 |
 | `trikedb check FILE [--html PATH]` | 解析检查 + 通过内嵌内容哈希检测 HTML 是否过期 |
 | `trikedb audit FILE [--json] [--strict]` | 健康检查发现；有 error 则退出码 1（`--strict`：warning 也算） |
@@ -1021,6 +1022,31 @@ diff"的 YAML，第一次 `git add -A` 就会被提交进去。它放在 `TRIKED
   *物化，不是魔法*：推导出的事实会落进 YAML 并打上 `inferred: true`，
   在 diff 里可以评审。只是想要临时的传递闭包的话，SPARQL 的属性路径
   （`t:INHERITS+`）根本不需要 OWL。
+
+## 标准 RDF 交换
+
+YAML 仍是可编辑的数据库，HTML 工作台的行为不变。可以导入标准 RDF 的
+Turtle（`.ttl`）、N-Triples（`.nt`）和 JSON-LD（`.jsonld`），并导出 Turtle
+及 JSON-LD。往返保证的是**RDF 图同构**，包括 IRI、空白节点、数据类型和语言
+标签字面量；空白节点标签和三元组顺序不作为身份。
+
+```bash
+trikedb import graph.yaml source.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+trikedb jsonld graph.yaml --base https://example.org/kg/ > graph.jsonld
+trikedb validate graph.yaml shapes.ttl --base https://example.org/kg/
+```
+
+为原生名称选定一个稳定的 base IRI，并在导出、SPARQL 和 SHACL 中保持一致。
+默认 `urn:trikedb:` 为兼容性保留；导入的绝对 IRI 通过 `rdf_terms` 保持身份。
+字符串节点 `type` 同时映射成 `t:type` 与 `rdf:type`；节点属性映射成 RDF
+字面量，带属性的边映射成 RDF reification。`--shapes` 在保存前验证整个候选
+图，需要可选的 `[shacl]` 依赖。导入 JSON-LD 时拒绝外部 `@context`，避免
+隐式网络请求。
+
+从 RDF 重新导入不会恢复 TrikeDB 的编辑结构：本体声明、可编辑节点属性和
+边属性会成为普通 RDF 事实。原生编辑与审阅仍应保留 YAML。命名 RDF 图不在
+此单图格式的范围内。
 
 ## 你必须写 YAML 吗？
 

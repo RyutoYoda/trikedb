@@ -92,6 +92,8 @@ def main(argv=None) -> int:
     p_sparql.add_argument("file")
     p_sparql.add_argument("query", help="SPARQL query or update; prefix t: is pre-bound, e.g. t:PROVIDES")
     p_sparql.add_argument("--json", action="store_true", help="output JSON instead of a table")
+    p_sparql.add_argument("--base", default="urn:trikedb:",
+                          help="base IRI for native node and predicate names")
 
     p_search = sub.add_parser(
         "search", help="semantic search — rank facts by meaning, not spelling ([semantic] extra)"
@@ -116,10 +118,10 @@ def main(argv=None) -> int:
     p_find.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
     p_import = sub.add_parser(
-        "import", help="merge triples from CSV/TSV, Markdown tables, or another YAML graph"
+        "import", help="merge triples from CSV/TSV, Markdown, YAML, or RDF files"
     )
     p_import.add_argument("file", help="the graph YAML to merge into (created if missing)")
-    p_import.add_argument("sources", nargs="+", help=".csv/.tsv/.md/.yaml files to import")
+    p_import.add_argument("sources", nargs="+", help=".csv/.tsv/.md/.yaml/.ttl/.nt/.jsonld files")
     p_import.add_argument(
         "-n", "--dry-run", action="store_true",
         help="say what each row would do (new/same/update/conflict/rejected) "
@@ -127,6 +129,10 @@ def main(argv=None) -> int:
     )
     p_import.add_argument("--json", action="store_true",
                           help="with --dry-run, output the findings as JSON")
+    p_import.add_argument("--shapes", default=None, metavar="SHAPES.ttl",
+                          help="SHACL-validate the combined result before saving")
+    p_import.add_argument("--base", default="urn:trikedb:",
+                          help="base IRI for native YAML terms during SHACL validation")
 
     p_extract = sub.add_parser(
         "extract",
@@ -237,12 +243,21 @@ def main(argv=None) -> int:
 
     p_jsonld = sub.add_parser("jsonld", help="export JSON-LD to stdout")
     p_jsonld.add_argument("file")
+    p_jsonld.add_argument("--base", default="urn:trikedb:",
+                          help="base IRI for native node and predicate names")
+
+    p_turtle = sub.add_parser("turtle", help="export standard RDF Turtle to stdout")
+    p_turtle.add_argument("file")
+    p_turtle.add_argument("--base", default="urn:trikedb:",
+                          help="base IRI for native node and predicate names")
 
     p_validate = sub.add_parser(
         "validate", help="validate the graph against SHACL shapes (requires trikedb[shacl])"
     )
     p_validate.add_argument("file")
     p_validate.add_argument("shapes", help="path to a Turtle (.ttl) shapes file")
+    p_validate.add_argument("--base", default="urn:trikedb:",
+                            help="base IRI for native node and predicate names")
 
     p_infer = sub.add_parser(
         "infer", help="materialize OWL-RL inferences (requires trikedb[owl])"
@@ -410,7 +425,7 @@ def _cmd_query(args) -> int:
 
 def _cmd_sparql(args) -> int:
     db = TrikeDB(args.file)
-    result = db.sparql(args.query)
+    result = db.sparql(args.query, base=args.base)
     if isinstance(result, bool):
         print(json.dumps(result) if args.json else ("yes" if result else "no"))
         return 0 if result else 1
@@ -507,14 +522,26 @@ def _cmd_search(args) -> int:
 
 def _cmd_import(args) -> int:
     if args.dry_run:
+        if args.shapes:
+            raise ValueError("--shapes cannot be combined with --dry-run")
         return _preview_import(args)
-    db = TrikeDB(args.file)
+    # Stage every source in memory when validating. A failed shape must not
+    # leave half of a multi-file import in the user's YAML document.
+    db = TrikeDB(args.file, autosave=not bool(args.shapes))
     added = 0
+    results = []
     for source in args.sources:
         n = db.import_file(source)
         added += n
-        print(f"{source}: +{n}")
+        results.append((source, n))
+    if args.shapes:
+        conforms, report = db.validate(args.shapes, base=args.base)
+        if not conforms:
+            print(report, file=sys.stderr)
+            return 1
     db.save()
+    for source, n in results:
+        print(f"{source}: +{n}")
     print(f"added {added} triple(s) — {len(db)} total in {args.file}")
     return 0
 
@@ -797,13 +824,19 @@ def _cmd_html(args) -> int:
 
 def _cmd_jsonld(args) -> int:
     db = TrikeDB(args.file)
-    print(json.dumps(db.to_jsonld(), ensure_ascii=False, indent=2))
+    print(json.dumps(db.to_jsonld(base=args.base), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_turtle(args) -> int:
+    db = TrikeDB(args.file)
+    print(db.to_rdflib(base=args.base).serialize(format="turtle"), end="")
     return 0
 
 
 def _cmd_validate(args) -> int:
     db = TrikeDB(args.file)
-    conforms, report = db.validate(args.shapes)
+    conforms, report = db.validate(args.shapes, base=args.base)
     print(report)
     return 0 if conforms else 1
 
@@ -922,6 +955,7 @@ _COMMANDS = {
     "html": _cmd_html,
     "ui": _cmd_ui,
     "jsonld": _cmd_jsonld,
+    "turtle": _cmd_turtle,
     "check": _cmd_check,
     "audit": _cmd_audit,
     "validate": _cmd_validate,
