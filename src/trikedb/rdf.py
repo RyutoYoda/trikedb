@@ -25,7 +25,8 @@ def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
     URIRefs too, unless they contain whitespace (e.g. change-event
     descriptions), in which case they become Literals. Node properties
     are included as literal-valued statements (so SPARQL can filter on
-    them, e.g. `?x t:type "table"`) unless node_props=False.
+    them, e.g. `?x t:type "table"`) unless node_props=False. A string
+    `type` also projects to rdf:type for standard RDFS and SHACL class targets.
 
     Edge attributes (note, prov, ...) are exported as standard RDF
     reification unless edge_attrs=False: each attributed triple gains a
@@ -77,6 +78,8 @@ def statements(db, base: str, node_props: bool = True,
         for name, props in db.nodes_meta.items():
             for key, value in props.items():
                 yield URIRef(_iri_node(name, base)), URIRef(_iri_node(str(key), base)), Literal(value)
+                if key == "type" and isinstance(value, str) and value:
+                    yield URIRef(_iri_node(name, base)), RDF.type, URIRef(_iri_node(value, base))
 
 
 def oxigraph_store(db, base: str):

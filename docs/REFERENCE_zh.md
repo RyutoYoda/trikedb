@@ -1007,17 +1007,15 @@ diff"的 YAML，第一次 `git add -A` 就会被提交进去。它放在 `TRIKED
 - **SHACL**（`[shacl]`）：真正的形状约束 —— 基数、取值范围 —— 针对
   `urn:trikedb:` 命名空间。`trikedb validate` 可以直接用在 CI 里。
 
-  **把 target 打在属性上，不要打在类上。** 节点的 `type` 是一个节点*属性*，
-  所以它投影出来是 `t:type "table"` —— 一个字面量，而不是
-  `rdf:type t:table`。按惯用写法从 `sh:targetClass` 开头的 shape 什么都
-  匹配不到，然后报 `Conforms: True`：检查通过，是因为它压根没跑。
-  改用 `sh:targetSubjectsOf t:type`（每一个有 type 的节点），或者一个基于
-  SPARQL 的 target。
+  字符串节点 `type` 同时投影为原有的 `t:type "Employee"` 属性和
+  `rdf:type t:Employee`。标准的 `sh:targetClass` 和 `sh:class` 因此可以
+  选择和检查带类型的节点。原有 SPARQL 查询和 `sh:targetSubjectsOf` 仍可
+  使用 `t:type`。仅在显式调用时执行验证。
 
   ```turtle
-  t:ContractShape a sh:NodeShape ;
-    sh:targetSubjectsOf t:type ;          # 而不是 sh:targetClass
-    sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .
+  t:EmployeeShape a sh:NodeShape ;
+    sh:targetClass t:Employee ;
+    sh:property [ sh:path t:employeeId ; sh:minCount 1 ] .
   ```
 - **OWL-RL**（`[owl]`）：声明特性，然后把推出来的东西物化下来。推理是
   *物化，不是魔法*：推导出的事实会落进 YAML 并打上 `inferred: true`，

@@ -1418,19 +1418,15 @@ def test_force_layout_keeps_nodes_from_landing_on_each_other():
     assert "Math.min(1200, Math.max(200, ids.length * 12))" in html
 
 
-def test_shacl_targets_the_type_property_not_a_class(tmp_path):
-    """A node's `type` is a property, so it projects as t:type "x" — a
-    literal, not rdf:type t:x. A shape written with sh:targetClass matches
-    nothing and reports Conforms: True: the check passes because it never
-    ran. REFERENCE.md documents targetSubjectsOf instead; this pins the
-    projection that makes that advice necessary."""
+def test_shacl_keeps_property_targets_alongside_class_targets(tmp_path):
+    """The legacy t:type property remains queryable after adding rdf:type."""
     pytest.importorskip("pyshacl")
     db = TrikeDB(autosave=False)
     db.set_node("Slack契約", type="SaaS契約", 契約単位="ユーザー数")
     db.set_node("Notion契約", type="SaaS契約")
     rdf = {str(t[1]) for t in db.to_rdflib()}
     assert "urn:trikedb:type" in rdf
-    assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" not in rdf
+    assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" in rdf
 
     shapes = tmp_path / "s.ttl"
     shapes.write_text(

@@ -1088,17 +1088,16 @@ trikedb が自分からネットワークに出るのはここだけで、しか
 - **SHACL**(`[shacl]`): 本物の形状制約(カーディナリティ・値域)を
   `urn:trikedb:` 名前空間に対して。`trikedb validate` はCIでそのまま使える
 
-  **クラスではなくプロパティを対象にする。** ノードの `type` はノードの
-  *プロパティ*なので、`t:type "table"` というリテラルとして投影される
-  (`rdf:type t:table` ではない)。SHACLの定石どおり `sh:targetClass` から
-  書くと何にも一致せず、`Conforms: True` が返る。**検査が通ったのではなく、
-  検査が走っていない。** `sh:targetSubjectsOf t:type`(型を持つ全ノード)か、
-  SPARQLベースのターゲットを使う。
+  文字列のノード `type` は、従来の `t:type "Employee"` プロパティと
+  `rdf:type t:Employee` の両方に投影される。標準の `sh:targetClass` と
+  `sh:class` で型付きノードを対象にできる。従来のSPARQLクエリや
+  `sh:targetSubjectsOf` も `t:type` を引き続き使える。検証は明示的に
+  呼び出したときだけ実行される。
 
   ```turtle
-  t:ContractShape a sh:NodeShape ;
-    sh:targetSubjectsOf t:type ;          # sh:targetClass ではなく
-    sh:property [ sh:path t:契約単位 ; sh:minCount 1 ] .
+  t:EmployeeShape a sh:NodeShape ;
+    sh:targetClass t:Employee ;
+    sh:property [ sh:path t:employeeId ; sh:minCount 1 ] .
   ```
 - **OWL-RL**(`[owl]`): 述語に特性を宣言して、導かれる事実を実体化。
   推論は**魔法ではなく実体化** — 導出された事実は `inferred: true` タグ付きで

@@ -89,7 +89,7 @@ flowchart TB
 
 `Triple`はs/p/o・edge属性・任意の`rdf_terms`を保存します。既存文書は従来どおり、名前を`urn:trikedb:`配下のIRIにし（http/https/urnは絶対値）、空白入りobjectはliteralにします。明示RDF termはIRI・blank node・literalのdatatype/languageを保持します。空白入りエンティティ名にはobjectを明示IRIにしてください。
 
-`_statements()`がRDF投影を定義し、rdflib・Oxigraph・JSON-LDが共有します。node属性はliteral、edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXとSQL viewは文書から独立に文字列表現のproperty graphを作り、無損失RDF datasetではありません。KG_NODEはメタデータだけのnodeと全edge端点を含みます。
+`_statements()`がRDF投影を定義し、rdflib・Oxigraph・JSON-LDが共有します。node属性はliteralになり、文字列の`type`は標準のクラス指定に使える`rdf:type`にもなります。edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXとSQL viewは文書から独立に文字列表現のproperty graphを作り、無損失RDF datasetではありません。KG_NODEはメタデータだけのnodeと全edge端点を含みます。
 
 ## 更新と失敗
 
