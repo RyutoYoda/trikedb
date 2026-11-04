@@ -357,7 +357,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `subjects(p=, o=)` / `objects(s=, p=)` / `predicates()` / `nodes()` | Distinct term helpers |
 | `set_node(name, **props)` / `node(name)` | Node properties (unlimited keys; `label`/`type`/`level` have UI meaning). Queryable in SPARQL as literals. Changing an existing `type` is refused (two things sharing a name would silently overwrite each other) — pass `replace=True` to mean it |
 | `batch()` | Context manager: mutate freely, save once on exit. `autosave=True` otherwise rewrites the whole file per mutation, which is quadratic over a bulk import |
-| `import_file(path)` | Merge from CSV/TSV (s,p,o header), Markdown (s/p/o tables), or another YAML graph |
+| `import_file(path)` | Merge from CSV/TSV (s,p,o header), Markdown (s/p/o tables), YAML, Turtle, N-Triples, or JSON-LD |
 | `read_file(path)` | The triples a source file holds, as dicts, without adding them — `import_file` split in two, so a source can be judged before it is merged |
 | `preview(incoming)` | What those rows would do to the graph, without doing it: one verdict each (`conflict` / `rejected` / `update` / `new` / `same`) with the reason and the triple it is about. The checks `add()` runs, in the order it runs them, so a preview cannot promise a write that then fails |
 | `extract_prompt(text, relevant_to=, limit=, prompt=)` | The extraction prompt for a document, built from *this* graph: the predicates it declares (the only ones allowed) and the node names it already holds (the spellings to reuse). `relevant_to` chooses which nodes are offered by semantic search instead of taking the first `limit` of them (`[semantic]` extra); `prompt` names one of `trikedb.prompts` |
@@ -386,9 +386,9 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb add FILE S P O [-a k=v]...` | Add a triple with attributes |
 | `trikedb rm FILE [-s] [-p] [-o]` | Remove matching triples |
 | `trikedb query FILE -w "?s PRED ?o" [-w ...]` | Pattern joins (table or `--json`) |
-| `trikedb sparql FILE "SELECT/INSERT..."` | SPARQL 1.1 read & write (writes persist) |
+| `trikedb sparql FILE "SELECT/INSERT..." [--base IRI]` | SPARQL 1.1 read & write (writes persist) |
 | `trikedb search FILE "query" [-k N]` | Semantic search over facts and nodes (`[semantic]` extra) |
-| `trikedb import FILE SRC... [-n\|--dry-run] [--json]` | Merge CSV/TSV/Markdown/YAML sources. `--dry-run` says what every row would do and writes nothing, exiting 1 if anything is blocked |
+| `trikedb import FILE SRC... [-n\|--dry-run] [--json] [--shapes SHAPES.ttl] [--base IRI]` | Merge CSV/TSV/Markdown/YAML/Turtle/N-Triples/JSON-LD. `--shapes` validates the staged result before saving using the given base IRI; `--dry-run` reports changes without writing (the two options cannot be combined) |
 | `trikedb extract FILE DOC [-o OUT] [--relevant-to TEXT] [--limit N]` | Print the extraction prompt for a document, built from this graph's own predicates and nodes. Calls nothing — the model is yours. `DOC` is a `.docx` or any text file; a `.docx` is read by opening the zip, so it adds no dependency, and its headings, list items and tables survive as Markdown |
 | `trikedb node FILE NAME [-a k=v]...` | Show a node (props + edges) or set properties |
 | `trikedb ontology FILE [--set P=desc] [--link P=domain>range]` | Show / extend the predicate vocabulary. `--link INGESTS_TO=job>table` declares a shape and has it enforced; either side may be blank, or `a\|b` for several types |
@@ -397,8 +397,9 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb stats FILE` | Triples per predicate, node count |
 | `trike ui [FILE]` | Open the workbench in a browser. The file argument is optional: `workspace.yaml` or `graph.yaml` if either is there, else the only graph in the directory, else the only workspace among them (a union is not a rival candidate — it contains the others) |
 | `trike ui generate [FILE] [-o] [--title] [--events P1,P2] [--layout auto\|flow\|free] [--workflow-predicates P1,P2] [--workflow-membership-predicate P]` | Write the workbench to a file you can publish. (`trikedb html` still works and does the same, but the name moved under `ui`) |
-| `trikedb jsonld FILE` | JSON-LD to stdout |
-| `trikedb validate FILE SHAPES.ttl` | SHACL; exit 1 on violations (CI-friendly) |
+| `trikedb turtle FILE [--base IRI]` | Turtle to stdout |
+| `trikedb jsonld FILE [--base IRI]` | JSON-LD to stdout |
+| `trikedb validate FILE SHAPES.ttl [--base IRI]` | SHACL; exit 1 on violations (CI-friendly) |
 | `trikedb infer FILE [--apply]` | OWL-RL inference; `--apply` persists tagged facts |
 | `trikedb check FILE [--html PATH]` | Parse check + stale-HTML detection via embedded content hash |
 | `trikedb audit FILE [--json] [--strict]` | Health findings; exit 1 on errors (`--strict`: warnings too) |
@@ -1239,6 +1240,35 @@ return the untouched value.
   in the YAML tagged `inferred: true`, reviewable in the diff. For
   ad-hoc transitivity, SPARQL property paths (`t:INHERITS+`) need no
   OWL at all.
+
+## Standard RDF interchange
+
+YAML remains the editable database and the HTML workbench reads it exactly as
+before. Turtle (`.ttl`), N-Triples (`.nt`), and JSON-LD (`.jsonld`) are standard
+RDF inputs; Turtle and JSON-LD are standard exports. The interchange contract
+is **RDF graph equivalence**, including IRIs, blank nodes, datatype and
+language-tagged literals. Blank-node labels and triple order are not identities.
+
+```bash
+trikedb import graph.yaml source.ttl --shapes shapes.ttl --base https://example.org/kg/
+trikedb turtle graph.yaml --base https://example.org/kg/ > graph.ttl
+trikedb jsonld graph.yaml --base https://example.org/kg/ > graph.jsonld
+trikedb validate graph.yaml shapes.ttl --base https://example.org/kg/
+```
+
+Choose one stable base IRI for native names and use it for every export,
+SPARQL query, and SHACL validation. The default remains `urn:trikedb:` for
+compatibility; imported absolute IRIs retain their own identity through
+`rdf_terms`. A native node's string `type` maps to both `t:type` and
+`rdf:type`; node properties map to RDF literals and attributed edges to RDF
+reification. `--shapes` validates the combined candidate before writing and
+requires the optional `[shacl]` extra. Local JSON-LD imports reject external
+`@context` documents to avoid implicit network requests.
+
+RDF interchange does not restore TrikeDB's editing model from an exported
+file: ontology declarations, editable node properties, and edge attributes
+become ordinary RDF facts on import. Keep the YAML for native editing and
+review. Named RDF graphs/datasets are outside this single-graph format.
 
 ## Do you have to write YAML?
 

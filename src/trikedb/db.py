@@ -697,12 +697,15 @@ class TrikeDB:
             return importers.read_csv(path)
         if suffix in (".md", ".markdown"):
             return importers.read_markdown(path)
+        if suffix in (".ttl", ".nt", ".jsonld"):
+            return importers.read_rdf(path)
         raise ValueError(
-            f"unsupported import format {path.suffix!r} (use .yaml/.csv/.tsv/.md)"
+            f"unsupported import format {path.suffix!r} "
+            "(use .yaml/.csv/.tsv/.md/.ttl/.nt/.jsonld)"
         )
 
     def import_file(self, path: Union[str, Path]) -> int:
-        """Merge triples from a YAML graph, CSV/TSV, or Markdown document.
+        """Merge triples from YAML, CSV/TSV, Markdown, or a standard RDF graph.
 
         CSV needs an s/p/o header (extra columns become attributes);
         Markdown contributes every table whose header has s/p/o columns.

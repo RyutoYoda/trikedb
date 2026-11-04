@@ -1,4 +1,4 @@
-"""Import triples from CSV/TSV files and Markdown tables.
+"""Import triples from standard RDF, CSV/TSV, and Markdown tables.
 
 Deliberately deterministic — no LLM extraction. A table (in either
 format) is a triple source when its header contains s/p/o columns
@@ -17,9 +17,56 @@ into something the graph can look at.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from pathlib import Path
 from typing import List, Optional, Union
+
+
+_RDF_FORMATS = {".ttl": "turtle", ".nt": "nt", ".jsonld": "json-ld"}
+
+
+def read_rdf(path: Union[str, Path]) -> List[dict]:
+    """Read a local RDF graph as native triples, retaining RDF term kinds.
+
+    JSON-LD contexts that name another document are rejected before rdflib
+    parses them. Its JSON-LD parser otherwise resolves those references over
+    the network, which is surprising for an import of a local file.
+    """
+    from rdflib import Graph
+    from rdflib.compare import to_canonical_graph
+
+    from .model import Triple
+
+    path = Path(path)
+    rdf_format = _RDF_FORMATS[path.suffix.lower()]
+    if rdf_format == "json-ld":
+        document = json.loads(path.read_text(encoding="utf-8"))
+        _reject_external_contexts(document)
+    graph = Graph().parse(path.resolve().as_uri(), format=rdf_format)
+    # Turtle's [] blank nodes have parser-generated identifiers. Canonical
+    # labels keep an unchanged source from churning YAML diffs on reimport.
+    graph = to_canonical_graph(graph)
+    return [Triple.from_rdf(*row).to_dict() for row in sorted(
+        graph, key=lambda row: tuple(term.n3() for term in row)
+    )]
+
+
+def _reject_external_contexts(value):
+    if isinstance(value, list):
+        for item in value:
+            _reject_external_contexts(item)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if key == "@import" or (key == "@context" and _has_context_reference(item)):
+                raise ValueError("remote JSON-LD context is not supported in local imports")
+            _reject_external_contexts(item)
+
+
+def _has_context_reference(value):
+    return isinstance(value, str) or (isinstance(value, list) and any(
+        _has_context_reference(item) for item in value
+    ))
 
 _ALIASES = {
     "s": "s", "subject": "s",
