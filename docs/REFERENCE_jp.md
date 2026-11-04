@@ -11,7 +11,7 @@
 
 返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルのontology適合性はload時に検査しません。
 
-ローカルは完全なファイルへatomic replaceしますが、別プロセス間はlast-write-winsです。同一HTTPサーバーのREST/MCPは状態を共有して直列化し、外部編集にはreloadが必要です。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
+ローカル保存はファイルごとのlock下で内容ハッシュを比較してからatomic replaceし、古い状態からの保存は`ConcurrentWriteError`で拒否します。MCP/RESTはリクエスト前にローカルファイルの外部変更を読み直します。Pythonからは競合後に`reload()`します。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
 
 
 **以下の性能値は記録当時の版・環境での観測で、この修正版の速度保証ではありません。**
@@ -742,14 +742,12 @@ OAUTH_ISSUER=https://idp.example.com/
 
 制約が2つある:
 
-- **保証されるのはS3とウェアハウスだけ。** `gs://` `az://` `https://` は
-  まだ条件付き書き込みを持たないので last-write-wins のまま。
-  ローカルファイルも保護されない（単一プロセス前提）。
-- **長時間動くレプリカは互いを見ない。** MCPツールはプロセスの生存期間中ずっと
-  同じグラフインスタンスを保持し、書き込みが衝突したときにだけ読み直す。
-  一度も書かないレプリカは他のレプリカの書き込みに気づかない。再起動するか、
-  読み取り専用レプリカにはエージェントではなくレビュー経由で変わるグラフを
-  配ること。
+- **他のリモートファイルは後勝ち。** `gs://` `az://` `https://` は条件付き保存に
+  未対応。同じホスト・ユーザーのTrikeDBプロセスはローカルlockで協調するが、
+  lockを使わない外部エディタと保存が同時なら競合は残る。
+- **長時間動くリモートのレプリカは変更を毎回見ない。** MCP/RESTはローカル
+  ファイルをリクエスト前に確認する。リモートは書き込み競合か明示的なreloadまで
+  メモリ上の状態を保持する。
 
 ## エージェントはどう読み分けるべきか
 

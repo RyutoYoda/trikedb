@@ -105,11 +105,11 @@ Public Triple/property returns are detached snapshots. Mutate through APIs to in
 
 ## Persistence and concurrency
 
-Local saves write and fsync a same-directory temporary file, then replace the destination. Existing permissions and symlink targets are preserved; newly created files are private (0600). Failure before replacement preserves previous bytes. This does not claim directory-fsync power-loss durability or multi-process compare-and-swap: separate local writers remain last-write-wins.
+Local saves compare a content hash under a stable per-file lock in the user's cache, then write and fsync a same-directory temporary file and replace the destination. Existing permissions and symlink targets are preserved; newly created files are private (0600). Failure before replacement preserves previous bytes. This coordinates TrikeDB processes using the same cache on one host; external programs that ignore the lock can still race. Directory-fsync power-loss durability is not claimed.
 
 S3 uses conditional single PUT (ETag/If-Match or create-if-absent); SQL uses a version predicate and affected-row count. The successful write returns **its own** committed token. Never read HEAD after saving to discover that token: another writer could already have committed. S3 multipart conditional writes are deliberately unsupported. Other fsspec backends have no compare-and-swap guarantee.
 
-REST and MCP in one `serve` process share one TrikeDB and serialize operations under its reentrant lock. MCP retries conditional conflicts by reloading and reapplying its mutation. Separate processes do not share memory. Python callers must serialize access themselves; external edits require reload. Read-only flags guard public mutations, not arbitrary Python memory access.
+REST and MCP in one `serve` process share one TrikeDB and serialize operations under its reentrant lock. They check local content hashes and reload external edits before each request. MCP retries conditional conflicts by reloading and reapplying its mutation. Separate processes do not share memory. Python callers must serialize access themselves and reload after a conflict. Read-only flags guard public mutations, not arbitrary Python memory access.
 
 ## Modules and layering
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from . import rules
+from . import persistence, rules
 from .db import TrikeDB
 from .storage import ConcurrentWriteError, is_remote
 
@@ -105,8 +105,8 @@ def build_server(
     resumability is the only thing given up.
 
     Note that the graph is opened once, here, and the tools share that one
-    instance for the life of the server — they do not re-read the file per
-    request. Two processes serving the same file each hold their own copy and
+    instance for the life of the server, but local-file changes are checked
+    before each request. Two processes serving the same file each hold their own copy and
     will not see each other's writes."""
     try:
         from mcp.server.fastmcp import FastMCP
@@ -144,6 +144,7 @@ def build_server(
         @wraps(fn)
         def call(*args, **kwargs):
             with db._lock:
+                persistence.reload_local_if_changed(db)
                 db._actor = caller()
                 try:
                     return fn(*args, **kwargs)
