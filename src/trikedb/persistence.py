@@ -57,6 +57,7 @@ def reload(db) -> "TrikeDB":
     fresh = type(db)(
         db.path, autosave=db.autosave, read_only=db._read_only_requested,
         connection=db._connection, sparql_engine=db.sparql_engine,
+        validate_on_load=db.validate_on_load,
     )
     # Parsing can fail when a person is halfway through an edit. Keep the
     # old snapshot and its token in that case, so reads never see an empty

@@ -9,7 +9,7 @@
 
 **互換性と保証範囲。** 単一default graphのSPARQL読取とINSERT/DELETE・CLEAR/DROPに対応し、named graph/dataset更新は拒否します。従来形式の空白入りobjectはliteralです。`New York`のようなエンティティには `rdf_terms={"o": {"kind": "iri"}}` を指定してください。SPARQLで挿入したRDF型・言語タグ・blank nodeは保存後も保持します。RDF/JSON-LDはメタデータを含むRDF投影を保持し、pattern/NetworkX/SQLは文字列の名前を使います。
 
-返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルのontology適合性はload時に検査しません。
+返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルは修復のため既定では開けますが、auditは未宣言の述語をエラーとして報告し、`validate_on_load=True`はopenとreloadでauditのエラーを拒否します。SHACLは別の検証です。
 
 ローカル保存はファイルごとのlock下で内容ハッシュを比較してからatomic replaceし、古い状態からの保存は`ConcurrentWriteError`で拒否します。MCP/RESTはリクエスト前にローカルファイルの外部変更を読み直します。Pythonからは競合後に`reload()`します。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
 
@@ -356,6 +356,7 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 | `to_rdflib()` / `to_jsonld()` | 相互運用エクスポート(RDF/SPARQLビュー) |
 | `to_networkx(multigraph=True)` | プロパティグラフ投影(`[networkx]` extra): ノードのプロパティ＋エッジのlabel/属性を保持。同じファイルでnetworkxのアルゴリズム(最短経路・中心性)が使える |
 | `TrikeDB(path, read_only=True)` | 読み取り専用で開く。全ての変更が例外になる。`reload()` 後も維持される |
+| `TrikeDB(path, validate_on_load=True)` | 手編集YAMLの未宣言述語を含むauditエラーを拒否。既定のloadは修復可能なまま |
 | `TrikeDB(path, sparql_engine="rdflib")` | SPARQLエンジンを固定する。既定は `[oxigraph]` が入っていれば oxigraph |
 | `TrikeDB(url, connection=conn)` | 接続を作る代わりに、既存のウェアハウス接続かSnowparkセッションで実行する |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |

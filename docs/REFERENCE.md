@@ -9,7 +9,7 @@ Every feature, and how to use it. For the design rationale see
 
 **Compatibility and safety contract.** This is one default graph: SPARQL reads plus default-graph INSERT/DELETE and CLEAR/DROP, with named-graph/dataset updates rejected. Legacy objects containing whitespace are literals; use `rdf_terms={"o": {"kind": "iri"}}` for an entity such as `New York`. SPARQL-inserted RDF types, language tags and blank nodes now survive save/reload. RDF/JSON-LD exports preserve the RDF projection, including metadata; pattern/NetworkX/SQL views use lexical names.
 
-API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions; manually edited files are not schema-checked on load.
+API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions. Hand-edited files open by default for repair; `audit` reports undeclared predicates as errors, and `validate_on_load=True` rejects all audit errors on open and reload. SHACL remains a separate validation step.
 
 Local writes compare the file's content hash under a per-file lock before atomic replacement; stale saves raise `ConcurrentWriteError`. MCP/REST reload a local file changed by another writer before each request. Python callers use `reload()` after a conflict. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. Exported HTML requires network access to vis-network/Oxigraph CDNs. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
 
@@ -371,6 +371,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `to_rdflib()` / `to_jsonld()` | Interop exports (RDF/SPARQL view) |
 | `to_networkx(multigraph=True)` | Property-graph projection (`[networkx]` extra): node props + edge label/attrs; run networkx algorithms (shortest path, centrality) on the same file |
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
+| `TrikeDB(path, validate_on_load=True)` | Reject audit errors, including undeclared predicates in hand-edited YAML; default loading stays repairable |
 | `TrikeDB(path, sparql_engine="rdflib")` | Pin the SPARQL engine; the default is the core dependency oxigraph, with rdflib fallback |
 | `TrikeDB(url, connection=conn)` | Run through an already-open warehouse connection or Snowpark session instead of building one |
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |

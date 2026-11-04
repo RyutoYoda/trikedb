@@ -147,6 +147,38 @@ def test_failed_reload_keeps_old_snapshot_and_refuses_to_overwrite_bad_yaml(tmp_
     assert path.read_text() == 'triples: [broken\n'
 
 
+def test_strict_load_rejects_undeclared_manual_yaml_but_allows_repair(tmp_path):
+    path = tmp_path / 'graph.yaml'
+    path.write_text(
+        'ontology: {predicates: {P: allowed}}\n'
+        'triples:\n- {s: a, p: TYPO, o: b}\n'
+    )
+    repair = TrikeDB(path)
+    assert any(f['kind'] == 'undeclared-predicate' for f in repair.audit())
+    with pytest.raises(OntologyError, match='undeclared-predicate'):
+        TrikeDB(path, validate_on_load=True)
+    repair.remove(s='a', p='TYPO')
+    assert not [f for f in TrikeDB(path, validate_on_load=True).audit()
+                if f['severity'] == 'error']
+
+
+def test_strict_reload_keeps_last_valid_snapshot_on_ontology_error(tmp_path):
+    from trikedb.storage import ConcurrentWriteError
+
+    path = tmp_path / 'graph.yaml'
+    TrikeDB(path, ontology={'P': 'allowed'}).add('a', 'P', 'b')
+    db = TrikeDB(path, validate_on_load=True)
+    path.write_text(
+        'ontology: {predicates: {P: allowed}}\n'
+        'triples:\n- {s: external, p: TYPO, o: b}\n'
+    )
+    with pytest.raises(OntologyError, match='undeclared-predicate'):
+        db.reload()
+    assert ('a', 'P', 'b') in db
+    with pytest.raises(ConcurrentWriteError):
+        db.add('agent', 'P', 'b')
+
+
 def test_returned_triple_is_a_detached_snapshot():
     db = TrikeDB()
     t = db.add('a', 'P', 'b', score=1)

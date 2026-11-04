@@ -9,7 +9,7 @@
 
 **兼容性与安全性约定。** 这里只有一个默认图：SPARQL 读取，加上对默认图的 INSERT/DELETE 与 CLEAR/DROP；命名图与 dataset 级更新会被拒绝。历史数据中含空白字符的宾语按字面量处理；要表示 `New York` 这样的实体，请用 `rdf_terms={"o": {"kind": "iri"}}`。经 SPARQL 插入的 RDF 类型、语言标签和空白节点现在能在保存/重载后保留。RDF/JSON-LD 导出保留完整的 RDF 投影（含元数据）；pattern/NetworkX/SQL 视图使用词法名称。
 
-API 返回的三元组与属性都是快照；请用变更 API，不要直接改返回的对象。`batch()` 在函数体失败或最终保存失败时回滚它的内存状态；块内显式保存过的内容和产生的外部副作用无法撤销。`reload()` 使用已存储的本体。白名单在配置后作用于 API 插入（HTTP(S) 述语除外）；手工编辑过的文件在加载时不做模式检查。
+API 返回的三元组与属性都是快照；请用变更 API，不要直接改返回的对象。`batch()` 在函数体失败或最终保存失败时回滚它的内存状态；块内显式保存过的内容和产生的外部副作用无法撤销。`reload()` 使用已存储的本体。白名单在配置后作用于 API 插入（HTTP(S) 述语除外）。手工编辑的文件默认可打开以便修复；`audit` 将未声明谓词报告为错误，`validate_on_load=True` 会在打开和重载时拒绝所有 audit 错误。SHACL 另行验证。
 
 本地保存先在每文件锁下比较内容哈希，再原子替换；旧版本保存会抛出 `ConcurrentWriteError`。MCP/REST 在每次请求前重载被其他写入者修改的本地文件。Python 调用者遇到冲突后使用 `reload()`。S3/SQL 条件保存使用自身 commit 返回的令牌，其他 fsspec 后端没有这个保证。导出的 HTML 需要能访问 vis-network/Oxigraph 的 CDN。详见 [API 约定](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)。
 
@@ -341,6 +341,7 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True 是默认值
 | `to_rdflib()` / `to_jsonld()` | 互操作导出（RDF/SPARQL 视图） |
 | `to_networkx(multigraph=True)` | 属性图投影（`[networkx]` extra）：节点属性 + 边的 label/attrs；可以在同一个文件上跑 networkx 算法（最短路径、中心性） |
 | `TrikeDB(path, read_only=True)` | 以只读方式打开一张图；任何变更都会抛错。`reload()` 之后依然有效 |
+| `TrikeDB(path, validate_on_load=True)` | 拒绝 audit 错误，包括手工编辑 YAML 中未声明的谓词；默认加载仍可用于修复 |
 | `TrikeDB(path, sparql_engine="rdflib")` | 固定 SPARQL 引擎；默认是核心依赖 oxigraph，并以 rdflib 兜底 |
 | `TrikeDB(url, connection=conn)` | 用一个已经打开的数仓连接或 Snowpark session，而不是自己再建一个 |
 | `save(path=)` | 写出 YAML（本地或远端 URL）。`autosave=True` 会在每次变更时做这件事 |
