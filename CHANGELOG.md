@@ -3,6 +3,17 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.48.0
+
+- Standard SHACL class shapes now validate node `type` metadata through an
+  `rdf:type` RDF projection. Existing `t:type` literal queries and stored YAML
+  remain compatible. File-to-CLI tests cover class, datatype, cardinality,
+  and cross-resource SPARQL constraints.
+- The HTML workbench can switch between Japanese and English without reloading
+  and preserves graph filters during the switch. Large graph overviews keep
+  node labels visible while reducing unnecessary redraws. Workflow focus and
+  edge labels have been refined for readability.
+
 ## 0.47.2
 
 - Predicate declarations accept an optional `description_ja` alongside the
