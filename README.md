@@ -58,7 +58,7 @@ or just open the file and read it.
 ## Install
 
 Want a local visual editor with YAML diff review? See the fictional
-[Docker review workspace example](examples/review_app/README.md). GitHub App
+[Docker ontology editor example](examples/review_app/README.md). GitHub App
 draft PR publishing is optional.
 
 ```bash

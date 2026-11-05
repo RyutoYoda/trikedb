@@ -1,4 +1,4 @@
-# Review workspace example
+# Ontology editor example
 
 This is a small, fictional graph editor for TrikeDB. It demonstrates workflow steps, reusable ontology nodes, relationships, YAML diff review, and optional draft pull requests through a GitHub App. It does not contain a company graph or credentials.
 

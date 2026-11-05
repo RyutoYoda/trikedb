@@ -182,6 +182,18 @@ select:focus {
   padding: 12px 20px;
   border-top: 1px solid #e4ebf4;
 }
+.sidebar-footer p {
+  margin: 0 0 8px;
+}
+.sidebar-footer small {
+  font-weight: 700;
+  color: #59728f;
+}
+.setup-guide {
+  display: inline-block;
+  margin: 0 0 18px;
+  font-size: 12px;
+}
 .main {
   min-width: 0;
   display: flex;
@@ -472,8 +484,8 @@ a {
   font-size: 12px;
 }
 .brand-logo {
-  width: 95px;
-  height: 54px;
+  width: 155px;
+  height: 48px;
   object-fit: contain;
   object-position: left center;
 }

@@ -98,6 +98,13 @@ class ReviewAppTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotIn("editor-secret", response.text)
 
+    def test_version_matches_installed_package(self):
+        from importlib.metadata import version
+
+        self.assertEqual(
+            self.client.get("/api/meta").json()["version"], version("trikedb")
+        )
+
     def test_draft_pr_requires_current_preview_and_targets_main(self):
         calls = []
 

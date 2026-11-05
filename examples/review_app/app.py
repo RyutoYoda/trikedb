@@ -18,6 +18,7 @@ import re
 import secrets
 import tempfile
 import time
+from importlib.metadata import version
 from pathlib import Path
 
 import httpx
@@ -48,7 +49,7 @@ FILE = re.compile(r"^[A-Za-z0-9_./-]+\.ya?ml$")
 yaml = YAML(typ="rt")
 yaml.preserve_quotes = True
 yaml.width = 120
-app = FastAPI(title="TrikeDB review example", docs_url=None, redoc_url=None)
+app = FastAPI(title="TrikeDB ontology editor example", docs_url=None, redoc_url=None)
 logger = logging.getLogger(__name__)
 
 
@@ -550,7 +551,15 @@ def javascript():
 
 @app.get("/logo.png")
 def logo():
-    return FileResponse(ROOT / "logo.png", media_type="image/png")
+    return FileResponse(
+        ROOT.parents[1] / "src" / "trikedb" / "trikedb-horizontal.png",
+        media_type="image/png",
+    )
+
+
+@app.get("/api/meta")
+def meta():
+    return {"version": version("trikedb")}
 
 
 @app.get("/api/state")

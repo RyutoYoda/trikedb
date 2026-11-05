@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TrikeDB · Review workspace</title>
+    <title>TrikeDB · Edit ontology</title>
     <link rel="stylesheet" href="/app.css" />
     <script type="module" src="/app.js"></script>
   </head>
@@ -69,6 +69,7 @@
             Changes stay in this browser until you review them. A draft PR does
             not change the canonical graph.
           </p>
+          <small id="version">TrikeDB</small>
         </div>
       </aside>
       <main class="main">
@@ -195,6 +196,14 @@
           Register a GitHub App with the minimum repository permissions, install
           it on one repository, then check the connection.
         </p>
+        <a
+          class="setup-guide"
+          href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-i18n="githubGuide"
+          >How to register a GitHub App ↗</a
+        >
         <label
           ><span data-i18n="setupToken">Setup token</span
           ><input id="setup-token" type="password" autocomplete="off"

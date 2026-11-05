@@ -12,7 +12,7 @@ let language =
   (navigator.language.startsWith("ja") ? "ja" : "en");
 const messages = {
   en: {
-    workspace: "Review workspace",
+    workspace: "Edit ontology",
     reload: "Reload",
     review: "Review changes",
     graphContent: "GRAPH CONTENT",
@@ -78,12 +78,13 @@ const messages = {
     install: "Install App on the selected repository ↗",
     register: "1. Register App on GitHub",
     checkConnection: "2. Check connection",
+    githubGuide: "How to register a GitHub App ↗",
     newWorkflow: "+ New workflow",
     deleteItem: "Delete",
     undo: "Undo last change",
   },
   ja: {
-    workspace: "レビュー画面",
+    workspace: "オントロジーを編集",
     reload: "再読込",
     review: "変更を確認",
     graphContent: "グラフの内容",
@@ -149,6 +150,7 @@ const messages = {
     install: "対象リポジトリにAppをインストール ↗",
     register: "① GitHubでAppを登録",
     checkConnection: "② 接続を確認",
+    githubGuide: "GitHub App の作り方 ↗",
     newWorkflow: "＋ワークフローを作成",
     deleteItem: "削除",
     undo: "直前の変更を戻す",
@@ -159,6 +161,7 @@ function t(key) {
 }
 function translatePage() {
   document.documentElement.lang = language;
+  document.title = `TrikeDB · ${t("workspace")}`;
   for (const element of document.querySelectorAll("[data-i18n]"))
     element.textContent = t(element.dataset.i18n);
   for (const element of document.querySelectorAll("[data-i18n-placeholder]"))
@@ -337,21 +340,6 @@ function drawConnections(row, connections) {
   svg.setAttribute("width", row.scrollWidth);
   svg.setAttribute("height", row.scrollHeight);
   svg.setAttribute("viewBox", `0 0 ${row.scrollWidth} ${row.scrollHeight}`);
-  const marker = document.createElementNS(svg.namespaceURI, "marker");
-  marker.id = "connection-arrow";
-  marker.setAttribute("viewBox", "0 0 10 10");
-  marker.setAttribute("refX", "9");
-  marker.setAttribute("refY", "5");
-  marker.setAttribute("markerWidth", "7");
-  marker.setAttribute("markerHeight", "7");
-  marker.setAttribute("orient", "auto-start-reverse");
-  const tip = document.createElementNS(svg.namespaceURI, "path");
-  tip.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-  tip.setAttribute("fill", "#6b9cdd");
-  marker.append(tip);
-  const defs = document.createElementNS(svg.namespaceURI, "defs");
-  defs.append(marker);
-  svg.append(defs);
   const origin = row.getBoundingClientRect();
   function point(id, direction) {
     const handle = [...row.querySelectorAll(`.connector.${direction}`)].find(
@@ -375,7 +363,6 @@ function drawConnections(row, connections) {
       `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`,
     );
     path.setAttribute("class", "connection-path");
-    path.setAttribute("marker-end", "url(#connection-arrow)");
     svg.append(path);
     const label = document.createElementNS(svg.namespaceURI, "text");
     label.setAttribute("x", (from.x + to.x) / 2);
@@ -972,3 +959,11 @@ for (const button of document.querySelectorAll("[data-close]"))
 translatePage();
 load();
 setupStatus();
+fetch("/api/meta", { cache: "no-store" })
+  .then((response) => response.json())
+  .then((metadata) => {
+    $("version").textContent = `TrikeDB v${metadata.version}`;
+  })
+  .catch(() => {
+    $("version").textContent = "TrikeDB";
+  });
