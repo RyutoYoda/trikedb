@@ -12,6 +12,8 @@ docker compose -f examples/review_app/compose.yaml up --build -d
 
 Open <http://127.0.0.1:8765/>. The included `demo.yaml` is read only inside the container. Browser changes remain local until submitted; the local demo can preview a YAML diff but cannot publish a PR.
 
+Use **Undo** and **Redo** in the top bar, or `⌘Z` / `⇧⌘Z` on macOS and `Ctrl+Z` / `Ctrl+Y` on Windows and Linux. Text fields keep their normal typing history. Relationship labels stay in front of the connection lines and can be clicked to remove a relationship from the draft.
+
 Stop it with:
 
 ```sh
