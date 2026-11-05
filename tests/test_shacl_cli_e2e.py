@@ -14,11 +14,17 @@ from trikedb import TrikeDB
     ("datatype", "DatatypeConstraintComponent"),
     ("class", "ClassConstraintComponent"),
     ("closed", "ClosedConstraintComponent"),
+    ("max_count", "MaxCountConstraintComponent"),
+    ("node_kind", "NodeKindConstraintComponent"),
+    ("pattern", "PatternConstraintComponent"),
+    ("in", "InConstraintComponent"),
+    ("has_value", "HasValueConstraintComponent"),
+    ("min_length", "MinLengthConstraintComponent"),
 ])
 def test_shacl_core_corpus_matches_pyshacl_on_valid_and_invalid_graphs(
     tmp_path, case, component,
 ):
-    """Check the CLI boundary against pySHACL for four Core constraints."""
+    """Check the CLI boundary against pySHACL across common Core constraints."""
     pyshacl = pytest.importorskip("pyshacl")
     from rdflib import Graph
 
@@ -31,6 +37,12 @@ def test_shacl_core_corpus_matches_pyshacl_on_valid_and_invalid_graphs(
         "datatype": "sh:property [ sh:path t:age ; sh:datatype xsd:integer ]",
         "class": "sh:property [ sh:path t:memberOf ; sh:class t:Organization ]",
         "closed": "sh:closed true ; sh:property [ sh:path t:status ]",
+        "max_count": "sh:property [ sh:path t:memberOf ; sh:maxCount 1 ]",
+        "node_kind": "sh:property [ sh:path t:memberOf ; sh:nodeKind sh:IRI ]",
+        "pattern": 'sh:property [ sh:path t:name ; sh:pattern "^EMP-[0-9]+$" ]',
+        "in": 'sh:property [ sh:path t:status ; sh:in ("active" "inactive") ]',
+        "has_value": 'sh:property [ sh:path t:status ; sh:hasValue "active" ]',
+        "min_length": "sh:property [ sh:path t:name ; sh:minLength 4 ]",
     }
     shape_text = prefix + (
         "t:Shape a sh:NodeShape ; sh:targetNode t:alice ; "
@@ -52,8 +64,25 @@ def test_shacl_core_corpus_matches_pyshacl_on_valid_and_invalid_graphs(
         elif case == "class":
             db.add("alice", "memberOf", "group")
             db.set_node("group", type="Organization" if valid else "Person")
-        else:
+        elif case == "closed":
             db.set_node("alice", status="active", **({} if valid else {"extra": "bad"}))
+        elif case == "max_count":
+            db.add("alice", "memberOf", "group")
+            if not valid:
+                db.add("alice", "memberOf", "other-group")
+        elif case == "node_kind":
+            if valid:
+                db.add("alice", "memberOf", "group")
+            else:
+                db.set_node("alice", memberOf="literal value")
+        elif case == "pattern":
+            db.set_node("alice", name="EMP-123" if valid else "not-an-id")
+        elif case == "in":
+            db.set_node("alice", status="active" if valid else "paused")
+        elif case == "has_value":
+            db.set_node("alice", status="active" if valid else "paused")
+        else:
+            db.set_node("alice", name="Alice" if valid else "Al")
         db.save()
 
         expected, _, direct_report = pyshacl.validate(

@@ -11,7 +11,7 @@
 
 API 返回的三元组与属性都是快照；请用变更 API，不要直接改返回的对象。`batch()` 在函数体失败或最终保存失败时回滚它的内存状态；块内显式保存过的内容和产生的外部副作用无法撤销。`reload()` 使用已存储的本体。白名单在配置后作用于 API 插入（HTTP(S) 述语除外）。手工编辑的文件默认可打开以便修复；`audit` 将未声明谓词报告为错误，`validate_on_load=True` 会在打开和重载时拒绝所有 audit 错误。SHACL 另行验证。
 
-本地保存先在每文件锁下比较内容哈希，再原子替换；旧版本保存会抛出 `ConcurrentWriteError`。MCP/REST 在每次请求前重载被其他写入者修改的本地文件。Python 调用者遇到冲突后使用 `reload()`。S3/SQL 条件保存使用自身 commit 返回的令牌，其他 fsspec 后端没有这个保证。导出的 HTML 需要能访问 vis-network/Oxigraph 的 CDN。详见 [API 约定](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)。
+本地保存先在每文件锁下比较内容哈希，再原子替换；旧版本保存会抛出 `ConcurrentWriteError`。MCP/REST 在每次请求前重载被其他写入者修改的本地文件。Python 调用者遇到冲突后使用 `reload()`。S3/SQL 条件保存使用自身 commit 返回的令牌，其他 fsspec 后端没有这个保证。HTML 默认使用 vis-network/Oxigraph CDN；`offline=True` 会嵌入固定版本的资源以供离线打开。详见 [API 约定](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md)。
 
 
 **下文中的性能数字，是在各自记录的硬件与版本上历史测得的结果，不是本次发布重新测量的保证值。**

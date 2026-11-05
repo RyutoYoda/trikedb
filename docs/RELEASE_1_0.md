@@ -6,26 +6,28 @@ unbounded scale. Do not bump the version until every gate below has evidence.
 
 | Gate | Evidence required | Current state |
 |---|---|---|
-| File/API compatibility | Frozen YAML and Python API examples; round-trip fixtures across the last supported release and 1.0 | Partial; published 0.48.1 YAML fixture is tested by current main; 1.0 round trip remains |
+| File/API compatibility | Frozen YAML and Python API examples; round-trip fixtures across the last supported release and 1.0 | Published 0.49.0 YAML and 16 public method signatures are frozen in fixtures. Current code reads and edits the file; the published 0.49.0 reader accepted the edited file. Final 1.0 artifact check remains |
 | RDF interoperability | Turtle, N-Triples and JSON-LD round trips checked by an independent RDF parser, including IRIs, literals, language tags, blank nodes and metadata | The full projected graph passes isomorphic round trips in all three formats; final 1.0 artifact check remains |
-| SHACL behavior | Standard Turtle shapes and reports compared with pySHACL on valid and invalid fixtures | Four Core constraints plus class and SPARQL shapes pass through the CLI; broader conformance corpus remains |
+| SHACL behavior | Standard Turtle shapes and reports compared with pySHACL on valid and invalid fixtures | Ten common Core constraints plus class and SPARQL shapes pass through the installed CLI against pySHACL; final 1.0 artifact check remains |
 | Safe local edits | Two processes cannot silently overwrite each other; MCP/REST see external local edits; malformed reload never turns into an empty graph | Implemented; PR #34 passed Linux, macOS and Windows CI |
 | Manual YAML validation | A documented strict load/check mode rejects undeclared or contradictory facts without preventing repair of historical files | Implemented as opt-in `validate_on_load` plus audit; PR #35 CI passed |
-| Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an S3 API integration smoke pass; a real cloud or warehouse integration has not been run |
+| Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an isolated S3 API integration smoke pass. No dedicated disposable cloud bucket or warehouse was supplied for live testing; real cloud integration is unverified |
 | Offline graph export | A private graph can be opened without CDN requests; browser smoke checks the exported file offline | Implemented; PR #36 browser CI passed with network disabled |
 | Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | Version 0.49.0 passed the complete publish workflow and PyPI artifact checks. Repeat the checks for the final 1.0 artifacts |
-| Scale and adoption | Published performance envelope and at least one independent installation/use report | Measured envelope and a private independent installation report exist; public external adoption remains unverified |
+| Scale and adoption | Published performance envelope and at least one independent installation/use report | The benchmark documents a measured envelope, and a private independent installation/use report exists. Public adoption is not claimed |
 
 The gates are release criteria, not a reason to publish an intermediate package
 after each fix. Merge compatible improvements into `main`, then perform one
 versioned release after the complete gate review.
 
 The compatibility fixture in `tests/fixtures/compat_0_48_1.yaml` was written
-by the published 0.48.1 Python API. On 2026-11-04, current `main` opened it
-in strict mode, edited and saved it; the published 0.48.1 reader then opened
-the edited file and saw both triples. The committed test covers the forward
-direction in CI. This is a sample compatibility check, not a complete file or
-Python API freeze. Repeat the reverse check with the final 1.0 artifact.
+by the published 0.48.1 Python API. The newer
+`tests/fixtures/compat_0_49_0.yaml` and `public_api_0_49_0.json` were written
+from the published 0.49.0 package. The committed tests cover the forward read,
+edit, and save direction plus the documented public method signatures. On
+2026-11-05, the published 0.49.0 reader also opened a file edited and saved
+by the current code. This checks representative public behavior, not every
+possible graph or API call. Repeat the reverse check with the final 1.0 artifact.
 
 ## Release procedure (after every gate passes)
 
