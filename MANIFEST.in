@@ -4,6 +4,7 @@ recursive-include src/trikedb/assets *.js *.wasm *.txt
 recursive-include tests *.py
 recursive-include tests/fixtures *.yaml
 recursive-include examples *.yaml *.csv *.md *.ipynb *.py
+recursive-include examples/review_app *.js *.css *.html Dockerfile *.txt
 recursive-include benchmarks *.py *.json *.md
 recursive-include docs *.md
 global-exclude __pycache__ *.pyc

@@ -3,6 +3,20 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 0.49.0
+
+- Protect local graph edits from stale writers and reload external edits in MCP
+  and REST handlers. Add opt-in strict validation for manually edited YAML.
+- Export self-contained HTML that opens offline, and extend RDF, SHACL, and
+  S3 conflict regression coverage.
+- Add a Docker ontology editor example with workflow and relation editing,
+  undo/redo, readable relation labels, and a GitHub App draft-PR setup flow.
+  The source distribution includes its Docker and browser assets.
+- Publish from a versioned tag through PyPI Trusted Publishing with build
+  attestations and a GitHub Release. The 1.0 stability gates remain open.
+- Keep OAuth JWT audience validation explicit in the verifier when the
+  canonical resource URL differs from the identity provider's audience.
+
 ## 0.48.1
 
 - Keep blank nodes from separate RDF source files distinct while preserving

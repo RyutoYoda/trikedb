@@ -153,6 +153,9 @@ def build_auth(
         issuer_url=issuer,
         resource_server_url=resource,
         required_scopes=list(required_scopes or []),
+        # JWKSVerifier validates the configured audience itself. Keep the
+        # resource URL independent when an IdP uses a different JWT audience.
+        validate_token_resource=False,
     )
     return settings, JWKSVerifier(issuer, audience or resource)
 
