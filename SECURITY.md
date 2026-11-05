@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-trikedb is pre-1.0 and fixes land on the latest release. If you are on an older
-version, the upgrade is the patch.
+Security fixes land on the latest 1.x release. Earlier 0.x releases are not
+maintained; upgrade to the latest 1.x patch or minor release for fixes.
 
 ## Reporting a vulnerability
 

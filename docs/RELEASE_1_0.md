@@ -20,6 +20,13 @@ The gates are release criteria, not a reason to publish an intermediate package
 after each fix. Merge compatible improvements into `main`, then perform one
 versioned release after the complete gate review.
 
+For the 1.0 decision, the stable contract covers the documented single-file
+graph and public Python API. S3 and warehouse backends remain optional and
+retain the explicit limitations in `docs/REFERENCE.md`. The configured AWS
+profile did not expose a disposable test bucket, and no dedicated warehouse
+was provided, so a live cloud write is not claimed. The isolated S3 API smoke
+and SQL conflict tests cover their supported conditional-write behavior.
+
 The compatibility fixture in `tests/fixtures/compat_0_48_1.yaml` was written
 by the published 0.48.1 Python API. The newer
 `tests/fixtures/compat_0_49_0.yaml` and `public_api_0_49_0.json` were written
