@@ -5,8 +5,13 @@ on:
     inputs:
       version:
         description: Version already merged into main (for example, 0.48.0)
-        required: true
+        required: false
         type: string
+      verify_only:
+        description: Verify PyPI Trusted Publisher without uploading a package
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -15,7 +20,39 @@ env:
   REQUESTED_VERSION: ${{ inputs.version }}
 
 jobs:
+  verify-publisher:
+    if: inputs.verify_only
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Verify PyPI accepts this workflow identity
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          request_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=pypi"
+          request = Request(
+              request_url,
+              headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+          )
+          with urlopen(request, timeout=20) as response:
+              oidc_token = json.load(response)["value"]
+          request = Request(
+              "https://pypi.org/_/oidc/mint-token",
+              data=json.dumps({"token": oidc_token}).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          with urlopen(request, timeout=20) as response:
+              assert json.load(response).get("token"), "PyPI did not issue a token"
+          print("PyPI accepted the Trusted Publisher identity; no package was uploaded.")
+          PY
+
   build:
+    if: ${{ !inputs.verify_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +65,7 @@ jobs:
           enable-cache: false
       - name: Check requested version
         run: |
+          test -n "$REQUESTED_VERSION"
           test "$(git describe --tags --exact-match)" = "v$REQUESTED_VERSION"
           git fetch origin main
           git merge-base --is-ancestor HEAD origin/main
