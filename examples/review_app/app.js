@@ -4,6 +4,7 @@ let state,
   selected,
   section = "workflows",
   draft = [],
+  redoDraft = [],
   draftBaseSha = "",
   previewHash = "",
   editorToken = "";
@@ -82,6 +83,7 @@ const messages = {
     newWorkflow: "+ New workflow",
     deleteItem: "Delete",
     undo: "Undo last change",
+    redo: "Redo change",
   },
   ja: {
     workspace: "オントロジーを編集",
@@ -154,6 +156,7 @@ const messages = {
     newWorkflow: "＋ワークフローを作成",
     deleteItem: "削除",
     undo: "直前の変更を戻す",
+    redo: "変更をやり直す",
   },
 };
 function t(key) {
@@ -167,6 +170,10 @@ function translatePage() {
   for (const element of document.querySelectorAll("[data-i18n-placeholder]"))
     element.placeholder = t(element.dataset.i18nPlaceholder);
   $("language").textContent = language === "ja" ? "English" : "日本語";
+  $("undo").setAttribute("aria-label", t("undo"));
+  $("redo").setAttribute("aria-label", t("redo"));
+  $("undo").title = `${t("undo")} (⌘Z / Ctrl+Z)`;
+  $("redo").title = `${t("redo")} (⇧⌘Z / Ctrl+Y)`;
   if (state) render();
 }
 
@@ -281,6 +288,8 @@ function saveDraft() {
   );
   previewHash = "";
   $("change-count").textContent = draft.length;
+  $("undo").disabled = $("undo-change").disabled = !draft.length;
+  $("redo").disabled = !redoDraft.length;
   $("publish").disabled = true;
   render();
 }
@@ -297,6 +306,31 @@ function loadDraft() {
     /* ignore malformed browser storage */
   }
   $("change-count").textContent = draft.length;
+  $("undo").disabled = $("undo-change").disabled = !draft.length;
+  $("redo").disabled = true;
+}
+function addChange(change) {
+  if (draft.length >= 30) {
+    status("A draft can contain at most 30 changes.");
+    return false;
+  }
+  draft.push(change);
+  redoDraft = [];
+  saveDraft();
+  return true;
+}
+function undoChange() {
+  if (!draft.length) return;
+  redoDraft.push(draft.pop());
+  saveDraft();
+  if ($("review-dialog").open) $("review-dialog").close();
+  status(t("undo"));
+}
+function redoChange() {
+  if (!redoDraft.length || draft.length >= 30) return;
+  draft.push(redoDraft.pop());
+  saveDraft();
+  status(t("redo"));
 }
 function card(kind, id, label, description, kicker) {
   const element = item("div", "card", "");
@@ -340,6 +374,10 @@ function drawConnections(row, connections) {
   svg.setAttribute("width", row.scrollWidth);
   svg.setAttribute("height", row.scrollHeight);
   svg.setAttribute("viewBox", `0 0 ${row.scrollWidth} ${row.scrollHeight}`);
+  const labels = svg.cloneNode(false);
+  labels.classList.replace("connection-layer", "connection-label-layer");
+  row.prepend(svg);
+  row.append(labels);
   const origin = row.getBoundingClientRect();
   function point(id, direction) {
     const handle = [...row.querySelectorAll(`.connector.${direction}`)].find(
@@ -364,18 +402,29 @@ function drawConnections(row, connections) {
     );
     path.setAttribute("class", "connection-path");
     svg.append(path);
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", (from.x + to.x) / 2);
-    label.setAttribute("y", (from.y + to.y) / 2 - 9);
+    const label = document.createElementNS(svg.namespaceURI, "g");
     label.setAttribute("class", "connection-label");
-    label.textContent = `${edge.p} ×`;
+    const text = document.createElementNS(svg.namespaceURI, "text");
+    text.setAttribute("x", (from.x + to.x) / 2);
+    text.setAttribute("y", (from.y + to.y) / 2 - 9);
+    text.textContent = `${edge.p} ×`;
+    label.append(text);
+    labels.append(label);
+    const bounds = text.getBBox();
+    const background = document.createElementNS(svg.namespaceURI, "rect");
+    background.setAttribute("x", bounds.x - 5);
+    background.setAttribute("y", bounds.y - 3);
+    background.setAttribute("width", bounds.width + 10);
+    background.setAttribute("height", bounds.height + 6);
+    background.setAttribute("rx", 5);
+    label.prepend(background);
     label.addEventListener("click", () => {
       if (edge.kind === "step") {
         const step = graph.workflows[selected]?.steps.find(
           (value) => value.id === edge.s,
         );
         if (!step) return;
-        draft.push({
+        addChange({
           kind: "step",
           action: "update",
           workflow: selected,
@@ -385,18 +434,15 @@ function drawConnections(row, connections) {
           next: (step.next || []).filter((id) => id !== edge.o),
         });
       } else
-        draft.push({
+        addChange({
           kind: "edge",
           action: "remove",
           s: edge.s,
           p: edge.p,
           o: edge.o,
         });
-      saveDraft();
     });
-    svg.append(label);
   }
-  row.prepend(svg);
 }
 let activeDrag = null;
 window.addEventListener("pointerdown", (event) => {
@@ -447,7 +493,7 @@ window.addEventListener("pointerup", (event) => {
       (value) => value.id === source.id,
     );
     if (!step || (step.next || []).includes(target.dataset.id)) return;
-    draft.push({
+    addChange({
       kind: "step",
       action: "update",
       workflow: selected,
@@ -456,7 +502,6 @@ window.addEventListener("pointerup", (event) => {
       description: step.description || "",
       next: [...(step.next || []), target.dataset.id],
     });
-    saveDraft();
   } else openEdit("edge", "add", source.id, target.dataset.id);
 });
 function render() {
@@ -557,6 +602,14 @@ function render() {
     const connected = (graph.triples || []).filter(
       (edge) => edge.s === selected || edge.o === selected,
     );
+    const measuringCanvas = document.createElement("canvas");
+    const measure = measuringCanvas.getContext("2d");
+    measure.font = "700 11px system-ui";
+    const longestLabel = Math.max(
+      0,
+      ...connected.map((edge) => measure.measureText(`${edge.p} ×`).width),
+    );
+    row.style.columnGap = `${Math.max(150, Math.ceil(longestLabel + 30))}px`;
     const stepsById = Object.fromEntries(
       Object.values(graph.workflows || {}).flatMap((workflow) =>
         (workflow.steps || []).map((step) => [step.id, step]),
@@ -711,10 +764,6 @@ function openEdit(kind, action, id = "", target = "") {
 }
 $("edit-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  if (draft.length >= 30) {
-    status("A draft can contain at most 30 changes.");
-    return;
-  }
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form));
   const kind = form.dataset.kind;
@@ -726,24 +775,23 @@ $("edit-form").addEventListener("submit", (event) => {
       .map((value) => value.trim())
       .filter(Boolean);
   }
-  draft.push(change);
+  if (!addChange(change)) return;
   $("edit-dialog").close();
   if (kind === "workflow" || kind === "node") selected = change.id;
-  saveDraft();
+  render();
   status(t("saved"));
 });
 $("delete-item").addEventListener("click", () => {
   const form = $("edit-form");
   const kind = form.dataset.kind;
   const id = form.dataset.id;
-  draft.push({
+  if (!addChange({
     kind,
     action: "remove",
     id,
     ...(kind === "step" ? { workflow: selected } : {}),
-  });
+  })) return;
   $("edit-dialog").close();
-  saveDraft();
   status(t("saved"));
 });
 async function load() {
@@ -765,6 +813,7 @@ async function load() {
     $("source-badge").textContent =
       `${state.file} · ${state.publishing ? t("githubBadge") : t("sourceBadge")}`;
     draft = [];
+    redoDraft = [];
     loadDraft();
     render();
     status(
@@ -846,6 +895,7 @@ $("publish").addEventListener("click", async () => {
     $("pr-link").textContent = `Draft PR #${result.number} opened on GitHub ↗`;
     $("pr-link").hidden = false;
     draft = [];
+    redoDraft = [];
     saveDraft();
   } catch (error) {
     $("review-error").textContent = error.message;
@@ -853,16 +903,32 @@ $("publish").addEventListener("click", async () => {
 });
 $("discard").addEventListener("click", () => {
   draft = [];
+  redoDraft = [];
   saveDraft();
   $("review-dialog").close();
   status("Draft discarded.");
 });
-$("undo-change").addEventListener("click", () => {
-  if (!draft.length) return;
-  draft.pop();
-  saveDraft();
-  $("review-dialog").close();
-  status(t("saved"));
+$("undo-change").addEventListener("click", undoChange);
+$("undo").addEventListener("click", undoChange);
+$("redo").addEventListener("click", redoChange);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeDrag) {
+    activeDrag.overlay.remove();
+    activeDrag = null;
+    return;
+  }
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+  const target = event.target;
+  if (target?.closest?.("input, textarea, select, [contenteditable]")) return;
+  const key = event.key.toLowerCase();
+  if (key === "z") {
+    event.preventDefault();
+    if (event.shiftKey) redoChange();
+    else undoChange();
+  } else if (key === "y" && event.ctrlKey && !event.shiftKey) {
+    event.preventDefault();
+    redoChange();
+  }
 });
 for (const name of ["workflows", "nodes"])
   $("section-" + name).addEventListener("click", () => {

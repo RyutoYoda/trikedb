@@ -69,9 +69,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - run: docker compose -f examples/review_app/compose.yaml build
       - run: docker compose -f examples/review_app/compose.yaml up -d
       - run: docker compose -f examples/review_app/compose.yaml exec -T review python -m unittest examples.review_app.test_review_app -q
       - run: curl --fail --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:8765/api/meta
+      - run: pip install playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python examples/review_app/browser_smoke.py
       - if: always()
         run: docker compose -f examples/review_app/compose.yaml down -v
