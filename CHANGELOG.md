@@ -3,6 +3,18 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 1.0.0
+
+- Stabilize the documented single-file YAML and Python API contract for the
+  1.x series. A published 0.49.0 graph round-trips through the new code, and
+  its public method signatures are pinned by compatibility tests.
+- Extend installed-CLI SHACL checks to ten common Core constraints, class
+  shapes, and SPARQL constraints, compared with pySHACL on valid and invalid
+  graphs. Preserve the RDF interchange and isolated S3 conflict checks.
+- Keep the offline HTML workbench and Docker editor example from 0.49.0.
+  Real cloud and warehouse backends retain the limits documented in the
+  reference; this release makes no untested production-throughput claim.
+
 ## 0.49.0
 
 - Protect local graph edits from stale writers and reload external edits in MCP

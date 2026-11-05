@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "0.49.0"
+version = "1.0.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
@@ -14,10 +14,9 @@ requires-python = ">=3.10"
 dependencies = ["PyYAML>=6.0", "rdflib>=7", "pyoxigraph>=0.4"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
-    # Beta, not Alpha: the file format and the public API have been stable
-    # across releases and are covered by the compatibility contract in
-    # docs/REFERENCE.md. Not Production/Stable while the version is < 1.0.
-    "Development Status :: 4 - Beta",
+    # The documented single-file graph contract is frozen for the 1.x series.
+    # Optional remote backends retain their stated integration limits.
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
