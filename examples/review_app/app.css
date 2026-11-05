@@ -493,8 +493,8 @@ a {
 }
 .neighbor-grid {
   display: grid;
-  grid-template-columns: repeat(2, 270px);
-  gap: 28px 65px;
+  grid-template-columns: 270px;
+  gap: 28px;
 }
 .card::before,
 .card::after {
@@ -580,4 +580,11 @@ a {
 }
 .dialog-actions #delete-item {
   margin-right: auto;
+}
+.incoming-grid {
+  display: grid;
+  grid-template-columns: 270px;
+  gap: 28px;
+  position: relative;
+  z-index: 1;
 }

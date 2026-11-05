@@ -313,10 +313,20 @@ function card(kind, id, label, description, kicker) {
     element.append(handle);
   }
   element.addEventListener("click", (event) => {
-    if (!event.target.closest(".connector")) openEdit(kind, "update", id);
+    if (event.target.closest(".connector")) return;
+    if (kind === "step" && section === "nodes") {
+      const parent = Object.entries(graph.workflows).find(([, workflow]) =>
+        workflow.steps?.some((step) => step.id === id),
+      );
+      if (parent) {
+        section = "workflows";
+        selected = parent[0];
+        render();
+      }
+    } else openEdit(kind, "update", id);
   });
   element.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") openEdit(kind, "update", id);
+    if (event.key === "Enter") element.click();
   });
   return element;
 }
@@ -440,11 +450,12 @@ window.addEventListener("pointerup", (event) => {
     ?.closest(".connector.in");
   if (
     !target ||
-    target.dataset.kind !== source.kind ||
+    (target.dataset.kind !== source.kind &&
+      !(source.kind === "step" && target.dataset.kind === "node")) ||
     target.dataset.id === source.id
   )
     return;
-  if (source.kind === "step") {
+  if (source.kind === "step" && target.dataset.kind === "step") {
     const step = graph.workflows[selected]?.steps.find(
       (value) => value.id === source.id,
     );
@@ -556,6 +567,50 @@ function render() {
     canvas.append(edit);
   } else {
     const row = item("div", "flow");
+    const connected = (graph.triples || []).filter(
+      (edge) => edge.s === selected || edge.o === selected,
+    );
+    const stepsById = Object.fromEntries(
+      Object.values(graph.workflows || {}).flatMap((workflow) =>
+        (workflow.steps || []).map((step) => [step.id, step]),
+      ),
+    );
+    const incoming = [
+      ...new Set(
+        connected.filter((edge) => edge.o === selected).map((edge) => edge.s),
+      ),
+    ]
+      .filter((id) => graph.nodes[id] || stepsById[id])
+      .slice(0, 10);
+    const right = [
+      ...new Set([
+        ...connected
+          .filter((edge) => edge.s === selected)
+          .map((edge) => edge.o),
+        ...Object.keys(graph.nodes || {}).filter(
+          (id) => id !== selected && !incoming.includes(id),
+        ),
+      ]),
+    ]
+      .filter((id) => graph.nodes[id] || stepsById[id])
+      .slice(0, 20);
+    function column(ids, className) {
+      const container = item("div", className);
+      for (const target of ids) {
+        const node = graph.nodes[target] || stepsById[target];
+        container.append(
+          card(
+            graph.nodes[target] ? "node" : "step",
+            target,
+            node.label,
+            node.description,
+            node.type || (graph.nodes[target] ? "node" : "process step"),
+          ),
+        );
+      }
+      return container;
+    }
+    if (incoming.length) row.append(column(incoming, "incoming-grid"));
     row.append(
       card(
         "node",
@@ -565,30 +620,16 @@ function render() {
         current.type || "node",
       ),
     );
-    const connected = (graph.triples || []).filter(
-      (edge) => edge.s === selected || edge.o === selected,
-    );
-    const targets = [
-      ...new Set([
-        ...connected.map((edge) => (edge.s === selected ? edge.o : edge.s)),
-        ...Object.keys(graph.nodes || {}).filter((id) => id !== selected),
-      ]),
-    ]
-      .filter((id) => graph.nodes[id])
-      .slice(0, 20);
-    const neighbors = item("div", "neighbor-grid");
-    for (const target of targets) {
-      const node = graph.nodes[target];
-      neighbors.append(
-        card("node", target, node.label, node.description, node.type || "node"),
-      );
-    }
-    row.append(neighbors);
+    if (right.length) row.append(column(right, "neighbor-grid"));
     canvas.append(row);
     requestAnimationFrame(() =>
       drawConnections(
         row,
-        connected.filter((edge) => graph.nodes[edge.s] && graph.nodes[edge.o]),
+        connected.filter(
+          (edge) =>
+            (graph.nodes[edge.s] || stepsById[edge.s]) &&
+            (graph.nodes[edge.o] || stepsById[edge.o]),
+        ),
       ),
     );
     const addEdge = item("button", "secondary", t("connect"));
