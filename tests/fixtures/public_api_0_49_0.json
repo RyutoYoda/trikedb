@@ -1,0 +1,26 @@
+{
+  "exports": [
+    "TrikeDB",
+    "Triple",
+    "OntologyError",
+    "__version__"
+  ],
+  "methods": {
+    "__init__": "(self, path: 'Union[str, Path, None]' = None, ontology: 'Union[dict, Sequence[str], None]' = None, autosave: 'bool' = True, read_only: 'bool' = False, connection=None, sparql_engine: 'Optional[str]' = None, validate_on_load: 'bool' = False)",
+    "add": "(self, s: 'str', p: 'str', o: 'str', *, rdf_terms=None, **attrs: 'Any') -> 'Triple'",
+    "remove": "(self, s: 'Optional[str]' = None, p: 'Optional[str]' = None, o: 'Optional[str]' = None) -> 'int'",
+    "set_node": "(self, name: 'str', /, *, replace: 'bool' = False, **props: 'Any') -> 'dict'",
+    "node": "(self, name: 'str') -> 'dict'",
+    "triples": "(self, s: 'Optional[str]' = None, p: 'Optional[str]' = None, o: 'Optional[str]' = None, **attrs: 'Any') -> 'Iterator[Triple]'",
+    "query": "(self, patterns: 'Sequence') -> 'list'",
+    "sparql": "(self, query: 'str', base: 'str' = 'urn:trikedb:')",
+    "save": "(self, path: 'Union[str, Path, None]' = None)",
+    "reload": "(self) -> \"'TrikeDB'\"",
+    "to_html": "(self, path: 'Union[str, Path, None]' = None, title: 'str' = 'trikedb knowledge graph', event_predicates=None, layout: 'str' = 'auto', workflow_predicates=None, workflow_membership_predicate: 'str | None' = None, offline: 'bool' = False) -> 'str'",
+    "to_rdflib": "(self, base: 'str' = 'urn:trikedb:', node_props: 'bool' = True, edge_attrs: 'bool' = True)",
+    "validate": "(self, shapes, base: 'str' = 'urn:trikedb:')",
+    "import_file": "(self, path: 'Union[str, Path]') -> 'int'",
+    "act": "(self, s: 'str', p: 'str', o: 'str', *, state: 'Optional[str]' = None, by: 'Optional[str]' = None, at: 'Any' = None, **attrs: 'Any') -> 'Triple'",
+    "batch": "(self)"
+  }
+}

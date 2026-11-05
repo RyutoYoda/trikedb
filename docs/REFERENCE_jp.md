@@ -11,7 +11,7 @@
 
 返り値のTriple・属性はコピーです。変更は専用APIで行ってください。batchは本体や最終save失敗時にメモリを戻しますが、中の明示save・外部副作用は取り消せません。reloadは保存されたontologyを採用します。設定された述語ホワイトリストはAPI挿入時に検査し、HTTP(S)述語は例外です。手編集ファイルは修復のため既定では開けますが、auditは未宣言の述語をエラーとして報告し、`validate_on_load=True`はopenとreloadでauditのエラーを拒否します。SHACLは別の検証です。
 
-ローカル保存はファイルごとのlock下で内容ハッシュを比較してからatomic replaceし、古い状態からの保存は`ConcurrentWriteError`で拒否します。MCP/RESTはリクエスト前にローカルファイルの外部変更を読み直します。Pythonからは競合後に`reload()`します。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示にはvis-network/OxigraphのCDNへの接続が必要です。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
+ローカル保存はファイルごとのlock下で内容ハッシュを比較してからatomic replaceし、古い状態からの保存は`ConcurrentWriteError`で拒否します。MCP/RESTはリクエスト前にローカルファイルの外部変更を読み直します。Pythonからは競合後に`reload()`します。S3/SQL条件付き保存は自分のcommit tokenを保持し、他のfsspec backendには同じ保証がありません。HTML表示は既定ではvis-network/OxigraphのCDNを使い、`offline=True`では固定版のアセットを埋め込みます。[APIの詳細](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_jp.md)。
 
 
 **以下の性能値は記録当時の版・環境での観測で、この修正版の速度保証ではありません。**

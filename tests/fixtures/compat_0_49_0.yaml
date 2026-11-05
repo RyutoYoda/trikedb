@@ -1,0 +1,11 @@
+nodes:
+  sales: {type: service, label: Sales service, owner: example-team}
+  orders: {type: table, pii: false}
+  daily-refresh: {type: workflow, label: Daily refresh}
+  extract: {type: process_step, label: Extract records}
+  publish: {type: process_step, label: Publish records}
+triples:
+- {s: sales, p: USES, o: orders, prov: fixture, note: shared graph}
+- {s: daily-refresh, p: HAS_STEP, o: extract, order: 1}
+- {s: daily-refresh, p: HAS_STEP, o: publish, order: 2}
+- {s: extract, p: NEXT_STEP, o: publish}
