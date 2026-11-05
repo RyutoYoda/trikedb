@@ -55,6 +55,10 @@ triples:
 
 ## 安装
 
+如需在本地通过图形界面编辑并检查 YAML 差异，请参考只包含虚构数据的
+[Docker 本体编辑器示例](https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md)。
+可选择配置 GitHub App 来创建草稿 PR。
+
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
