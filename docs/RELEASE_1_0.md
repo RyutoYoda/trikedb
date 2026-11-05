@@ -13,7 +13,7 @@ unbounded scale. Do not bump the version until every gate below has evidence.
 | Manual YAML validation | A documented strict load/check mode rejects undeclared or contradictory facts without preventing repair of historical files | Implemented as opt-in `validate_on_load` plus audit; PR #35 CI passed |
 | Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an S3 API integration smoke pass; a real cloud or warehouse integration has not been run |
 | Offline graph export | A private graph can be opened without CDN requests; browser smoke checks the exported file offline | Implemented; PR #36 browser CI passed with network disabled |
-| Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | Workflow prepared with tag check, PEP 740 attestations, OIDC publish and GitHub release; PyPI Trusted Publisher configuration and real release run unverified; issue #3 |
+| Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | PyPI Trusted Publisher is configured; the no-upload OIDC check passed in [run 42007538418](https://github.com/RyutoYoda/trikedb/actions/runs/42007538418). A real release and artifact verification remain unverified; issue #3 |
 | Scale and adoption | Published performance envelope and at least one independent installation/use report | Measured envelope and a private independent installation report exist; public external adoption remains unverified |
 
 The gates are release criteria, not a reason to publish an intermediate package
@@ -45,8 +45,9 @@ Python API freeze. Repeat the reverse check with the final 1.0 artifact.
    offline HTML export. Verify the GitHub Release and PyPI attestations before
    marking this gate complete.
 
-The workflow has not been run for 1.0. A merged workflow is preparation, not
-evidence that PyPI Trusted Publishing is configured or a release exists.
+The workflow has not been run for 1.0. The no-upload OIDC check verifies the
+publisher identity but does not prove that a distribution was uploaded,
+attested, installed from PyPI, or included in a GitHub Release.
 
 The S3 API smoke runs against a disposable in-memory endpoint with fake test
 credentials: `uv run --extra remote --with 'moto[server]' python
