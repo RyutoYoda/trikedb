@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TrikeDB · Edit ontology</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="/logo.png" alt="TrikeDB" /><span
+          class="divider"
+        ></span
+        ><span data-i18n="workspace">Review workspace</span>
+      </div>
+      <div class="top-actions">
+        <span id="source-badge" class="badge">Loading graph…</span
+        ><button
+          id="setup-open"
+          class="secondary"
+          type="button"
+          hidden
+          data-i18n="setup"
+        >
+          Connect GitHub</button
+        ><button id="language" class="secondary" type="button">日本語</button
+        ><button id="reload" class="secondary" data-i18n="reload">Reload</button
+        ><button id="review" class="primary">
+          <span data-i18n="review">Review changes</span>
+          <span id="change-count">0</span>
+        </button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-heading">
+          <small data-i18n="graphContent">GRAPH CONTENT</small>
+          <h1 data-i18n="explore">Explore and edit</h1>
+        </div>
+        <input
+          id="search"
+          type="search"
+          placeholder="Search names or IDs"
+          aria-label="Search names or IDs"
+          data-i18n-placeholder="search"
+        />
+        <nav class="sections" aria-label="Sections">
+          <button id="section-workflows" class="active">
+            <span data-i18n="workflows">Workflows</span>
+            <span id="workflow-count"></span></button
+          ><button id="section-nodes">
+            <span data-i18n="nodesRelations">Nodes and relations</span>
+            <span id="node-count"></span>
+          </button>
+        </nav>
+        <button
+          id="new-workflow"
+          class="secondary sidebar-action"
+          type="button"
+          data-i18n="newWorkflow"
+        >
+          + New workflow
+        </button>
+        <div id="list" class="items"></div>
+        <div class="sidebar-footer">
+          <p data-i18n="draftNote">
+            Changes stay in this browser until you review them. A draft PR does
+            not change the canonical graph.
+          </p>
+          <small id="version">TrikeDB</small>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="content-head">
+          <div>
+            <small id="crumb">Workflows</small>
+            <h2 id="title">Loading…</h2>
+            <p id="summary"></p>
+          </div>
+          <button id="add" class="secondary" data-i18n="add">+ Add</button>
+        </div>
+        <div class="canvas-head">
+          <span class="status-dot"></span
+          ><strong id="map-title">Process map</strong
+          ><span id="hint" data-i18n="hint"
+            >Drag from a blue point to a white point to connect</span
+          >
+        </div>
+        <div id="canvas" class="canvas"></div>
+        <div class="bottom-bar">
+          <span id="status" role="status">Ready</span
+          ><button id="review-bottom" class="secondary" data-i18n="reviewArrow">
+            Review changes →
+          </button>
+        </div>
+      </main>
+    </div>
+    <dialog id="edit-dialog">
+      <div class="dialog-head">
+        <div>
+          <small data-i18n="edit">EDIT</small>
+          <h2 id="edit-title">Edit</h2>
+        </div>
+        <button class="icon-close" data-close="edit-dialog" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <form id="edit-form">
+        <div id="fields"></div>
+        <div class="dialog-actions">
+          <button
+            id="delete-item"
+            class="danger"
+            type="button"
+            hidden
+            data-i18n="deleteItem"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            data-close="edit-dialog"
+            data-i18n="cancel"
+          >
+            Cancel</button
+          ><button class="primary" type="submit" data-i18n="saveDraft">
+            Save to draft
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="review-dialog">
+      <div class="dialog-head">
+        <div>
+          <small data-i18n="reviewCaps">REVIEW</small>
+          <h2 data-i18n="review">Review changes</h2>
+        </div>
+        <button
+          class="icon-close"
+          data-close="review-dialog"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+      <div class="review-body">
+        <p id="review-intro"></p>
+        <div id="operations" class="operations"></div>
+        <label
+          ><span data-i18n="source">Source URL or document name</span
+          ><input
+            id="source"
+            placeholder="Example: process guide, section 2"
+            data-i18n-placeholder="sourcePlaceholder" /></label
+        ><label
+          ><span data-i18n="reason"
+            >Reason for change (at least 5 characters)</span
+          ><textarea
+            id="reason"
+            rows="3"
+            placeholder="Why is this change needed?"
+            data-i18n-placeholder="reasonPlaceholder"
+          ></textarea>
+        </label>
+        <div id="review-error" class="error" role="alert"></div>
+        <pre id="diff" hidden></pre>
+        <a id="pr-link" target="_blank" rel="noopener noreferrer" hidden></a>
+      </div>
+      <div class="dialog-actions">
+        <button id="discard" class="danger" data-i18n="discard">
+          Discard changes</button
+        ><button id="undo-change" class="secondary" data-i18n="undo">
+          Undo last change</button
+        ><button id="preview" class="secondary" data-i18n="preview">
+          1. Preview YAML diff</button
+        ><button id="publish" class="primary" data-i18n="publish" disabled>
+          2. Create draft PR
+        </button>
+      </div>
+    </dialog>
+    <dialog id="setup-dialog">
+      <div class="dialog-head">
+        <div>
+          <small data-i18n="setupCaps">SETUP</small>
+          <h2 data-i18n="setup">Connect GitHub</h2>
+        </div>
+        <button class="icon-close" data-close="setup-dialog" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div class="review-body">
+        <p data-i18n="setupHelp">
+          Register a GitHub App with the minimum repository permissions, install
+          it on one repository, then check the connection.
+        </p>
+        <a
+          class="setup-guide"
+          href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-i18n="githubGuide"
+          >How to register a GitHub App ↗</a
+        >
+        <label
+          ><span data-i18n="setupToken">Setup token</span
+          ><input id="setup-token" type="password" autocomplete="off"
+        /></label>
+        <label
+          ><span data-i18n="repo">Repository (owner/name)</span
+          ><input id="setup-repo" placeholder="example-org/graph-repo"
+        /></label>
+        <label
+          ><span data-i18n="graphPath">Graph YAML path on main</span
+          ><input id="setup-path" placeholder="graph.yaml"
+        /></label>
+        <label
+          ><span data-i18n="ownerType">App owner</span
+          ><select id="setup-owner">
+            <option value="org" data-i18n="org">Organization</option>
+            <option value="personal" data-i18n="personal">
+              Personal account
+            </option>
+          </select></label
+        >
+        <div id="setup-error" class="error" role="alert"></div>
+        <a
+          id="install-link"
+          target="_blank"
+          rel="noopener noreferrer"
+          hidden
+          data-i18n="install"
+          >Install App on the selected repository ↗</a
+        >
+      </div>
+      <div class="dialog-actions">
+        <button id="setup-register" class="secondary" data-i18n="register">
+          1. Register App on GitHub</button
+        ><button id="setup-finish" class="primary" data-i18n="checkConnection">
+          2. Check connection
+        </button>
+      </div>
+    </dialog>
+  </body>
+</html>

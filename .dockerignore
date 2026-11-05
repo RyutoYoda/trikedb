@@ -1,0 +1,11 @@
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+dist
+build
+*.pem
+*.key
+*.p12
+.env
+.env.*

@@ -57,6 +57,10 @@ git で普通に差分が出て、人間が読めて、エージェントは本�
 
 ## インストール
 
+YAML差分を確認できるローカルの編集画面は、架空データだけを使う
+[Docker版オントロジーエディターの例](https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md)を参照。
+GitHub AppによるドラフトPR作成は任意で設定できる。
+
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it

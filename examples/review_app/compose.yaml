@@ -1,0 +1,25 @@
+services:
+  review:
+    build:
+      context: ../..
+      dockerfile: examples/review_app/Dockerfile
+    ports:
+      - "127.0.0.1:8765:8000"
+    environment:
+      GRAPH_FILE: /app/examples/review_app/demo.yaml
+      STATE_DIR: /state
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      EDITOR_TOKEN: ${EDITOR_TOKEN:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-}
+      GITHUB_GRAPH_PATH: ${GITHUB_GRAPH_PATH:-}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY_FILE: ${GITHUB_APP_PRIVATE_KEY_FILE:-}
+    volumes:
+      - review_state:/state
+    read_only: true
+    tmpfs:
+      - /tmp
+volumes:
+  review_state:

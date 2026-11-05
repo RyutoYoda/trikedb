@@ -1,0 +1,28 @@
+# Fictional example data. Replace this file with your own reviewed graph.
+ontology:
+  predicates:
+    HAS_STEP: {description: "workflow -> step in that workflow"}
+    NEXT_STEP: {description: "step -> next step"}
+    USES: {description: "process step -> service or document used by that step"}
+    DOCUMENTED_IN: {description: "entity -> document describing it"}
+nodes:
+  order-form: {type: document, label: Order form, description: A fictional intake form}
+  review-guide: {type: document, label: Review guide, description: Checklist for a fictional team}
+  report-table: {type: dataset, label: Orders report, description: A fictional reporting dataset}
+triples:
+  - {s: intake-orders, p: USES, o: order-form, prov: Example guide}
+  - {s: check-orders, p: DOCUMENTED_IN, o: review-guide, prov: Example guide}
+workflows:
+  daily-order-report:
+    label: Daily order report
+    summary: Collect orders, check them, and prepare a report.
+    steps:
+      - {id: intake-orders, label: Receive orders, description: Collect the form responses, next: [check-orders]}
+      - {id: check-orders, label: Check orders, description: Review missing fields, next: [publish-report]}
+      - {id: publish-report, label: Publish report, description: Share the approved report}
+  weekly-catalog-review:
+    label: Weekly catalog review
+    summary: Review the example catalog and record corrections.
+    steps:
+      - {id: inspect-catalog, label: Inspect catalog, next: [record-changes]}
+      - {id: record-changes, label: Record changes}
