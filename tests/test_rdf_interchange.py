@@ -100,6 +100,38 @@ def test_native_yaml_exports_a_round_trippable_rdf_graph(tmp_path):
     assert isomorphic(source.to_rdflib(), imported.to_rdflib())
 
 
+@pytest.mark.parametrize("rdf_format,suffix", [
+    ("turtle", ".ttl"), ("nt", ".nt"), ("json-ld", ".jsonld"),
+])
+def test_full_rdf_projection_round_trips_through_independent_parser(
+    tmp_path, rdf_format, suffix,
+):
+    """Typed terms, anonymous nodes and projected metadata survive each format."""
+    source = Graph()
+    friend = BNode("friend")
+    source.add((EX.alice, EX.name, Literal("アリス", lang="ja")))
+    source.add((EX.alice, EX.friend, friend))
+    source.add((friend, EX.age, Literal(42)))
+    source_path = tmp_path / "source.ttl"
+    source_path.write_text(source.serialize(format="turtle"), encoding="utf-8")
+
+    db = TrikeDB(tmp_path / "original.yaml")
+    db.import_file(source_path)
+    db.add("alice", "KNOWS", "bob", prov="https://example.org/source", note="checked")
+    db.set_node("alice", type="Person")
+    db.save()
+    expected = db.to_rdflib()
+
+    export = tmp_path / ("export" + suffix)
+    export.write_text(expected.serialize(format=rdf_format), encoding="utf-8")
+    assert isomorphic(expected, Graph().parse(export, format=rdf_format))
+
+    imported = TrikeDB(tmp_path / ("imported" + suffix + ".yaml"))
+    imported.import_file(export)
+    imported.save()
+    assert isomorphic(expected, imported.to_rdflib(node_props=False, edge_attrs=False))
+
+
 def test_shacl_rejects_invalid_import_before_yaml_is_written(tmp_path):
     pytest.importorskip("pyshacl")
     path = tmp_path / "people.yaml"

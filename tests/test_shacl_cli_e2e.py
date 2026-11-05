@@ -9,6 +9,68 @@ from rdflib import Literal, RDF, URIRef
 from trikedb import TrikeDB
 
 
+@pytest.mark.parametrize("case,component", [
+    ("min_count", "MinCountConstraintComponent"),
+    ("datatype", "DatatypeConstraintComponent"),
+    ("class", "ClassConstraintComponent"),
+    ("closed", "ClosedConstraintComponent"),
+])
+def test_shacl_core_corpus_matches_pyshacl_on_valid_and_invalid_graphs(
+    tmp_path, case, component,
+):
+    """Check the CLI boundary against pySHACL for four Core constraints."""
+    pyshacl = pytest.importorskip("pyshacl")
+    from rdflib import Graph
+
+    prefix = """@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix t: <urn:trikedb:> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+"""
+    constraints = {
+        "min_count": "sh:property [ sh:path t:name ; sh:minCount 1 ]",
+        "datatype": "sh:property [ sh:path t:age ; sh:datatype xsd:integer ]",
+        "class": "sh:property [ sh:path t:memberOf ; sh:class t:Organization ]",
+        "closed": "sh:closed true ; sh:property [ sh:path t:status ]",
+    }
+    shape_text = prefix + (
+        "t:Shape a sh:NodeShape ; sh:targetNode t:alice ; "
+        + constraints[case] + " .\n"
+    )
+    shapes_path = tmp_path / "shapes.ttl"
+    shapes_path.write_text(shape_text, encoding="utf-8")
+    shape_graph = Graph().parse(data=shape_text, format="turtle")
+
+    for valid in (False, True):
+        path = tmp_path / ("valid.yaml" if valid else "invalid.yaml")
+        db = TrikeDB(path)
+        if case == "min_count":
+            db.add("alice", "RELATED_TO", "bob")
+            if valid:
+                db.set_node("alice", name="Alice")
+        elif case == "datatype":
+            db.set_node("alice", age=42 if valid else "forty-two")
+        elif case == "class":
+            db.add("alice", "memberOf", "group")
+            db.set_node("group", type="Organization" if valid else "Person")
+        else:
+            db.set_node("alice", status="active", **({} if valid else {"extra": "bad"}))
+        db.save()
+
+        expected, _, direct_report = pyshacl.validate(
+            db.to_rdflib(edge_attrs=False), shacl_graph=shape_graph, inference="none"
+        )
+        command = subprocess.run(
+            [sys.executable, "-m", "trikedb.cli", "validate", str(path), str(shapes_path)],
+            capture_output=True, text=True, check=False,
+        )
+        assert bool(expected) is valid
+        assert command.returncode == (0 if valid else 1), command.stdout + command.stderr
+        assert f"Conforms: {expected}" in command.stdout
+        if not valid:
+            assert component in str(direct_report)
+            assert component in command.stdout
+
+
 def test_article_style_class_shape_validates_node_types_end_to_end(tmp_path):
     pytest.importorskip("pyshacl")
     graph_path = tmp_path / "people.yaml"
