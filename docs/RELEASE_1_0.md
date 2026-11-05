@@ -11,7 +11,7 @@ unbounded scale. Do not bump the version until every gate below has evidence.
 | SHACL behavior | Standard Turtle shapes and reports compared with pySHACL on valid and invalid fixtures | Ten common Core constraints plus class and SPARQL shapes pass through the installed CLI against pySHACL in the 1.0.0 source test suite |
 | Safe local edits | Two processes cannot silently overwrite each other; MCP/REST see external local edits; malformed reload never turns into an empty graph | Implemented; PR #34 passed Linux, macOS and Windows CI |
 | Manual YAML validation | A documented strict load/check mode rejects undeclared or contradictory facts without preventing repair of historical files | Implemented as opt-in `validate_on_load` plus audit; PR #35 CI passed |
-| Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an isolated S3 API integration smoke pass. No dedicated disposable cloud bucket or warehouse was supplied for live testing; real cloud integration is unverified |
+| Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an isolated S3 API integration smoke pass. Published 1.0.0 passed a live Snowflake write/reload/stale-writer test and SQL view checks in a disposable transient database, which was dropped and verified absent. Live AWS S3 remains unverified because the available session policy explicitly denied bucket creation and access |
 | Offline graph export | A private graph can be opened without CDN requests; browser smoke checks the exported file offline | Implemented; PR #36 browser CI passed with network disabled |
 | Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | Version 1.0.0 passed main CI and the complete Trusted Publisher workflow. Both PyPI artifacts passed provenance verification and SHA256 matched the GitHub Release |
 | Scale and adoption | Published performance envelope and at least one independent installation/use report | The benchmark documents a measured envelope, and a private independent installation/use report exists. Public adoption is not claimed |
@@ -22,10 +22,14 @@ versioned release after the complete gate review.
 
 For the 1.0 decision, the stable contract covers the documented single-file
 graph and public Python API. S3 and warehouse backends remain optional and
-retain the explicit limitations in `docs/REFERENCE.md`. The configured AWS
-profile did not expose a disposable test bucket, and no dedicated warehouse
-was provided, so a live cloud write is not claimed. The isolated S3 API smoke
-and SQL conflict tests cover their supported conditional-write behavior.
+retain the explicit limitations in `docs/REFERENCE.md`. A live Snowflake
+test used a dedicated transient database with zero-day retention. Published
+1.0.0 created its table and four views, wrote and reloaded a graph, rejected
+a stale writer, and exposed two edges through both SQL projection views. The
+database was dropped and verified absent. The available AWS session policy
+explicitly denied both creation of a disposable bucket and access to the
+candidate test buckets, so no live S3 write is claimed. The isolated S3 API
+smoke and SQL conflict tests cover their conditional-write behavior.
 
 The compatibility fixture in `tests/fixtures/compat_0_48_1.yaml` was written
 by the published 0.48.1 Python API. The newer
@@ -34,7 +38,8 @@ from the published 0.49.0 package. The committed tests cover the forward read,
 edit, and save direction plus the documented public method signatures. On
 2026-11-05, the published 0.49.0 reader also opened a file edited and saved
 by the current code. This checks representative public behavior, not every
-possible graph or API call. Repeat the reverse check with the final 1.0 artifact.
+possible graph or API call. The published 0.49.0 reader also accepted YAML
+saved by the published 1.0.0 artifact.
 
 ## Release procedure (after every gate passes)
 
@@ -66,5 +71,5 @@ checks. Published 0.49.0 also read a YAML file saved by published 1.0.0.
 The S3 API smoke runs against a disposable in-memory endpoint with fake test
 credentials: `uv run --extra remote --with 'moto[server]' python
 benchmarks/s3_conflict_smoke.py`. This checks the actual `s3fs` conditional PUT
-path and stale-writer rejection. It does not claim that a particular cloud
-account, warehouse or long-running replica was tested.
+path and stale-writer rejection. It does not claim a live AWS S3 test or a
+long-running replica test.
