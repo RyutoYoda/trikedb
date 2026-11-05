@@ -6,14 +6,14 @@ unbounded scale. Do not bump the version until every gate below has evidence.
 
 | Gate | Evidence required | Current state |
 |---|---|---|
-| File/API compatibility | Frozen YAML and Python API examples; round-trip fixtures across the last supported release and 1.0 | Published 0.49.0 YAML and 16 public method signatures are frozen in fixtures. Current code reads and edits the file; the published 0.49.0 reader accepted the edited file. Final 1.0 artifact check remains |
-| RDF interoperability | Turtle, N-Triples and JSON-LD round trips checked by an independent RDF parser, including IRIs, literals, language tags, blank nodes and metadata | The full projected graph passes isomorphic round trips in all three formats; final 1.0 artifact check remains |
-| SHACL behavior | Standard Turtle shapes and reports compared with pySHACL on valid and invalid fixtures | Ten common Core constraints plus class and SPARQL shapes pass through the installed CLI against pySHACL; final 1.0 artifact check remains |
+| File/API compatibility | Frozen YAML and Python API examples; round-trip fixtures across the last supported release and 1.0 | Published 0.49.0 YAML and 16 public method signatures are frozen in fixtures. Published 1.0.0 passed a clean read/query/write/save smoke, and the published 0.49.0 reader accepted its saved YAML |
+| RDF interoperability | Turtle, N-Triples and JSON-LD round trips checked by an independent RDF parser, including IRIs, literals, language tags, blank nodes and metadata | The full projected graph passes isomorphic round trips in all three formats in the 1.0.0 source test suite |
+| SHACL behavior | Standard Turtle shapes and reports compared with pySHACL on valid and invalid fixtures | Ten common Core constraints plus class and SPARQL shapes pass through the installed CLI against pySHACL in the 1.0.0 source test suite |
 | Safe local edits | Two processes cannot silently overwrite each other; MCP/REST see external local edits; malformed reload never turns into an empty graph | Implemented; PR #34 passed Linux, macOS and Windows CI |
 | Manual YAML validation | A documented strict load/check mode rejects undeclared or contradictory facts without preventing repair of historical files | Implemented as opt-in `validate_on_load` plus audit; PR #35 CI passed |
 | Remote safety | S3 and SQL conflict tests; explicit limitations for other remote backends; live integration evidence where credentials exist | Fake S3/SQL conflict tests and an isolated S3 API integration smoke pass. No dedicated disposable cloud bucket or warehouse was supplied for live testing; real cloud integration is unverified |
 | Offline graph export | A private graph can be opened without CDN requests; browser smoke checks the exported file offline | Implemented; PR #36 browser CI passed with network disabled |
-| Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | Version 0.49.0 passed the complete publish workflow and PyPI artifact checks. Repeat the checks for the final 1.0 artifacts |
+| Release provenance | CI for supported Python versions, typed package marker, signed or otherwise verifiable release artifact, GitHub release notes and PyPI publishing without a long-lived token | Version 1.0.0 passed main CI and the complete Trusted Publisher workflow. Both PyPI artifacts passed provenance verification and SHA256 matched the GitHub Release |
 | Scale and adoption | Published performance envelope and at least one independent installation/use report | The benchmark documents a measured envelope, and a private independent installation/use report exists. Public adoption is not claimed |
 
 The gates are release criteria, not a reason to publish an intermediate package
@@ -54,13 +54,14 @@ possible graph or API call. Repeat the reverse check with the final 1.0 artifact
    offline HTML export. Verify the GitHub Release and PyPI attestations before
    marking this gate complete.
 
-The workflow has not been run for 1.0. The [0.49.0 publish run](https://github.com/RyutoYoda/trikedb/actions/runs/42009435211)
+The [1.0.0 publish run](https://github.com/RyutoYoda/trikedb/actions/runs/42013000473)
 built and smoke-tested wheel and sdist, uploaded both through PyPI Trusted
-Publishing, and created a [GitHub Release](https://github.com/RyutoYoda/trikedb/releases/tag/v0.49.0).
+Publishing, and created the [GitHub Release](https://github.com/RyutoYoda/trikedb/releases/tag/v1.0.0).
 Both PyPI artifacts passed `pypi-attestations verify pypi --repository
-https://github.com/RyutoYoda/trikedb`, their PyPI and GitHub Release SHA256
-digests matched, and a clean PyPI install passed a read/query/write and offline
-HTML export smoke. Repeat these checks with the final 1.0 tag and artifacts.
+https://github.com/RyutoYoda/trikedb`, and their PyPI SHA256 digests matched
+the GitHub Release checksums. A clean no-cache install from the public PyPI
+index passed version, packaged asset, read/query/write/save, and offline HTML
+checks. Published 0.49.0 also read a YAML file saved by published 1.0.0.
 
 The S3 API smoke runs against a disposable in-memory endpoint with fake test
 credentials: `uv run --extra remote --with 'moto[server]' python
