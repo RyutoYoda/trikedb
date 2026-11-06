@@ -80,7 +80,7 @@ def _identity(actor_claim=None):
 
 def build_server(
     path: Union[str, Path], auth=None, public_url=None, stateless: bool = False,
-    graph=None, actor_claim=None,
+    graph=None, actor_claim=None, workflow_state_dir=None,
 ):
     """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
     ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
@@ -123,6 +123,8 @@ def build_server(
         if p.exists() and not p.stat().st_mode & 0o200:
             raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = graph if graph is not None else TrikeDB(path, autosave=True)
+    from .agent_workflow import AgentWorkflow
+    workflow_service = AgentWorkflow(db, workflow_state_dir)
 
     from functools import wraps
 
@@ -201,12 +203,39 @@ def build_server(
             f"Knowledge graph stored in {path}. Read with sparql/match/get_node, "
             "write with add_triple/set_node/import_source. Call ontology() before "
             "adding facts: predicates outside the declared ontology are rejected. "
+            "For a declared process, call agent_workflow(action='list'), then "
+            "start/next/complete/resume with the same run_id. Complete a step "
+            "only after providing its declared outputs and passing gate references. "
             "To get facts out of a document, call extraction_prompt(text) and "
             "follow what it returns, then preview_triples(rows) to see what they "
             "would do, then add_triples(rows). Put supporting detail (URLs, dates, "
             "a quote in prov) in attrs/props."
         ),
     )
+
+    @server.tool()
+    @serialized
+    def agent_workflow(
+        action: str, workflow_id: Optional[str] = None,
+        run_id: Optional[str] = None, step_id: Optional[str] = None,
+        artifacts: Optional[dict[str, str]] = None,
+        evidence: Optional[list[dict[str, str]]] = None,
+    ) -> dict:
+        """Guide an agent through a declared workflow without executing tools.
+
+        Actions: list; start(workflow_id); next(run_id); complete(run_id,
+        step_id, artifacts, evidence); resume(run_id). `ready` contains only
+        steps whose predecessors are complete. Each evidence item is
+        {gate, result: "pass", reference}; references are recorded claims, not
+        independently verified external test results. Runs survive restarts
+        in a private SQLite ledger, separate from the ontology YAML.
+        """
+        if is_remote(db.path):
+            db.reload()  # read the current remote definition before advancing a run
+        return workflow_service.handle(
+            action, _identity(actor_claim) or "", workflow_id, run_id,
+            step_id, artifacts, evidence,
+        )
 
     @server.tool()
     @serialized

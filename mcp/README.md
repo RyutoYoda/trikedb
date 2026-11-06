@@ -21,6 +21,14 @@ will never clone the repository.
 Both are complete and both have been deployed; neither is a sketch. Copy
 the one whose row you recognise and change the names.
 
+The standard Python MCP server also offers `agent_workflow`, which records
+step progress in a separate local SQLite ledger. Give a container a persistent
+writable directory through `TRIKEDB_AGENT_WORKFLOW_STATE_DIR` if you use it.
+The read-only Cloudflare Worker example is a reduced MCP implementation and
+does not expose that tool. A distributed deployment needs a shared run-store
+adapter; the local SQLite ledger must not be assumed to follow requests across
+independent replicas.
+
 Neither bearer token survives contact with a browser-based client:
 ChatGPT's custom connectors require OAuth 2.1 with dynamic client
 registration and have no field for a static token.

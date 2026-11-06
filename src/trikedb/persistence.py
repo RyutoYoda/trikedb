@@ -26,7 +26,7 @@ from .storage import read_text as _read_text
 from .storage import serialization as _serialization
 from .storage import version as _version_of
 from .storage import write_text as _write_text
-from .workflows import _validate_workflows
+from .workflows import _validate_workflows, validate_agent_spec
 
 
 def locate(path):
@@ -211,7 +211,7 @@ def _compile_workflows(path, workflows: dict, existing_nodes: dict):
             if not isinstance(item, dict):
                 fail(step_where, "must be a mapping")
                 continue
-            allowed_step = {"id", "label", "description", "properties", "order", "next"}
+            allowed_step = {"id", "label", "description", "properties", "order", "next", "agent"}
             unknown = set(item) - allowed_step
             if unknown:
                 fail(step_where, f"unknown field(s): {', '.join(sorted(map(str, unknown)))}")
@@ -229,13 +229,18 @@ def _compile_workflows(path, workflows: dict, existing_nodes: dict):
             if not isinstance(step_props, dict):
                 fail(f"{step_where}.properties", "must be a mapping")
                 step_props = {}
-            elif set(step_props) & {"type", "label", "description"}:
+            elif set(step_props) & {"type", "label", "description", "agent"}:
                 fail(f"{step_where}.properties", "put reserved step fields at the step level")
             step_meta = dict(step_props)
             step_meta["type"] = "process_step"
             for field in ("label", "description"):
                 if field in item:
                     step_meta[field] = item[field]
+            if "agent" in item:
+                try:
+                    step_meta["agent"] = validate_agent_spec(item["agent"], step_where)
+                except ValueError as exc:
+                    fail(step_where, str(exc).split(": ", 1)[-1])
             nodes[sid] = step_meta
             normalized_steps.append((sid, item))
 

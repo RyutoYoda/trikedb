@@ -147,6 +147,17 @@ when omitted, order follows the step list. Branches and rejoins are valid.
 Put decision conditions in a step's `description` or `properties`; the
 sequence graph records order, not the business meaning of a branch.
 
+### Guide an agent through the workflow
+
+Install `trikedb[mcp]` and serve the graph as MCP. The new `agent_workflow`
+tool lists workflows, starts a run, returns only steps whose predecessors are
+complete, records results, and resumes after a restart. It does not call the
+named Snowflake, dbt, Tableau or other external tools itself. A step may have
+an `agent:` mapping with `tools`, `entry`, `outputs` and `gates`; declared
+outputs and passing test/E2E gate references are required to complete it.
+See the [fictional example](https://github.com/RyutoYoda/trikedb/blob/main/examples/agent_workflow.yaml) and the
+[MCP contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#agent-workflow-mcp).
+
 ### Open and explore a workflow
 
 The standard `HAS_STEP` and `NEXT_STEP` predicates enable the workflow picker

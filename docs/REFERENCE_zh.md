@@ -487,7 +487,7 @@ trikedb import graph.yaml answer.md                  # 实际做了什么
 
 ## MCP：给 agent 的本体层
 
-十六个工具，一份服务器定义，两种传输方式：
+十七个工具，一份服务器定义，两种传输方式：
 
 | 工具 | 类型 | 说明 |
 |---|---|---|
@@ -504,6 +504,7 @@ trikedb import graph.yaml answer.md                  # 实际做了什么
 | `extraction_prompt` | 读 | 丢进去一份文档，拿回该照着做的指令 —— 里面带着这张图的谓词和它已经有的实体名 |
 | `preview_triples` | 读 | 在写任何东西之前，每行给一个判定：抽取和写入之间的那一步 |
 | `add_triples` | 写 | 一次写多条事实，要么全写要么全不写 —— 有一行被拒，就不会留下半截抽取 |
+| `agent_workflow` | 执行记录 | 列出、开始、推进和恢复已声明的工作流；见 [Agent Workflow MCP](#agent-workflow-mcp) |
 
 ```bash
 # 本地（stdio）—— 由 agent 会话自己拉起服务器
@@ -752,6 +753,25 @@ JS/WASM 和许可证声明；文件更大，但可从无网络的 `file://` 打�
   画成红色菱形；那是在提示你把这个事件 promote 掉，而不是一个已经完成的形状
   （`--events AFFECTED_BY` 可以钉死哪些述语算数）
 - 明暗切换（会记住），内嵌内容哈希供 `trikedb check` 用
+
+## Agent Workflow MCP
+
+标准 MCP 服务器新增一个 `agent_workflow` 工具，原有工具不变。它读取
+`workflow` / `process_step` 节点及 `HAS_STEP` / `NEXT_STEP` 关系；
+`workflows:` 简写和保存后的规范格式均可使用。步骤的 `agent:` 可声明建议工具
+`tools`、开始条件 `entry`、成果物 `outputs` 和完成门槛 `gates`。
+门槛种类包括 `test`、`e2e`、`review`、`manual`。
+
+操作包括 `list`、`start`、`next`、`complete` 和 `resume`。完成步骤须提交所有
+成果物的引用，以及每个门槛的 `pass` 结果和证据引用。只有全部前置步骤完成，
+后续步骤才可执行；分支表示必须并行完成的工作。定义变更后旧执行仍可读取，
+但不能继续，须开始新的执行。
+
+本工具不运行或独立验证外部系统和测试；引用是 agent 的报告。执行记录保存在
+本地 SQLite 中，不写入本体 YAML。在容器中应将
+`TRIKEDB_AGENT_WORKFLOW_STATE_DIR` 指向持久卷。OAuth 调用方只能恢复自己的
+执行。多个主机共享执行需要另行实现共享存储。只读 Cloudflare Worker 示例尚未
+提供此工具。详见[英文契约](REFERENCE.md#agent-workflow-mcp)。
 
 ## 图存在哪里
 

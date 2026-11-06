@@ -143,6 +143,15 @@ workflows:
 合流は許可される。分岐の業務上の条件は `description` や `properties` に書く。
 順序グラフが表すのは工程の前後関係であり、条件の意味までは推測しない。
 
+### エージェントに工程を案内する
+
+`trikedb[mcp]` で公開すると、`agent_workflow` ツールからワークフローの一覧、
+実行開始、実行可能な次工程、完了記録、再開を扱える。Snowflake・dbt・Tableau
+などの外部ツールを自動実行する機能ではない。各工程の `agent:` に使用ツール、
+開始条件、成果物、テスト・E2E の完了条件を宣言できる。完了時には宣言した
+成果物と合格した検証の参照先が必要になる。[架空のサンプル](examples/agent_workflow.yaml)
+と[ツール仕様](docs/REFERENCE.md#agent-workflow-mcp)を参照。
+
 ### ワークフローを表示する
 
 標準の `HAS_STEP` と `NEXT_STEP` を使うと、HTML ワークベンチでワークフロー選択が

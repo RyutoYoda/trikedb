@@ -1,0 +1,37 @@
+# Fictional, tool-agnostic example. Tool names are hints, not invocations.
+ontology:
+  predicates:
+    HAS_STEP: workflow to process step
+    NEXT_STEP: process step to next step
+workflows:
+  example-analytics:
+    label: Build an example analytics dashboard
+    summary: Query, transform and verify a fictional data product.
+    steps:
+      - id: query-source
+        label: Query the source
+        description: Inspect the example source before changing a model.
+        agent:
+          tools: [snowflake.query]
+          entry: [Read access to the example source is available]
+          outputs: [query-result]
+          gates:
+            - {id: source-test, kind: test, description: Check columns and row count}
+        next: [build-model]
+      - id: build-model
+        label: Build a model
+        agent:
+          tools: [dbt.run]
+          entry: [The source query passed its checks]
+          outputs: [model]
+          gates:
+            - {id: model-tests, kind: test, description: Run model tests}
+        next: [verify-dashboard]
+      - id: verify-dashboard
+        label: Verify the dashboard
+        agent:
+          tools: [tableau.open]
+          entry: [The tested model is available]
+          outputs: [dashboard]
+          gates:
+            - {id: dashboard-e2e, kind: e2e, description: Open and inspect the dashboard}
