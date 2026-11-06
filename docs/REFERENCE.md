@@ -939,6 +939,10 @@ tool, `agent_workflow`, without changing the existing tools. It reads declared
 `workflow` / `process_step` nodes and `HAS_STEP` / `NEXT_STEP` relations. The
 author-friendly `workflows:` shorthand produces those same graph facts, so
 the tool also works after a file has been saved in canonical form.
+Workflows can live in separate member graph YAML files and be read together
+through a `workspace.yaml` union. Declare `workflows:` in each member file,
+not next to the union's `graphs:` mapping. Keep workflow and step IDs unique
+across members; the union exposes one combined graph.
 
 Each shorthand step can carry an optional `agent:` mapping. The same mapping
 can be put on a canonical process-step node:

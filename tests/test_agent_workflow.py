@@ -133,6 +133,30 @@ def test_shipped_example_can_run_through_mcp(tmp_path):
     assert run["finished"]
 
 
+def test_agent_workflow_can_read_separate_workspace_members(tmp_path):
+    pytest.importorskip("mcp")
+    from trikedb.mcp_server import build_server
+
+    first = tmp_path / "finance.yaml"
+    first.write_text(FLOW, encoding="utf-8")
+    second = tmp_path / "platform.yaml"
+    platform_flow = FLOW.replace("publish-report", "platform-report")
+    for step_id in ("extract", "transform", "profile", "present"):
+        platform_flow = platform_flow.replace(step_id, f"platform-{step_id}")
+    second.write_text(platform_flow, encoding="utf-8")
+    workspace = tmp_path / "workspace.yaml"
+    workspace.write_text("graphs:\n  finance: finance.yaml\n  platform: platform.yaml\n",
+                         encoding="utf-8")
+    server = build_server(workspace, workflow_state_dir=tmp_path / "state")
+    listed = _call(server, "list")
+    assert {item["id"] for item in listed["workflows"]} == {
+        "publish-report", "platform-report",
+    }
+    run = _call(server, "start", workflow_id="platform-report")
+    assert [step["id"] for step in run["ready"]] == ["platform-extract"]
+    assert not (tmp_path / "workspace.yaml").read_text().count("run_id")
+
+
 def test_agent_workflow_rejects_changed_definition_and_caller(tmp_path, monkeypatch):
     pytest.importorskip("mcp")
     from trikedb import mcp_server
