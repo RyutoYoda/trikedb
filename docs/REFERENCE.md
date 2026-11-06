@@ -533,7 +533,7 @@ committed, because a committed score is one model on one day.
 
 ## MCP: the ontology layer for agents
 
-Sixteen tools, one server definition, two transports:
+Seventeen tools, one server definition, two transports:
 
 | Tool | Kind | Notes |
 |---|---|---|
@@ -550,6 +550,7 @@ Sixteen tools, one server definition, two transports:
 | `extraction_prompt` | read | a document in, the task to follow out — carrying this graph's predicates and the entity names it already holds |
 | `preview_triples` | read | one verdict per row before anything is written: the step between extracting and adding |
 | `add_triples` | write | many facts at once, all or nothing — a refused row leaves no half-written extraction behind |
+| `agent_workflow` | run ledger | list, start, advance and resume a declared workflow; see [Agent Workflow MCP](#agent-workflow-mcp) |
 
 ```bash
 # local (stdio) — the agent session spawns the server
@@ -930,6 +931,70 @@ The header embeds the TrikeDB logo. Set the graph title beside it with
   predicates count)
 - light theme by default; light/dark toggle (persisted), with `?theme=light|dark`
   overriding the saved choice for a given URL; content hash embedded for `trikedb check`
+
+## Agent Workflow MCP
+
+The standard MCP server (`trikedb mcp FILE` or `trikedb serve FILE`) adds one
+tool, `agent_workflow`, without changing the existing tools. It reads declared
+`workflow` / `process_step` nodes and `HAS_STEP` / `NEXT_STEP` relations. The
+author-friendly `workflows:` shorthand produces those same graph facts, so
+the tool also works after a file has been saved in canonical form.
+Workflows can live in separate member graph YAML files and be read together
+through a `workspace.yaml` union. Declare `workflows:` in each member file,
+not next to the union's `graphs:` mapping. Keep workflow and step IDs unique
+across members; the union exposes one combined graph.
+
+Each shorthand step can carry an optional `agent:` mapping. The same mapping
+can be put on a canonical process-step node:
+
+```yaml
+agent:
+  tools: [dbt.run]                  # suggested external tool, never auto-called
+  entry: [The source query passed its checks]  # guidance, not an executable rule
+  outputs: [model]                 # required artifact key on completion
+  gates:
+    - {id: model-tests, kind: test, description: Run model tests}
+    - {id: dashboard-e2e, kind: e2e, description: Inspect the rendered view}
+```
+
+`tools`, `entry` and `outputs` are lists of unique non-empty strings. Gate IDs
+are unique; each gate has an `id`, `description` and one of `test`, `e2e`,
+`review` or `manual` as its `kind`. Invalid declarations fail on load. See
+[`examples/agent_workflow.yaml`](../examples/agent_workflow.yaml) for a fully
+fictional Snowflake → dbt → Tableau sequence.
+
+Call the **one** `agent_workflow` tool with these actions:
+
+| Action | Arguments | Result |
+|---|---|---|
+| `list` | none | Workflow IDs, labels and step counts |
+| `start` | `workflow_id` | New `run_id` and root `ready` steps |
+| `next` | `run_id` | Current ready steps and recorded completions |
+| `complete` | `run_id`, `step_id`, `artifacts`, `evidence` | Records a ready step and returns newly ready steps |
+| `resume` | `run_id` | Restores a run after a client or server restart |
+
+For `complete`, `artifacts` maps **every** declared output name to a non-empty
+reference. `evidence` is a list with one item per gate, each shaped like
+`{"gate":"model-tests","result":"pass","reference":"https://..."}`.
+Missing, failed, duplicate or unknown gate reports are rejected. A step
+cannot complete before all its predecessors; a rejoin waits for every incoming
+step. Branches therefore represent parallel required work, not conditional
+alternatives. If the workflow definition changes, existing runs remain
+readable but cannot advance; start a new run against the new definition.
+
+The tool records **agent-reported references**. It does not execute or
+independently verify Snowflake, dbt, Tableau, tests or E2E; the agent needs
+separate access to those tools, and the reviewer must judge the evidence.
+Do not put credentials or raw sensitive results in references. Runs are kept
+outside the ontology YAML in a private local SQLite file, one per graph,
+under `$XDG_STATE_HOME/trikedb/agent-workflow` (or
+`~/.local/state/trikedb/agent-workflow`). Set
+`TRIKEDB_AGENT_WORKFLOW_STATE_DIR` to a persistent writable directory when
+running in a container. OAuth callers can only resume their own runs; stdio
+has one local caller. This local ledger is for a single server host; separate
+replicas need a shared run-store adapter before using this tool together.
+The read-only `mcp/cloudflare-worker` example has its own reduced tool set and
+does not yet expose `agent_workflow`.
 
 ## Where the graph lives
 

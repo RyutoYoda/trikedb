@@ -139,6 +139,15 @@ workflows:
 分支和汇合有效。分支条件应写入步骤的 `description` 或 `properties`；顺序图描述前后
 关系，不会推断条件的业务含义。
 
+### 引导 agent 执行工作流
+
+通过 `trikedb[mcp]` 提供图谱时，`agent_workflow` 工具可以列出工作流、开始执行、
+返回当前可执行的步骤、记录完成结果，并在重启后恢复。它不会自行调用 Snowflake、
+dbt、Tableau 等外部工具。每个步骤可在 `agent:` 中声明工具、开始条件、成果物以及
+测试和 E2E 门槛；完成时须提供成果物与通过门槛的证据引用。参见
+[虚构示例](https://github.com/RyutoYoda/trikedb/blob/main/examples/agent_workflow.yaml)
+和[工具契约](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#agent-workflow-mcp)。
+
 ### 打开并浏览工作流
 
 使用标准的 `HAS_STEP` 和 `NEXT_STEP` 时，HTML 工作台会自动启用工作流选择器：

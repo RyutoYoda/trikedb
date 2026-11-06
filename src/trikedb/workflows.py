@@ -3,6 +3,47 @@
 from __future__ import annotations
 
 
+def validate_agent_spec(value, where: str) -> dict:
+    """Validate the optional agent-facing contract on a process step.
+
+    Tool names and entry conditions describe work; gates and outputs are the
+    fields the run ledger can require evidence for. No external tool is run
+    merely because its name appears here.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(f"{where}: 'agent' must be a mapping")
+    unknown = set(value) - {"tools", "entry", "outputs", "gates"}
+    if unknown:
+        raise ValueError(f"{where}: unknown agent field(s): {', '.join(sorted(unknown))}")
+    result = {}
+    for key in ("tools", "entry", "outputs"):
+        items = value.get(key, [])
+        if not isinstance(items, list) or any(
+            not isinstance(item, str) or not item.strip() for item in items
+        ):
+            raise ValueError(f"{where}.agent.{key}: must be a list of non-empty strings")
+        if len(items) != len(set(items)):
+            raise ValueError(f"{where}.agent.{key}: duplicate values are not allowed")
+        result[key] = items
+    gates = value.get("gates", [])
+    if not isinstance(gates, list):
+        raise ValueError(f"{where}.agent.gates: must be a list")
+    seen = set()
+    for gate in gates:
+        if not isinstance(gate, dict) or set(gate) != {"id", "kind", "description"}:
+            raise ValueError(f"{where}.agent.gates: each gate needs id, kind and description")
+        if not isinstance(gate["kind"], str) or gate["kind"] not in {"test", "e2e", "review", "manual"}:
+            raise ValueError(f"{where}.agent.gates: invalid kind {gate['kind']!r}")
+        if any(not isinstance(gate[key], str) or not gate[key].strip()
+               for key in ("id", "description")):
+            raise ValueError(f"{where}.agent.gates: id and description must be non-empty strings")
+        if gate["id"] in seen:
+            raise ValueError(f"{where}.agent.gates: duplicate id {gate['id']!r}")
+        seen.add(gate["id"])
+    result["gates"] = gates
+    return result
+
+
 def _validate_workflows(triples: list[dict], order_predicates: set[str],
                         membership_predicate: str) -> None:
     """Reject workflow membership/order that cannot describe one process.

@@ -47,6 +47,7 @@ LAYERS = {
     "importers": 4,
     "extract": 4,        # document -> candidate triples
     "embeddings": 4,
+    "agent_workflow": 4,  # agent-facing run planning and local execution ledger
     # 5 — entry points.
     "cli": 5,
     "mcp_server": 5,
