@@ -15,11 +15,12 @@ triples:
 workflows:
   daily-order-report:
     label: Daily order report
-    summary: Collect orders, check them, and prepare a report.
+    summary: Check orders, publish complete ones, and request corrections for incomplete ones.
     steps:
       - {id: intake-orders, label: Receive orders, description: Collect the form responses, next: [check-orders]}
-      - {id: check-orders, label: Check orders, description: Review missing fields, next: [publish-report]}
+      - {id: check-orders, label: Check orders, description: Send complete orders to reporting and return incomplete ones for correction, next: [publish-report, request-corrections]}
       - {id: publish-report, label: Publish report, description: Share the approved report}
+      - {id: request-corrections, label: Request corrections, description: Ask the requester to complete missing fields}
   weekly-catalog-review:
     label: Weekly catalog review
     summary: Review the example catalog and record corrections.

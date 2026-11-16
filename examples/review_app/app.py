@@ -576,6 +576,29 @@ def state(request: Request):
     }
 
 
+@app.get("/api/history")
+def history(request: Request):
+    if not configured():
+        return {"commits": []}
+    require_editor(request)
+    commits = git_request(
+        installation_token(), "GET", f"/commits?path={REPO_FILE}&per_page=30"
+    )
+    return {
+        "commits": [
+            {
+                "sha": entry["sha"],
+                "message": entry["commit"]["message"].splitlines()[0][:200],
+                "author": (entry["commit"].get("author") or {}).get("name")
+                or "Unknown",
+                "date": (entry["commit"].get("author") or {}).get("date") or "",
+                "url": entry["html_url"],
+            }
+            for entry in commits
+        ]
+    }
+
+
 @app.post("/api/preview")
 def preview(proposal: Proposal, request: Request):
     if configured():

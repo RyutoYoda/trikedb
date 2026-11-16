@@ -14,6 +14,8 @@ Open <http://127.0.0.1:8765/>. The included `demo.yaml` is read only inside the 
 
 Use **Undo** and **Redo** in the top bar, or `⌘Z` / `⇧⌘Z` on macOS and `Ctrl+Z` / `Ctrl+Y` on Windows and Linux. Text fields keep their normal typing history. Relationship labels stay in front of the connection lines and can be clicked to remove a relationship from the draft.
 
+Click a workflow step to edit it in a wide dialog that stays within the viewport. Its related ontology nodes appear beside the step fields, with a link action in the same dialog. The node map shows only direct relationships of the selected node; use the sidebar search or the relationship form to find any other node. When connected to GitHub, **History** shows recent commits to the selected canonical YAML file. The local demo has no canonical commit history.
+
 Stop it with:
 
 ```sh
@@ -31,3 +33,19 @@ Alternatively, register your own GitHub App and set these environment variables 
 The editor token in this example is one shared secret. For a multiuser deployment, put authenticated access control and TLS in front of the service, issue user specific authorization, and record the authenticated identity in the PR. Do not expose this sample directly to the internet as an anonymous editor. Browser drafts use local storage and are scoped to the browser; they are not a collaboration system.
 
 The example uses simple cards for graph editing. It does not replace the full TrikeDB HTML workbench.
+
+## Cloudflare Workers demo
+
+The same fictional graph editor can run as a public, stateless Workers demo. This deployment bundles only `demo.yaml`, the editor's static assets, and a small validation/preview API. Browser drafts stay in each visitor's local storage. The Worker supports graph editing and YAML diff preview, but deliberately has **no** GitHub App registration, credentials, PR publishing, or persistent server drafts. Use the Docker deployment above for the full GitHub App flow.
+
+From a checkout of this repository:
+
+```sh
+cd examples/review_app/cloudflare
+npm ci
+npx wrangler login  # once per Cloudflare account; credentials stay on your machine
+npm run dev      # local Worker at http://localhost:8787
+npm run deploy   # deploy to your Cloudflare account's workers.dev subdomain
+```
+
+The Worker name in `wrangler.jsonc` is a generic example; choose an available name for your own account before deploying. No account ID, zone, API token, or deployment URL is stored in this example. The build script copies only the three editor assets, the TrikeDB logo, and the reviewed fictional `demo.yaml` into `dist/`. `dist/`, `node_modules/`, local environment files, and Wrangler state are ignored by Git. Check any replacement demo graph for private names and data before publishing it: Workers static assets are public. The Docker example remains the path for editing a private graph and proposing a GitHub PR.

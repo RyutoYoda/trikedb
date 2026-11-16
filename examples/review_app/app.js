@@ -84,6 +84,16 @@ const messages = {
     deleteItem: "Delete",
     undo: "Undo last change",
     redo: "Redo change",
+    history: "History",
+    historyCaps: "CHANGES",
+    historyUnavailable: "Connect GitHub to see the canonical file history.",
+    historyEmpty: "No changes found for this file.",
+    relatedNodes: "Related ontology nodes",
+    relatedHelp: "Link reusable nodes to this step. Relationships are part of the same YAML proposal.",
+    viewNode: "Open node",
+    linkFromStep: "+ Link a node",
+    noLinkedNodes: "No related nodes yet.",
+    workerDemoPreview: "Worker demo: this YAML diff is a preview. Use the Docker example for GitHub PR publishing.",
   },
   ja: {
     workspace: "オントロジーを編集",
@@ -157,6 +167,16 @@ const messages = {
     deleteItem: "削除",
     undo: "直前の変更を戻す",
     redo: "変更をやり直す",
+    history: "変更履歴",
+    historyCaps: "変更履歴",
+    historyUnavailable: "GitHubを接続すると正本ファイルの変更履歴を表示できます。",
+    historyEmpty: "このファイルの変更履歴はありません。",
+    relatedNodes: "この工程に関係するノード",
+    relatedHelp: "再利用できるノードを工程に紐付けます。変更は同じYAMLの提案に含まれます。",
+    viewNode: "ノードを開く",
+    linkFromStep: "＋ノードを紐付け",
+    noLinkedNodes: "関連ノードはまだありません。",
+    workerDemoPreview: "WorkersのデモではYAML差分を確認できます。GitHubへのPR作成はDocker版で利用できます。",
   },
 };
 function t(key) {
@@ -552,7 +572,26 @@ function render() {
     return;
   }
   if (section === "workflows") {
-    const row = item("div", "flow");
+    const row = item("div", "flow workflow-flow");
+    const steps = current.steps || [];
+    const predecessors = new Map(steps.map((step) => [step.id, []]));
+    for (const step of steps)
+      for (const next of step.next || [])
+        predecessors.get(next)?.push(step.id);
+    const depthCache = new Map();
+    const depth = (id, visiting = new Set()) => {
+      if (depthCache.has(id)) return depthCache.get(id);
+      if (visiting.has(id)) return 0;
+      visiting.add(id);
+      const value = Math.max(
+        0,
+        ...(predecessors.get(id) || []).map((prior) => depth(prior, visiting) + 1),
+      );
+      visiting.delete(id);
+      depthCache.set(id, value);
+      return value;
+    };
+    const columns = new Map();
     for (const [index, step] of (current.steps || []).entries()) {
       const wrapper = item("div", "step-wrap");
       wrapper.append(
@@ -578,9 +617,13 @@ function render() {
       const connect = item("button", "link-button", t("linkNode"));
       connect.addEventListener("click", () => openEdit("edge", "add", step.id));
       wrapper.append(connect);
-      row.append(wrapper);
+      const level = depth(step.id);
+      if (!columns.has(level)) columns.set(level, item("div", "flow-column"));
+      columns.get(level).append(wrapper);
     }
-    if (!row.childNodes.length) row.append(item("p", "empty", t("noSteps")));
+    for (const level of [...columns.keys()].sort((a, b) => a - b))
+      row.append(columns.get(level));
+    if (!columns.size) row.append(item("p", "empty", t("noSteps")));
     canvas.append(row);
     const connections = (current.steps || []).flatMap((step) =>
       (step.next || []).map((next) => ({
@@ -623,14 +666,7 @@ function render() {
       .filter((id) => graph.nodes[id] || stepsById[id])
       .slice(0, 10);
     const right = [
-      ...new Set([
-        ...connected
-          .filter((edge) => edge.s === selected)
-          .map((edge) => edge.o),
-        ...Object.keys(graph.nodes || {}).filter(
-          (id) => id !== selected && !incoming.includes(id),
-        ),
-      ]),
+      ...new Set(connected.filter((edge) => edge.s === selected).map((edge) => edge.o)),
     ]
       .filter((id) => graph.nodes[id] || stepsById[id])
       .slice(0, 20);
@@ -681,6 +717,7 @@ function render() {
 function openEdit(kind, action, id = "", target = "") {
   const fields = $("fields");
   fields.replaceChildren();
+  $("edit-dialog").classList.toggle("step-editor-dialog", kind === "step" && action === "update");
   const value =
     kind === "workflow"
       ? graph.workflows[id]
@@ -729,6 +766,36 @@ function openEdit(kind, action, id = "", target = "") {
         "Step connections are checked against the canonical workflow before a PR is created.",
       ),
     );
+    if (action === "update") {
+      const related = item("section", "step-related");
+      related.append(item("h3", "", t("relatedNodes")), item("p", "muted", t("relatedHelp")));
+      const linked = (graph.triples || []).filter((edge) => edge.s === id && graph.nodes[edge.o]);
+      if (!linked.length) related.append(item("p", "muted", t("noLinkedNodes")));
+      for (const edge of linked) {
+        const row = item("div", "related-row");
+        const detail = item("div");
+        detail.append(item("strong", "", graph.nodes[edge.o].label || edge.o), item("small", "", `${edge.p} · ${edge.o}`));
+        const open = item("button", "secondary", t("viewNode"));
+        open.type = "button";
+        open.addEventListener("click", () => {
+          $("edit-dialog").close();
+          section = "nodes";
+          selected = edge.o;
+          render();
+          openEdit("node", "update", edge.o);
+        });
+        row.append(detail, open);
+        related.append(row);
+      }
+      const link = item("button", "secondary", t("linkFromStep"));
+      link.type = "button";
+      link.addEventListener("click", () => {
+        $("edit-dialog").close();
+        openEdit("edge", "add", id);
+      });
+      related.append(link);
+      fields.append(related);
+    }
   } else if (kind === "node") {
     appendField(fields, t("type"), "type", value?.type || "concept");
     appendField(fields, t("name"), "label", value?.label);
@@ -762,6 +829,33 @@ function openEdit(kind, action, id = "", target = "") {
   }
   $("edit-dialog").showModal();
 }
+$("history-open").addEventListener("click", async () => {
+  const body = $("history-body");
+  body.replaceChildren(item("p", "muted", state?.publishing ? "Loading…" : t("historyUnavailable")));
+  $("history-dialog").showModal();
+  if (!state?.publishing) return;
+  try {
+    const response = await fetch("/api/history", {
+      cache: "no-store",
+      headers: editorToken ? { "X-Editor-Token": editorToken } : {},
+    });
+    if (!response.ok) throw new Error(`History could not be loaded (${response.status})`);
+    const rows = (await response.json()).commits;
+    body.replaceChildren();
+    if (!rows.length) body.append(item("p", "muted", t("historyEmpty")));
+    for (const commit of rows) {
+      const row = item("article", "history-row");
+      const link = item("a", "", commit.message);
+      link.href = commit.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      row.append(link, item("small", "", `${commit.date} · ${commit.author} · ${commit.sha.slice(0, 7)}`));
+      body.append(row);
+    }
+  } catch (error) {
+    body.replaceChildren(item("p", "error", error.message));
+  }
+});
 $("edit-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -879,7 +973,7 @@ $("preview").addEventListener("click", async () => {
     $("publish").disabled = !state.publishing;
     if (!state.publishing)
       $("review-error").textContent =
-        "Local demo: configure a GitHub App and editor token to create a draft PR.";
+        state.demo ? t("workerDemoPreview") : "Local demo: configure a GitHub App and editor token to create a draft PR.";
   } catch (error) {
     $("review-error").textContent = error.message;
   }
@@ -953,7 +1047,7 @@ async function setupStatus() {
   const response = await fetch("/api/setup/status", { cache: "no-store" });
   if (!response.ok) return;
   const result = await response.json();
-  $("setup-open").hidden = result.connected;
+  $("setup-open").hidden = result.connected || result.demo;
   $("setup-register").disabled = !result.enabled || result.registered;
   if (!result.enabled)
     $("setup-error").textContent =
