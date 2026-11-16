@@ -61,6 +61,12 @@ YAML差分を確認できるローカルの編集画面は、架空データだ�
 [Docker版オントロジーエディターの例](https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md)を参照。
 GitHub AppによるドラフトPR作成は任意で設定できる。
 
+<p align="center">
+  <a href="https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md">
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/edit_ontology.png" width="1000" alt="架空データの分岐するワークフローと工程間の矢印を表示した TrikeDB オントロジー編集画面" />
+  </a>
+</p>
+
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it

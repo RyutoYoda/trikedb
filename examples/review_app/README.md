@@ -2,6 +2,8 @@
 
 This is a small, fictional graph editor for TrikeDB. It demonstrates workflow steps, reusable ontology nodes, relationships, YAML diff review, and optional draft pull requests through a GitHub App. It does not contain a company graph or credentials.
 
+![TrikeDB ontology editor with a fictional branching workflow](../../docs/edit_ontology.png)
+
 ## Run locally
 
 From the repository root:
