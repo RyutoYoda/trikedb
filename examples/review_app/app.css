@@ -357,6 +357,65 @@ dialog {
   box-shadow: 0 30px 80px #14335355;
   color: inherit;
 }
+.step-editor-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100vw - 32px));
+  height: min(780px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+.step-editor-dialog #edit-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.step-editor-dialog #fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 24px;
+  align-content: start;
+  min-height: 0;
+  max-height: none;
+  flex: 1;
+}
+.step-editor-dialog #fields > :not(.step-related) {
+  grid-column: 1;
+  min-width: 0;
+}
+.step-editor-dialog #fields > .step-related {
+  grid-column: 2;
+  grid-row: 1 / span 6;
+  min-width: 0;
+}
+.step-editor-dialog #fields textarea {
+  min-height: 130px;
+}
+.step-related {
+  border: 1px solid #d8e4f2;
+  border-radius: 12px;
+  padding: 16px;
+  align-self: start;
+}
+.step-related h3 { margin: 0 0 6px; font-size: 16px; }
+.step-related .muted { margin: 0 0 14px; }
+.related-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #e3ebf5;
+  padding: 10px 0;
+  min-width: 0;
+}
+.related-row > div { min-width: 0; overflow-wrap: anywhere; }
+.related-row strong,.related-row small { display: block; }
+.related-row small { color: #7186a2; font-size: 11px; }
+.related-row button { flex: 0 0 auto; font-size: 12px; }
+.history-row { border: 1px solid #d8e4f2; border-radius: 10px; padding: 12px; margin: 8px 0; }
+.history-row a { font-weight: 700; overflow-wrap: anywhere; }
+.history-row small { display: block; margin-top: 5px; color: #7186a2; }
 dialog::backdrop {
   background: #1837577d;
 }
@@ -432,6 +491,8 @@ a {
   color: #2167ba;
 }
 @media (max-width: 760px) {
+  .step-editor-dialog #fields { grid-template-columns: minmax(0, 1fr); }
+  .step-editor-dialog #fields > .step-related { grid-column: 1; grid-row: auto; }
   .topbar {
     height: auto;
     min-height: 70px;

@@ -105,6 +105,44 @@ class ReviewAppTests(unittest.TestCase):
             self.client.get("/api/meta").json()["version"], version("trikedb")
         )
 
+    def test_file_history_uses_selected_graph_and_editor_access(self):
+        with (
+            patch.object(module, "configured", return_value=True),
+            patch.object(module, "EDITOR_TOKEN", "editor-secret"),
+            patch.object(module, "PUBLIC_BASE_URL", ""),
+            patch.object(module, "REPO_FILE", "ontology/example.yaml"),
+            patch.object(module, "installation_token", return_value="test-token"),
+            patch.object(
+                module,
+                "git_request",
+                return_value=[
+                    {
+                        "sha": "a" * 40,
+                        "html_url": "https://github.com/example-org/graph-repo/commit/"
+                        + "a" * 40,
+                        "commit": {
+                            "message": "Update example graph\nExtra detail",
+                            "author": {
+                                "name": "Example author",
+                                "date": "2026-11-01T00:00:00Z",
+                            },
+                        },
+                    }
+                ],
+            ) as github,
+        ):
+            self.assertEqual(self.client.get("/api/history").status_code, 403)
+            response = self.client.get(
+                "/api/history", headers={"X-Editor-Token": "editor-secret"}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.json()["commits"][0]["message"], "Update example graph"
+            )
+            github.assert_called_once_with(
+                "test-token", "GET", "/commits?path=ontology/example.yaml&per_page=30"
+            )
+
     def test_draft_pr_requires_current_preview_and_targets_main(self):
         calls = []
 

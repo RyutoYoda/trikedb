@@ -84,6 +84,15 @@ const messages = {
     deleteItem: "Delete",
     undo: "Undo last change",
     redo: "Redo change",
+    history: "History",
+    historyCaps: "CHANGES",
+    historyUnavailable: "Connect GitHub to see the canonical file history.",
+    historyEmpty: "No changes found for this file.",
+    relatedNodes: "Related ontology nodes",
+    relatedHelp: "Link reusable nodes to this step. Relationships are part of the same YAML proposal.",
+    viewNode: "Open node",
+    linkFromStep: "+ Link a node",
+    noLinkedNodes: "No related nodes yet.",
   },
   ja: {
     workspace: "オントロジーを編集",
@@ -157,6 +166,15 @@ const messages = {
     deleteItem: "削除",
     undo: "直前の変更を戻す",
     redo: "変更をやり直す",
+    history: "変更履歴",
+    historyCaps: "変更履歴",
+    historyUnavailable: "GitHubを接続すると正本ファイルの変更履歴を表示できます。",
+    historyEmpty: "このファイルの変更履歴はありません。",
+    relatedNodes: "この工程に関係するノード",
+    relatedHelp: "再利用できるノードを工程に紐付けます。変更は同じYAMLの提案に含まれます。",
+    viewNode: "ノードを開く",
+    linkFromStep: "＋ノードを紐付け",
+    noLinkedNodes: "関連ノードはまだありません。",
   },
 };
 function t(key) {
@@ -623,14 +641,7 @@ function render() {
       .filter((id) => graph.nodes[id] || stepsById[id])
       .slice(0, 10);
     const right = [
-      ...new Set([
-        ...connected
-          .filter((edge) => edge.s === selected)
-          .map((edge) => edge.o),
-        ...Object.keys(graph.nodes || {}).filter(
-          (id) => id !== selected && !incoming.includes(id),
-        ),
-      ]),
+      ...new Set(connected.filter((edge) => edge.s === selected).map((edge) => edge.o)),
     ]
       .filter((id) => graph.nodes[id] || stepsById[id])
       .slice(0, 20);
@@ -681,6 +692,7 @@ function render() {
 function openEdit(kind, action, id = "", target = "") {
   const fields = $("fields");
   fields.replaceChildren();
+  $("edit-dialog").classList.toggle("step-editor-dialog", kind === "step" && action === "update");
   const value =
     kind === "workflow"
       ? graph.workflows[id]
@@ -729,6 +741,36 @@ function openEdit(kind, action, id = "", target = "") {
         "Step connections are checked against the canonical workflow before a PR is created.",
       ),
     );
+    if (action === "update") {
+      const related = item("section", "step-related");
+      related.append(item("h3", "", t("relatedNodes")), item("p", "muted", t("relatedHelp")));
+      const linked = (graph.triples || []).filter((edge) => edge.s === id && graph.nodes[edge.o]);
+      if (!linked.length) related.append(item("p", "muted", t("noLinkedNodes")));
+      for (const edge of linked) {
+        const row = item("div", "related-row");
+        const detail = item("div");
+        detail.append(item("strong", "", graph.nodes[edge.o].label || edge.o), item("small", "", `${edge.p} · ${edge.o}`));
+        const open = item("button", "secondary", t("viewNode"));
+        open.type = "button";
+        open.addEventListener("click", () => {
+          $("edit-dialog").close();
+          section = "nodes";
+          selected = edge.o;
+          render();
+          openEdit("node", "update", edge.o);
+        });
+        row.append(detail, open);
+        related.append(row);
+      }
+      const link = item("button", "secondary", t("linkFromStep"));
+      link.type = "button";
+      link.addEventListener("click", () => {
+        $("edit-dialog").close();
+        openEdit("edge", "add", id);
+      });
+      related.append(link);
+      fields.append(related);
+    }
   } else if (kind === "node") {
     appendField(fields, t("type"), "type", value?.type || "concept");
     appendField(fields, t("name"), "label", value?.label);
@@ -762,6 +804,33 @@ function openEdit(kind, action, id = "", target = "") {
   }
   $("edit-dialog").showModal();
 }
+$("history-open").addEventListener("click", async () => {
+  const body = $("history-body");
+  body.replaceChildren(item("p", "muted", state?.publishing ? "Loading…" : t("historyUnavailable")));
+  $("history-dialog").showModal();
+  if (!state?.publishing) return;
+  try {
+    const response = await fetch("/api/history", {
+      cache: "no-store",
+      headers: editorToken ? { "X-Editor-Token": editorToken } : {},
+    });
+    if (!response.ok) throw new Error(`History could not be loaded (${response.status})`);
+    const rows = (await response.json()).commits;
+    body.replaceChildren();
+    if (!rows.length) body.append(item("p", "muted", t("historyEmpty")));
+    for (const commit of rows) {
+      const row = item("article", "history-row");
+      const link = item("a", "", commit.message);
+      link.href = commit.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      row.append(link, item("small", "", `${commit.date} · ${commit.author} · ${commit.sha.slice(0, 7)}`));
+      body.append(row);
+    }
+  } catch (error) {
+    body.replaceChildren(item("p", "error", error.message));
+  }
+});
 $("edit-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.currentTarget;

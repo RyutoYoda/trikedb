@@ -63,6 +63,20 @@ def main():
         assert page.locator("#change-count").inner_text() == "1"
         page.locator("#redo").click()
         assert page.locator("#change-count").inner_text() == "2"
+
+        page.locator("#section-workflows").click()
+        page.locator(".step-wrap .card").first.click()
+        dialog = page.locator("#edit-dialog")
+        assert dialog.is_visible()
+        assert "step-editor-dialog" in dialog.get_attribute("class")
+        box = dialog.bounding_box()
+        assert box and box["y"] >= 0 and box["y"] + box["height"] <= 900
+        assert page.locator(".step-related").is_visible()
+        page.locator('[data-close="edit-dialog"]').first.click()
+
+        page.locator("#history-open").click()
+        assert page.locator("#history-dialog").is_visible()
+        assert "GitHub" in page.locator("#history-body").inner_text()
         assert not errors, errors
         browser.close()
 

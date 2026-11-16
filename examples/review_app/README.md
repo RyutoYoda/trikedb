@@ -14,6 +14,8 @@ Open <http://127.0.0.1:8765/>. The included `demo.yaml` is read only inside the 
 
 Use **Undo** and **Redo** in the top bar, or `⌘Z` / `⇧⌘Z` on macOS and `Ctrl+Z` / `Ctrl+Y` on Windows and Linux. Text fields keep their normal typing history. Relationship labels stay in front of the connection lines and can be clicked to remove a relationship from the draft.
 
+Click a workflow step to edit it in a wide dialog that stays within the viewport. Its related ontology nodes appear beside the step fields, with a link action in the same dialog. The node map shows only direct relationships of the selected node; use the sidebar search or the relationship form to find any other node. When connected to GitHub, **History** shows recent commits to the selected canonical YAML file. The local demo has no canonical commit history.
+
 Stop it with:
 
 ```sh

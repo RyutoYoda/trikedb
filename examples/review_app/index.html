@@ -19,6 +19,7 @@
         <button id="undo" class="secondary history-action" type="button" disabled aria-label="Undo" title="Undo (⌘Z / Ctrl+Z)">↶</button>
         <button id="redo" class="secondary history-action" type="button" disabled aria-label="Redo" title="Redo (⇧⌘Z / Ctrl+Y)">↷</button>
         <span id="source-badge" class="badge">Loading graph…</span
+        ><button id="history-open" class="secondary" type="button" data-i18n="history">History</button
         ><button
           id="setup-open"
           class="secondary"
@@ -244,6 +245,13 @@
           2. Check connection
         </button>
       </div>
+    </dialog>
+    <dialog id="history-dialog">
+      <div class="dialog-head">
+        <div><small data-i18n="historyCaps">HISTORY</small><h2 id="history-title" data-i18n="history">History</h2></div>
+        <button class="icon-close" data-close="history-dialog" aria-label="Close">×</button>
+      </div>
+      <div id="history-body" class="review-body" role="status"></div>
     </dialog>
   </body>
 </html>
