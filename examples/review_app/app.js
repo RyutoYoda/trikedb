@@ -448,7 +448,7 @@ function drawConnections(row, connections) {
     const text = document.createElementNS(svg.namespaceURI, "text");
     text.setAttribute("x", (from.x + to.x) / 2);
     text.setAttribute("y", (from.y + to.y) / 2 - 9);
-    text.textContent = `${edge.p} ×`;
+    text.textContent = edge.p;
     label.append(text);
     labels.append(label);
     const bounds = text.getBBox();
@@ -671,7 +671,7 @@ function render() {
     measure.font = "700 11px system-ui";
     const longestLabel = Math.max(
       0,
-      ...connected.map((edge) => measure.measureText(`${edge.p} ×`).width),
+      ...connected.map((edge) => measure.measureText(edge.p).width),
     );
     row.style.columnGap = `${Math.max(150, Math.ceil(longestLabel + 30))}px`;
     const stepsById = Object.fromEntries(
