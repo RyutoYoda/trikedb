@@ -34,6 +34,9 @@ def main():
         )
         assert page.locator(".workflow-flow marker#workflow-arrowhead").count() == 1
         assert page.locator(".workflow-flow .connection-path[marker-end='url(#workflow-arrowhead)']").count() == 3
+        assert all("×" not in label for label in page.locator(
+            ".workflow-flow .connection-label text"
+        ).all_text_contents())
         upper, lower = [
             step.bounding_box() for step in branch.locator(".step-wrap").all()
         ]
