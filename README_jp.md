@@ -44,7 +44,7 @@ git で普通に差分が出て、人間が読めて、エージェントは本�
 
 <p align="center">
   <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
-    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/screenshot.png" alt="trikedb の HTML ワークベンチ — 600件の Freebase 事実をクラスタ表示し、ノード詳細パネルを開いたところ" />
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-demo-dark.png" alt="TrikeDB のダークテーマのグラフ画面 — Nikola Tesla と関連する Freebase の事実、ノード詳細パネルを表示" />
   </a>
 </p>
 
