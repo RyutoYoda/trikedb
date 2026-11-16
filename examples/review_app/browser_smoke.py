@@ -3,6 +3,8 @@
 Run against the local Docker example after starting Compose.
 """
 
+import os
+
 from playwright.sync_api import sync_playwright
 
 
@@ -21,7 +23,7 @@ def main():
         page = browser.new_page(viewport={"width": 1500, "height": 900})
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto("http://127.0.0.1:8765/", wait_until="networkidle")
+        page.goto(os.environ.get("REVIEW_APP_URL", "http://127.0.0.1:8765/"), wait_until="networkidle")
         page.evaluate(
             """async () => {
               const state = await (await fetch('/api/state')).json();

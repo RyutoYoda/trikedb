@@ -33,3 +33,17 @@ Alternatively, register your own GitHub App and set these environment variables 
 The editor token in this example is one shared secret. For a multiuser deployment, put authenticated access control and TLS in front of the service, issue user specific authorization, and record the authenticated identity in the PR. Do not expose this sample directly to the internet as an anonymous editor. Browser drafts use local storage and are scoped to the browser; they are not a collaboration system.
 
 The example uses simple cards for graph editing. It does not replace the full TrikeDB HTML workbench.
+
+## Cloudflare Workers demo
+
+The same fictional graph editor can run as a public, stateless Workers demo. This deployment bundles only `demo.yaml`, the editor's static assets, and a small validation/preview API. Browser drafts stay in each visitor's local storage. The Worker supports graph editing and YAML diff preview, but deliberately has **no** GitHub App registration, credentials, PR publishing, or persistent server drafts. Use the Docker deployment above for the full GitHub App flow.
+
+From `examples/review_app/cloudflare`:
+
+```sh
+npm ci
+npm run dev      # local Worker at http://localhost:8787
+npm run deploy   # deploy to your Cloudflare account's workers.dev subdomain
+```
+
+The build script copies only the three editor assets, the TrikeDB logo, and the reviewed fictional `demo.yaml` into `dist/`. `dist/`, `node_modules/`, and Wrangler state are ignored by Git. Check any replacement demo graph for private names and data before publishing it: Workers static assets are public. The Docker example remains the path for editing a private graph and proposing a GitHub PR.

@@ -93,6 +93,7 @@ const messages = {
     viewNode: "Open node",
     linkFromStep: "+ Link a node",
     noLinkedNodes: "No related nodes yet.",
+    workerDemoPreview: "Worker demo: this YAML diff is a preview. Use the Docker example for GitHub PR publishing.",
   },
   ja: {
     workspace: "オントロジーを編集",
@@ -175,6 +176,7 @@ const messages = {
     viewNode: "ノードを開く",
     linkFromStep: "＋ノードを紐付け",
     noLinkedNodes: "関連ノードはまだありません。",
+    workerDemoPreview: "WorkersのデモではYAML差分を確認できます。GitHubへのPR作成はDocker版で利用できます。",
   },
 };
 function t(key) {
@@ -948,7 +950,7 @@ $("preview").addEventListener("click", async () => {
     $("publish").disabled = !state.publishing;
     if (!state.publishing)
       $("review-error").textContent =
-        "Local demo: configure a GitHub App and editor token to create a draft PR.";
+        state.demo ? t("workerDemoPreview") : "Local demo: configure a GitHub App and editor token to create a draft PR.";
   } catch (error) {
     $("review-error").textContent = error.message;
   }
@@ -1022,7 +1024,7 @@ async function setupStatus() {
   const response = await fetch("/api/setup/status", { cache: "no-store" });
   if (!response.ok) return;
   const result = await response.json();
-  $("setup-open").hidden = result.connected;
+  $("setup-open").hidden = result.connected || result.demo;
   $("setup-register").disabled = !result.enabled || result.registered;
   if (!result.enabled)
     $("setup-error").textContent =
