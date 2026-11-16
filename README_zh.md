@@ -59,6 +59,12 @@ triples:
 [Docker 本体编辑器示例](https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md)。
 可选择配置 GitHub App 来创建草稿 PR。
 
+<p align="center">
+  <a href="https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md">
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/edit_ontology.png" width="1000" alt="TrikeDB 本体编辑器显示虚构数据中的分支工作流和步骤箭头" />
+  </a>
+</p>
+
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it

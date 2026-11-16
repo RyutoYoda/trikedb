@@ -61,6 +61,12 @@ Want a local visual editor with YAML diff review? See the fictional
 [Docker ontology editor example](https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md). GitHub App
 draft PR publishing is optional.
 
+<p align="center">
+  <a href="https://github.com/RyutoYoda/trikedb/blob/main/examples/review_app/README.md">
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/edit_ontology.png" width="1000" alt="TrikeDB ontology editor showing a branching workflow with connected steps and a local demo graph" />
+  </a>
+</p>
+
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
