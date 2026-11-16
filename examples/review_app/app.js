@@ -398,6 +398,24 @@ function drawConnections(row, connections) {
   labels.classList.replace("connection-layer", "connection-label-layer");
   row.prepend(svg);
   row.append(labels);
+  if (connections.some((edge) => edge.kind === "step")) {
+    const defs = document.createElementNS(svg.namespaceURI, "defs");
+    const marker = document.createElementNS(svg.namespaceURI, "marker");
+    marker.setAttribute("id", "workflow-arrowhead");
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "10");
+    marker.setAttribute("refX", "9");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("orient", "auto");
+    marker.setAttribute("markerUnits", "userSpaceOnUse");
+    const arrow = document.createElementNS(svg.namespaceURI, "path");
+    arrow.setAttribute("d", "M 1 1 L 9 5 L 1 9 Z");
+    arrow.setAttribute("fill", "#79a6e1");
+    marker.append(arrow);
+    defs.append(marker);
+    svg.append(defs);
+  }
   const origin = row.getBoundingClientRect();
   function point(id, direction) {
     const handle = [...row.querySelectorAll(`.connector.${direction}`)].find(
@@ -415,12 +433,15 @@ function drawConnections(row, connections) {
       to = point(edge.o, "in");
     if (!from || !to) continue;
     const path = document.createElementNS(svg.namespaceURI, "path");
-    const bend = Math.max(45, Math.abs(to.x - from.x) / 2);
+    const endX = edge.kind === "step" ? to.x - 13 : to.x;
+    const bend = Math.max(45, Math.abs(endX - from.x) / 2);
     path.setAttribute(
       "d",
-      `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`,
+      `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${endX - bend} ${to.y}, ${endX} ${to.y}`,
     );
     path.setAttribute("class", "connection-path");
+    if (edge.kind === "step")
+      path.setAttribute("marker-end", "url(#workflow-arrowhead)");
     svg.append(path);
     const label = document.createElementNS(svg.namespaceURI, "g");
     label.setAttribute("class", "connection-label");
