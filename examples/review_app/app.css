@@ -537,6 +537,15 @@ a {
   gap: 6px;
   width: 270px;
 }
+.workflow-flow .flow-column {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  width: 270px;
+  flex: 0 0 270px;
+  position: relative;
+  z-index: 1;
+}
 .step-relation {
   max-width: 270px;
   overflow-wrap: anywhere;

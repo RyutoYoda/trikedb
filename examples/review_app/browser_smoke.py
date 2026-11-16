@@ -23,7 +23,19 @@ def main():
         page = browser.new_page(viewport={"width": 1500, "height": 900})
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(os.environ.get("REVIEW_APP_URL", "http://127.0.0.1:8765/"), wait_until="networkidle")
+        page.goto(
+            os.environ.get("REVIEW_APP_URL", "http://127.0.0.1:8765/"),
+            wait_until="networkidle",
+        )
+        branch = page.locator(".workflow-flow .flow-column").nth(2)
+        assert branch.locator(".step-wrap").count() == 2
+        page.wait_for_function(
+            "document.querySelectorAll('.workflow-flow .connection-label').length === 3"
+        )
+        upper, lower = [
+            step.bounding_box() for step in branch.locator(".step-wrap").all()
+        ]
+        assert upper and lower and upper["x"] == lower["x"] and upper["y"] < lower["y"]
         page.evaluate(
             """async () => {
               const state = await (await fetch('/api/state')).json();
@@ -40,7 +52,9 @@ def main():
         page.locator("#section-nodes").click()
         page.locator("#list .item").filter(has_text="Review guide").click()
         labels = page.locator(".connection-label")
-        page.wait_for_function("document.querySelectorAll('.connection-label').length === 3")
+        page.wait_for_function(
+            "document.querySelectorAll('.connection-label').length === 3"
+        )
         assert labels.count() == 3
         cards = [card.bounding_box() for card in page.locator(".flow .card").all()]
         for label in labels.all():

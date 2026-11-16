@@ -572,7 +572,26 @@ function render() {
     return;
   }
   if (section === "workflows") {
-    const row = item("div", "flow");
+    const row = item("div", "flow workflow-flow");
+    const steps = current.steps || [];
+    const predecessors = new Map(steps.map((step) => [step.id, []]));
+    for (const step of steps)
+      for (const next of step.next || [])
+        predecessors.get(next)?.push(step.id);
+    const depthCache = new Map();
+    const depth = (id, visiting = new Set()) => {
+      if (depthCache.has(id)) return depthCache.get(id);
+      if (visiting.has(id)) return 0;
+      visiting.add(id);
+      const value = Math.max(
+        0,
+        ...(predecessors.get(id) || []).map((prior) => depth(prior, visiting) + 1),
+      );
+      visiting.delete(id);
+      depthCache.set(id, value);
+      return value;
+    };
+    const columns = new Map();
     for (const [index, step] of (current.steps || []).entries()) {
       const wrapper = item("div", "step-wrap");
       wrapper.append(
@@ -598,9 +617,13 @@ function render() {
       const connect = item("button", "link-button", t("linkNode"));
       connect.addEventListener("click", () => openEdit("edge", "add", step.id));
       wrapper.append(connect);
-      row.append(wrapper);
+      const level = depth(step.id);
+      if (!columns.has(level)) columns.set(level, item("div", "flow-column"));
+      columns.get(level).append(wrapper);
     }
-    if (!row.childNodes.length) row.append(item("p", "empty", t("noSteps")));
+    for (const level of [...columns.keys()].sort((a, b) => a - b))
+      row.append(columns.get(level));
+    if (!columns.size) row.append(item("p", "empty", t("noSteps")));
     canvas.append(row);
     const connections = (current.steps || []).flatMap((step) =>
       (step.next || []).map((next) => ({

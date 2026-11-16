@@ -38,12 +38,14 @@ The example uses simple cards for graph editing. It does not replace the full Tr
 
 The same fictional graph editor can run as a public, stateless Workers demo. This deployment bundles only `demo.yaml`, the editor's static assets, and a small validation/preview API. Browser drafts stay in each visitor's local storage. The Worker supports graph editing and YAML diff preview, but deliberately has **no** GitHub App registration, credentials, PR publishing, or persistent server drafts. Use the Docker deployment above for the full GitHub App flow.
 
-From `examples/review_app/cloudflare`:
+From a checkout of this repository:
 
 ```sh
+cd examples/review_app/cloudflare
 npm ci
+npx wrangler login  # once per Cloudflare account; credentials stay on your machine
 npm run dev      # local Worker at http://localhost:8787
 npm run deploy   # deploy to your Cloudflare account's workers.dev subdomain
 ```
 
-The build script copies only the three editor assets, the TrikeDB logo, and the reviewed fictional `demo.yaml` into `dist/`. `dist/`, `node_modules/`, and Wrangler state are ignored by Git. Check any replacement demo graph for private names and data before publishing it: Workers static assets are public. The Docker example remains the path for editing a private graph and proposing a GitHub PR.
+The Worker name in `wrangler.jsonc` is a generic example; choose an available name for your own account before deploying. No account ID, zone, API token, or deployment URL is stored in this example. The build script copies only the three editor assets, the TrikeDB logo, and the reviewed fictional `demo.yaml` into `dist/`. `dist/`, `node_modules/`, local environment files, and Wrangler state are ignored by Git. Check any replacement demo graph for private names and data before publishing it: Workers static assets are public. The Docker example remains the path for editing a private graph and proposing a GitHub PR.
