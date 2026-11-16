@@ -867,47 +867,6 @@ network.on("beforeDrawing", function () {
 });
 network.redraw();
 
-// At overview zoom, vis scales the text inside every node down with the
-// canvas. Keeping all 500+ names at a fixed size would cover the graph, so
-// show a collision-free sample of the most connected visible nodes. The
-// original node labels remain available as soon as the user zooms in.
-let overviewLabelCount = 0;
-const overviewLabelIds = ids.filter(id => !eventNodes.has(id))
-  .sort((a, b) => (degree[b] || 0) - (degree[a] || 0)).slice(0, 1000);
-network.on("afterDrawing", function (ctx) {
-  overviewLabelCount = 0;
-  const scale = network.getScale();
-  if (!largeGraph || scale >= 0.45 || workflowMode) return;
-  const canvas = ctx.canvas;
-  const width = canvas.clientWidth, height = canvas.clientHeight;
-  const occupied = [];
-  const dark = !document.body.classList.contains("light");
-  ctx.save();
-  ctx.font = `${11 / scale}px -apple-system, "Segoe UI", sans-serif`;
-  ctx.textBaseline = "middle";
-  for (const id of overviewLabelIds) {
-    const node = network.body.nodes[nodeIds.get(id)];
-    if (!node || node.options.hidden) continue;
-    const pt = network.canvasToDOM({ x: node.x, y: node.y });
-    if (pt.x < 0 || pt.x > width - 30 || pt.y < 20 || pt.y > height - 4) continue;
-    const name = String((NODES_META[id] || {}).label || id).split("\\n")[0];
-    const label = name.length > 32 ? name.slice(0, 31) + "…" : name;
-    const boxWidth = Math.min(240, ctx.measureText(label).width * scale + 12);
-    const box = { x: pt.x + 5, y: pt.y - 19, w: boxWidth, h: 16 };
-    if (box.x + box.w > width - 4 || occupied.some(o =>
-      box.x < o.x + o.w + 5 && box.x + box.w + 5 > o.x &&
-      box.y < o.y + o.h + 3 && box.y + box.h + 3 > o.y)) continue;
-    occupied.push(box);
-    const x = node.x + 5 / scale, y = node.y - 19 / scale;
-    ctx.fillStyle = dark ? "rgba(30,33,41,.94)" : "rgba(255,255,255,.94)";
-    ctx.fillRect(x, y, box.w / scale, box.h / scale);
-    ctx.fillStyle = dark ? "#e8e8ea" : "#101827";
-    ctx.fillText(label, x + 6 / scale, y + 8 / scale);
-    if (++overviewLabelCount >= 140) break;
-  }
-  ctx.restore();
-});
-
 // -------------------------------------- how tall the header really is
 // Everything fixed below the bar is positioned off --hdr rather than a
 // constant, because the bar is one row or two depending on how much of

@@ -81,8 +81,6 @@ def run():
         assert page.evaluate("largeGraph") is True
         assert page.evaluate("""Object.values(network.body.nodes).every(
             n => n.options.scaling?.label?.drawThreshold === 0)""")
-        page.wait_for_function("overviewLabelCount > 0")
-        assert page.evaluate("overviewLabelCount") > 0
         assert not errors, errors
 
         # GitHub Pages serves committed HTML, not the current Python template.
@@ -90,7 +88,6 @@ def run():
         published = Path(__file__).resolve().parents[1] / "docs" / "workspace.html"
         page.goto(published.as_uri() + "?lang=ja", wait_until="domcontentloaded")
         page.wait_for_selector("canvas")
-        page.wait_for_function("overviewLabelCount > 0")
         assert page.locator("#btn-language").is_visible()
         page.locator("#btn-language").click()
         assert page.locator("#nav-title-view").text_content() == "View"
