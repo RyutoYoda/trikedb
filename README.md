@@ -44,7 +44,7 @@ or just open the file and read it.
 
 <p align="center">
   <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
-    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-demo-dark.png" alt="TrikeDB dark graph view — Nikola Tesla and related Freebase facts with the node detail panel open" />
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-sample.png" alt="TrikeDB light graph view with related Freebase facts and a node detail panel open" />
   </a>
 </p>
 
