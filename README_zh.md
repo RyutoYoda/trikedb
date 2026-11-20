@@ -42,7 +42,7 @@ triples:
 
 <p align="center">
   <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
-    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-demo-dark.png" alt="TrikeDB 深色主题图谱 — Nikola Tesla 与相关 Freebase 事实，右侧打开节点详情面板" />
+    <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-sample.png" alt="TrikeDB 浅色主题图谱 — 展示 Freebase 事实和右侧节点详情面板" />
   </a>
 </p>
 

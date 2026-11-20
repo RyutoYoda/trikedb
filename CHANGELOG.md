@@ -3,6 +3,12 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 1.1.1
+
+- Show a light-theme public graph sample in all three README languages and on
+  the PyPI project page. The generated HTML and hosted demos already open in
+  light mode for first-time visitors; explicit theme choices remain respected.
+
 ## 1.0.0
 
 - Stabilize the documented single-file YAML and Python API contract for the
