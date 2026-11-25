@@ -1,5 +1,7 @@
 """Workflow RDF follows P-Plan without changing the YAML authoring contract."""
 
+from pathlib import Path
+
 import pytest
 from rdflib import Graph, Namespace, RDF
 
@@ -73,3 +75,19 @@ def test_pplan_export_passes_shacl(tmp_path):
 """, format="turtle")
     conforms, _, report = pyshacl.validate(TrikeDB(path).to_rdflib(), shacl_graph=shapes)
     assert conforms, report
+
+
+def test_prov_execution_and_plan_can_share_one_yaml_and_round_trip(tmp_path):
+    source = Path(__file__).resolve().parents[1] / "examples" / "provenance_workflow.yaml"
+    db = TrikeDB(source)
+    assert db.sparql("ASK { t:run-001 pplan:correspondsToStep t:build-report }")
+    assert db.sparql("ASK { t:run-001 prov:used t:sample-input }")
+    assert db.sparql("ASK { t:report-v2 prov:wasGeneratedBy t:run-001 }")
+    assert db.sparql("ASK { t:report-v2 prov:wasRevisionOf t:report-v1 }")
+    assert db.sparql("ASK { t:build-report pplan:isPreceededBy t:gather-input }")
+    graph = db.to_rdflib()
+    assert (T["run-001"], RDF.type, Namespace("http://www.w3.org/ns/prov#").Activity) in graph
+    copy = tmp_path / "copy.yaml"
+    copy.write_bytes(source.read_bytes())
+    TrikeDB(copy).save()
+    assert TrikeDB(copy).sparql("ASK { t:report-v2 prov:wasRevisionOf t:report-v1 }")

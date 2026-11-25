@@ -10,6 +10,8 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 - Project declared workflows to P-Plan classes, membership, and predecessor
   relations in RDF exports and SPARQL, while keeping the existing YAML,
   workbench, and agent workflow contracts.
+- Prebind W3C PROV-O for queries and document a same-file plan and execution
+  example without reinterpreting existing event or provenance attributes.
 - Keep local Cloudflare build dependencies and temporary files out of source
   distributions.
 

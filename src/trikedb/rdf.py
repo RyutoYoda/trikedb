@@ -18,6 +18,7 @@ from .model import OntologyError, Triple, _iri_node, _shorten
 
 
 PPLAN = "http://purl.org/net/p-plan#"
+PROV = "http://www.w3.org/ns/prov#"
 
 
 def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
@@ -51,6 +52,7 @@ def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
     g = Graph(identifier=URIRef(base))
     g.bind("t", base)
     g.bind("pplan", PPLAN)
+    g.bind("prov", PROV)
     for triple in statements(db, base, node_props, edge_attrs):
         g.add(triple)
     return g
@@ -183,6 +185,7 @@ def sparql(db, query: str, base: str = "urn:trikedb:"):
     prefixed = (
         f"PREFIX t: <{base}>\n"
         f"PREFIX pplan: <{PPLAN}>\n"
+        f"PREFIX prov: <{PROV}>\n"
         "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query
     )
     if db.sparql_engine == "oxigraph":
@@ -258,6 +261,7 @@ def update(db, query: str, base: str = "urn:trikedb:") -> int:
     from rdflib.plugins.sparql.algebra import translateUpdate
     prefixed = (f"PREFIX t: <{base}>\n"
                 f"PREFIX pplan: <{PPLAN}>\n"
+                f"PREFIX prov: <{PROV}>\n"
                 "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query)
     parsed = translateUpdate(parseUpdate(prefixed))
     # This is a single default graph, not an RDF dataset. Reject dataset

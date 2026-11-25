@@ -161,6 +161,13 @@ are derived RDF statements, not duplicate YAML records. The original
 `HAS_STEP` / `NEXT_STEP` facts remain available to existing agents and the UI.
 Tool links and agent gates remain TrikeDB extensions; they are not P-Plan
 input variables. P-Plan's published predicate is spelled `isPreceededBy`.
+You can also describe a real execution and its revisions with W3C PROV-O
+IRIs in the **same YAML file**. See the [fictional plan and execution](examples/provenance_workflow.yaml).
+Use full IRIs in YAML; `prov:` and `pplan:` are pre-bound in SPARQL. Existing
+`prov:` edge attributes are source notes, not PROV-O predicates, and TrikeDB
+does not reinterpret every change event as a revision. The MCP run ledger
+remains separate from the canonical graph unless you explicitly record an
+execution there.
 
 The loader checks the workflow structure: IDs must be unique, every `next`
 target must exist in that workflow, and the step graph must be connected and
