@@ -22,25 +22,16 @@ Run it:
     uv run --with streamlit --with 'trikedb[all]' \
         streamlit run examples/streamlit_app.py
 
-Point it at your own graph with TRIKEDB_GRAPH — a path, or any URL trikedb
-stores a graph at. The screen is the same either way; only the last section
+Point it at your own graph with TRIKEDB_GRAPH — a path or an object URL holding a graph file. The screen is the same either way; only the last section
 differs, because where the graph lives decides where review happens:
 
 * **A file in a git repo** — `TRIKEDB_GRAPH=ontology/graph.yaml`. What you
   wrote shows up as a diff and you commit it, so review is a pull request
   and nothing is true until somebody approves it.
 
-* **A row in a warehouse** — `TRIKEDB_GRAPH=snowflake://DB.SCHEMA.T/sales/crm`.
-  There is no working tree here, so this screen cannot offer a commit and
-  does not pretend to: writes are live the moment the guard accepts them,
-  and the last section just shows what you changed. Review moves out of the
-  screen — see `examples/export_to_git.py`, which turns a day of writing
-  into one pull request. That is the trade: people who will never open git
-  get a write surface, and the graph still ends up reviewed, later.
-
-Running inside Streamlit in Snowflake, the warehouse connection is the
-session you are already in — no token, no network rule, no secret. The graph
-is reached with the same URL and access control is the grants on the table.
+* **An object URL** — `TRIKEDB_GRAPH=s3://bucket/kg/graph.yaml`.
+  The graph is still a YAML document. Configure object-store access outside
+  this app and review edits through your normal repository workflow.
 
 On pushing (the file case): run this on your own machine and `git push` uses
 the git credentials you already have — there is no token to implement. You
@@ -63,7 +54,7 @@ from trikedb import storage
 
 TARGET = os.environ.get("TRIKEDB_GRAPH", "examples/graphs/acme/acme_pipeline.yaml")
 
-#: A URL means the graph is a row in a warehouse or an object in a bucket.
+#: A URL means the graph file is in object storage.
 #: The only thing that follows from it here is that there is no working tree
 #: to diff and no file to commit, so the review section changes. Everything
 #: above it — the form, the guard, the examples — is identical.
@@ -199,17 +190,11 @@ STRINGS = {
                      "relationships written the wrong way round.",
         "kind_ph": "table, job, person…",
         "no_graph": "No graph at {p}. Set TRIKEDB_GRAPH, or run `trikedb init {p}` first.",
-        "no_table": "The table behind {p} does not exist yet. Someone with "
-                    "rights on the warehouse runs "
-                    "`trikedb sql-init <url> --print` and applies the SQL.",
         "no_store": "Cannot reach {p}. This is a connection or a permission "
                     "problem, not something to fix on this screen — show "
                     "whoever set the graph up:",
         "tab_written": "What you wrote",
-        "written_help": "This graph is a row in a warehouse, so there is "
-                        "nothing to save — every line below is already "
-                        "stored. It goes to review in one batch later, as a "
-                        "pull request somebody reads.",
+        "written_help": "The graph file is saved at its object URL. Review changes through your repository workflow.",
         "diff_before": "when you opened this page",
         "diff_now": "now",
         "nothing_yet": "You have not changed anything yet.",
@@ -294,17 +279,11 @@ STRINGS = {
         "kind_help": "グラフがまだ見たことのない名前です。何の種類かを言っておくと、"
                      "関係が逆向きに書かれたときにグラフが捕まえられます。",
         "kind_ph": "テーブル、ジョブ、人…",
-        "no_table": "{p} の元になるテーブルがまだありません。"
-                    "ウェアハウスの権限を持つ人に "
-                    "`trikedb sql-init <url> --print` を実行してもらい、"
-                    "出てきたSQLを流してください。",
         "no_store": "{p} に届きません。接続か権限の問題で、この画面で直せる"
                     "ものではありません。グラフを用意した人に下をそのまま"
                     "見せてください。",
         "tab_written": "いま書いたこと",
-        "written_help": "このグラフはウェアハウスの行なので、保存する操作は"
-                        "ありません。下に出ている分はすべて保存済みです。"
-                        "あとでまとめてプルリクエストになり、そこで人が読みます。",
+        "written_help": "グラフのファイルはオブジェクトストレージに保存済みです。変更はリポジトリの手順でレビューしてください。",
         "diff_before": "この画面を開いたとき",
         "diff_now": "いま",
         "nothing_yet": "まだ何も変えていません。",
@@ -343,44 +322,23 @@ for _k, _v in st.session_state.pop("_pending", {}).items():
 
 # Streamlit re-runs this whole file on every interaction, so loading the graph
 # has to be cached or every click re-parses the YAML.
-@st.cache_resource
-def connection():
-    """The warehouse connection, when the host already holds one.
-
-    Inside Streamlit in Snowflake the session you are running in *is* the
-    credential, so there is nothing to configure: no token, no network rule,
-    no secret. Anywhere else this returns None and the driver falls back to
-    the SNOWFLAKE_* environment variables — which is also what a local run
-    against a warehouse graph uses.
-    """
-    if not IS_URL:
-        return None
-    try:
-        from snowflake.snowpark.context import get_active_session
-        return get_active_session()
-    except Exception:  # noqa: BLE001 - not in Snowflake, or no snowpark
-        return None
-
-
 def token():
     """Whatever changes when somebody else writes to the same graph.
 
-    For a file that is the mtime; for a warehouse row it is the version token
+    For a file that is the mtime; for a object URL it is the version token
     the store hands out, which is the same one a conditional write compares
     against. Either way it is the cache key below, so an agent, a git pull or
     a colleague on the next desk is picked up on the next rerun rather than
-    quietly ignored. A warehouse read costs a round trip per rerun; a busy
-    deployment would cache it for a few seconds, at the price of showing a
-    slightly stale graph.
+    quietly ignored.
     """
     if IS_URL:
-        return storage.version(TARGET, connection=connection())
+        return storage.version(TARGET)
     return GRAPH.stat().st_mtime if GRAPH.exists() else 0.0
 
 
 @st.cache_resource
 def load(target: str, _token) -> TrikeDB:
-    return TrikeDB(target, connection=connection())
+    return TrikeDB(target)
 
 
 def db() -> TrikeDB:
@@ -390,11 +348,10 @@ def db() -> TrikeDB:
 def stored() -> str:
     """The document exactly as the store holds it right now.
 
-    Empty when nothing is stored there yet, which for a warehouse row is an
-    ordinary starting point rather than an error.
+    Empty when the object has not been written yet.
     """
     try:
-        return storage.read_text(TARGET, connection=connection())
+        return storage.read_text(TARGET)
     except Exception:  # noqa: BLE001 - not written yet
         return ""
 
@@ -629,24 +586,12 @@ with st.sidebar:
     st.subheader("🦕 trikedb")
     st.radio("Language / 言語", list(STRINGS), key="lang", horizontal=True)
 
-# Missing means two different things. A file that is not there is a mistake
-# — you meant another path, or the graph was never created. A warehouse row
-# that is not there is an ordinary empty graph, and the first person to write
-# creates it; what cannot be recovered from is the *table* missing, because
-# creating one in a company's warehouse is not this screen's call to make.
+# A local path must already exist. An object URL must be reachable.
 if IS_URL:
     try:
-        storage.exists(TARGET, connection=connection())
-    except Exception as exc:  # noqa: BLE001 - TableMissing, auth, network
-        # Two different problems wearing one traceback: the table is not
-        # there (somebody has to create it) versus we cannot reach the
-        # warehouse at all (credentials, grants, network). Telling a user to
-        # run sql-init when the real problem is a missing password sends
-        # them to the wrong person, so the cause is named.
-        if type(exc).__name__ == "TableMissing":
-            st.error(t("no_table").format(p=TARGET))
-        else:
-            st.error(t("no_store").format(p=TARGET))
+        storage.exists(TARGET)
+    except Exception as exc:  # noqa: BLE001 - remote access or network failure
+        st.error(t("no_store").format(p=TARGET))
         st.code(str(exc), language=None, wrap_lines=True)
         st.stop()
 elif not GRAPH.exists():
@@ -770,12 +715,8 @@ example_block("w")
 # offered a separate place to create either of them was offering the same
 # thing twice — and two ways to do one thing is the part people freeze on.
 #
-# What is left is showing the person what they did, and that is where the two
-# homes for a graph stop agreeing. A file in a repo has a baseline to diff
-# against and a commit to make, so review fits on this screen. A warehouse row
-# has neither: the write already landed. Offering a "save" button there would
-# be a lie, so the section below states plainly that the work is saved and
-# what will happen to it — see examples/export_to_git.py for the other half.
+# Show the current diff. Local files can be committed here; object URLs use
+# the caller's normal review workflow.
 
 st.divider()
 if IS_URL:

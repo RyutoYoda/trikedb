@@ -24,12 +24,10 @@ flowchart TB
         direction LR
         SF("ファイル<br/>graph.yaml · graph.json")
         SO("オブジェクト<br/>s3:// · gs:// · az://")
-        SW("テーブル行<br/>snowflake:// · bigquery://")
     end
     PO("oxigraph<br/>SPARQL SELECT · ASK")
     PR("rdflib.Graph<br/>更新 · owlrl · pyshacl<br/>Turtle · JSON-LD出力")
     PN("networkx<br/>グラフアルゴリズム")
-    PV("SQL view<br/>warehouse rowの上")
     PD("エンジンなし<br/>ページ内の文書")
     subgraph query["<b>クエリ・検索</b> — 導出されるview・保存しない"]
         direction TB
@@ -39,7 +37,6 @@ flowchart TB
     end
     RQ("agent MCP · CLI · REST · Python · HTML<br/>グラフを読むすべての入口")
     RG("プログラム<br/>Python")
-    RS("SQL<br/>BI · dbt · notebook")
 
     WA --> G
     WC --> G
@@ -48,12 +45,9 @@ flowchart TB
     G --> C
     C <--> SF
     C <--> SO
-    C <--> SW
     SF ~~~ PO
     SF ~~~ PR
     SO ~~~ PN
-    SW -.-> PV
-    SW ~~~ PD
     C -.-> PO
     C -.-> PR
     C -.-> PN
@@ -63,7 +57,6 @@ flowchart TB
     PO --> RQ
     PR --> RQ
     PN --> RG
-    PV --> RS
     PD --> RQ
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
@@ -93,7 +86,7 @@ RDFファイルは交換形式であり、別の保存層ではありません�
 
 `Triple`はs/p/o・edge属性・任意の`rdf_terms`を保存します。既存文書は従来どおり、名前を`urn:trikedb:`配下のIRIにし（http/https/urnは絶対値）、空白入りobjectはliteralにします。明示RDF termはIRI・blank node・literalのdatatype/languageを保持します。空白入りエンティティ名にはobjectを明示IRIにしてください。
 
-`_statements()`がRDF投影を定義し、rdflib・Oxigraphが利用し、Turtle・JSON-LDは同じ投影を出力します。node属性はliteralになり、文字列の`type`は標準のクラス指定に使える`rdf:type`にもなります。edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXとSQL viewは文書から独立に文字列表現のproperty graphを作り、無損失RDF datasetではありません。KG_NODEはメタデータだけのnodeと全edge端点を含みます。
+`_statements()`がRDF投影を定義し、rdflib・Oxigraphが利用し、Turtle・JSON-LDは同じ投影を出力します。node属性はliteralになり、文字列の`type`は標準のクラス指定に使える`rdf:type`にもなります。edge属性は生成blank nodeのstatementに付きます。合成メタデータはUPDATE WHEREで読めますが、SPARQLでは削除できません。NetworkXは文書から文字列表現のproperty graphを作りますが、無損失のRDF datasetではありません。
 
 ## 更新と失敗
 
@@ -105,7 +98,7 @@ APIが返すTriple・属性は独立したコピーです。変更はAPIを通�
 
 ローカルsaveはユーザーのcache内のファイル別lock下で内容ハッシュを比較し、同じディレクトリの一時ファイルをwrite/fsync後にreplaceします。既存権限とsymlink先を保ち、新規ファイルは0600です。replace前の失敗では旧内容を保持します。同一ホスト・ユーザーのTrikeDBプロセスは協調しますが、lockを無視する外部プログラムとの同時書き込みには競合が残ります。ディレクトリfsyncを含む停電耐性は保証しません。
 
-S3は条件付き単一PUT（ETag/If-Matchまたは存在しない場合の作成）、SQLはversion条件と更新行数を使います。成功したwrite自身のcommit tokenを返し、保存後HEADで別writerのtokenを採用しません。S3の条件付きmultipartは未対応。他のfsspec backendにはCAS保証がありません。
+S3は条件付き単一PUT（ETag/If-Matchまたは存在しない場合の作成）を使います。成功したwrite自身のcommit tokenを返し、保存後HEADで別writerのtokenを採用しません。S3の条件付きmultipartは未対応。他のfsspec backendにはCAS保証がありません。
 
 1つのserve内のREST/MCPは同じTrikeDBを共有し、再入可能lockで操作を直列化します。ローカルファイルは各リクエスト前に内容ハッシュを確認し、外部編集を読み直します。MCPは条件付き保存の競合時にreloadして操作を再適用します。別プロセスはメモリを共有しません。Python呼出側は自分で同期し、競合後にreloadしてください。read_onlyは公開APIを保護し、任意のPythonメモリ操作までは制限しません。
 

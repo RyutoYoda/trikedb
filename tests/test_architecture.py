@@ -24,7 +24,6 @@ SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 LAYERS = {
     # 0 — data, and infrastructure with nothing under it.
     "model": 0,          # Triple and the shared helpers: what a fact *is*
-    "storage_sql": 0,    # bytes in a warehouse row
     "oauth": 0,          # tokens; knows nothing about graphs
     "templates": 0,      # starting graphs, as text; imports nothing
     "prompts": 0,        # extraction prompts, as text; imports nothing

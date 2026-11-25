@@ -70,7 +70,7 @@ GitHub AppによるドラフトPR作成は任意で設定できる。
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
-pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3/warehouse graphs
+pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3 and virtual SQL graphs
 ```
 
 オプション機能はすべて extra なので、コアは PyYAML + rdflib + pyoxigraph のまま。

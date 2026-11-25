@@ -77,6 +77,11 @@ class TrikeDB:
         sparql_engine: Optional[str] = None,
         validate_on_load: bool = False,
     ):
+        if connection is not None:
+            raise ValueError(
+                "TrikeDB no longer stores graph documents in SQL; "
+                "use R2RMLVirtualGraph for relational rows"
+            )
         self._lock = RLock()  # shared by server adapters, never serialized
         #: local paths become Path; remote URLs (s3://, https://, ...) stay str
         self.path: Union[Path, str, None] = persistence.locate(path)
@@ -90,17 +95,13 @@ class TrikeDB:
         #: union. Kept apart because reload() has to be able to restore it:
         #: forgetting it there would silently hand back a writable graph.
         self._read_only_requested = bool(read_only)
-        #: an already-open warehouse connection or Snowpark session to run
-        #: through, for hosts that cannot open one themselves. Ignored for
-        #: file-backed graphs, which have nothing to connect to.
-        self._connection = connection
         #: Opt-in fail-closed loading for reviewed graphs. The default stays
         #: repairable: an old or hand-edited file can still be opened and
         #: fixed through the public API before CI turns this gate on.
         self.validate_on_load = bool(validate_on_load)
         #: True for workspace unions and for read_only=True — mutations are
         #: refused. A reader that cannot write is the point when the graph is
-        #: shared: an app serving a warehouse-backed graph has no business
+        #: shared: an app serving a graph has no business
         #: holding a write path, and a bug or an agent cannot spend one it
         #: does not have.
         self.read_only = self._read_only_requested

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trikedb"
-version = "1.3.0"
+version = "2.0.0"
 description = "The single-file graph database: a knowledge graph that lives in one YAML file, queried with SPARQL 1.1. Built for LLM agents."
 readme = "README.md"
 license = "MIT"
@@ -15,7 +15,7 @@ dependencies = ["PyYAML>=6.0", "rdflib>=7", "pyoxigraph>=0.4"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
     # The documented single-file graph contract is frozen for the 1.x series.
-    # Optional remote backends retain their stated integration limits.
+    # Virtual SQL adapters retain their stated integration limits.
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
@@ -67,9 +67,8 @@ all = [
 # graphs, and updates diff through one. If pyoxigraph is ever missing (a
 # vendored subset, an interpreter it has no wheel for yet), reads fall back
 # to rdflib on their own.
-# The Snowflake connector is deliberately absent: the storage tests drive the
-# SQL layer through a fake DB-API connection, so nothing here needs a
-# warehouse to be installed. Real-warehouse checks are run by hand.
+# Warehouse connectors are supplied by the host application for read-only
+# R2RML virtual graphs; curated graph storage itself needs no SQL connector.
 dev = [
     "pytest>=7", "mcp>=1.30,<2", "fsspec>=2024.2", "pyshacl>=0.25",
     "owlrl>=6.0.2", "uvicorn>=0.27", "starlette>=0.37", "httpx>=0.27",

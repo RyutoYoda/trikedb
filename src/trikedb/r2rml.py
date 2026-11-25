@@ -192,7 +192,10 @@ class _VirtualStore(Store):
                                             for c in where)
         cursor = self.connection.cursor()
         try:
-            cursor.execute(sql, tuple(params))
+            if params:
+                cursor.execute(sql, tuple(params))
+            else:
+                cursor.execute(sql)
             while batch := cursor.fetchmany(1000):
                 for values in batch:
                     yield dict(zip(names, values))
@@ -260,7 +263,10 @@ class _VirtualStore(Store):
                             "c." + self._q(c) + " = " + self.placeholder for c in subject_where)
                     cursor = self.connection.cursor()
                     try:
-                        cursor.execute(sql, subject_params)
+                        if subject_params:
+                            cursor.execute(sql, subject_params)
+                        else:
+                            cursor.execute(sql)
                         while batch := cursor.fetchmany(1000):
                             for values in batch:
                                 combined = dict(zip((a for a, _ in aliases), values))

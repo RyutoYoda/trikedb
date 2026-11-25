@@ -1,12 +1,12 @@
 """Storage backends: where a graph's bytes live.
 
 Everything above this layer talks in terms of read_text/write_text/exists
-on a path-or-URL. Adding a new backend (a new URL scheme, caching, ...)
+on a path-or-URL. Adding a new file backend (a new URL scheme, caching, ...)
 happens here and nowhere else.
 
 This layer carries the storage concurrency checks. A save rewrites the whole
 document, so local files compare a content hash under a stable lock; S3 and
-SQL use their native conditional writes. A lost race surfaces as
+S3 uses native conditional writes. A lost race surfaces as
 ``ConcurrentWriteError`` instead of disappearing silently.
 """
 
@@ -22,7 +22,6 @@ import tempfile
 REMOTE_PREFIXES = (
     "s3://", "gs://", "gcs://", "http://", "https://",
     "az://", "abfs://", "memory://",
-    "snowflake://", "bigquery://",
 )
 
 #: Backends whose conditional writes we know how to drive.
@@ -63,16 +62,6 @@ def check_scheme(path) -> None:
         )
 
 
-#: Schemes handled by :mod:`trikedb.storage_sql`. Named here, deliberately
-#: duplicating what that module knows, so that a plain path or an ``s3://``
-#: URL never imports it: the SQL backend pulls in a warehouse driver, and
-#: trikedb also gets vendored as a subset of its files into places that
-#: cannot install one — Streamlit in Snowflake among them. Importing it
-#: unconditionally turned "open a local YAML file" into an ImportError there.
-#: ``test_sql_schemes_match_the_dialects`` keeps the two lists honest.
-_SQL_SCHEMES = ("snowflake", "bigquery")
-
-
 def _scheme(path) -> str:
     if not isinstance(path, str) or "://" not in path:
         return ""
@@ -82,45 +71,14 @@ def _scheme(path) -> str:
 def serialization(path) -> str:
     """"yaml" or "json" — how a graph should be written down for this target.
 
-    YAML everywhere a person might open the file, which is the whole point of
-    the format. JSON for a warehouse row, because SQL can crack JSON open
-    (`TRY_PARSE_JSON(doc):triples`) and there is no YAML parser in SQL to do
-    the same — a YAML string in a column is a graph nothing but trikedb can
-    read.
-
-    Nothing is lost by the switch: JSON is a subset of YAML, so the loader
-    reads either without knowing which it got. The reader stays oblivious;
-    only the writer needs to ask.
-
+    YAML is the default reviewable file format.
     A path ending in ``.json`` gets JSON too, which is the escape hatch for
     a graph that is read far more often than it is reviewed: the loader is
     around 30x faster on JSON than on the same graph as YAML, because
     ``json.loads`` is C and the YAML parser is not. The cost is the thing
     YAML was chosen for — nobody enjoys reading a diff of it.
     """
-    if _scheme(path) in _SQL_SCHEMES:
-        return "json"
     return "json" if str(path).lower().endswith(".json") else "yaml"
-
-
-def _sql_store(path, connection=None):
-    """The SQL-table store for this URL, or None if it isn't one.
-
-    Warehouses are not filesystems, so they do not reach fsspec: a graph
-    there is a row, addressed by table and name. The split happens here so
-    that everything above still only knows read_text/write_text.
-
-    ``connection`` is an already-open connection or session to run through
-    instead of building one. The import stays inside the scheme check so an
-    install without the SQL backend is only a problem for someone actually
-    asking for a warehouse URL — and then it is a real ImportError naming
-    the missing module, not a silent fallback to the wrong backend.
-    """
-    if _scheme(path) not in _SQL_SCHEMES:
-        return None
-    from . import storage_sql
-
-    return storage_sql.open_url(path, connection=connection)
 
 
 def _fsspec():
@@ -180,17 +138,15 @@ def _is_precondition_failure(exc: BaseException) -> bool:
     return False
 
 
-def exists(path, connection=None) -> bool:
-    store = _sql_store(path, connection)
-    if store is not None:
-        return store.exists()
+def exists(path) -> bool:
+    check_scheme(path)
     if is_remote(path):
         fs, p = _fsspec().core.url_to_fs(path)
         return fs.exists(p)
     return Path(path).exists()
 
 
-def version(path, connection=None):
+def version(path):
     """An opaque token for the bytes currently stored, or None.
 
     None means either "nothing is stored there" or "this backend has no
@@ -202,9 +158,7 @@ def version(path, connection=None):
     overwrite them. This way round the worst case is a conflict you didn't
     strictly need.
     """
-    store = _sql_store(path, connection)
-    if store is not None:
-        return store.version()
+    check_scheme(path)
     if not is_remote(path):
         try:
             return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -236,10 +190,8 @@ def _is_stale_read(exc: BaseException) -> bool:
     return False
 
 
-def read_text(path, attempts: int = 3, connection=None) -> str:
-    store = _sql_store(path, connection)
-    if store is not None:
-        return store.read_text()
+def read_text(path, attempts: int = 3) -> str:
+    check_scheme(path)
     if not is_remote(path):
         return Path(path).read_text(encoding="utf-8")
     for remaining in range(attempts - 1, -1, -1):
@@ -251,7 +203,7 @@ def read_text(path, attempts: int = 3, connection=None) -> str:
                 raise
 
 
-def write_text(path, text: str, expect=_UNCHECKED, connection=None):
+def write_text(path, text: str, expect=_UNCHECKED):
     """Write the graph out, optionally only if it hasn't moved under us.
 
     ``expect`` is a token from a previous ``version()`` call: pass the one
@@ -264,17 +216,7 @@ def write_text(path, text: str, expect=_UNCHECKED, connection=None):
     Other remote backends that cannot express the condition fall back to an ordinary
     write; the guarantee is only as good as the storage underneath.
     """
-    store = _sql_store(path, connection)
-    if store is not None:
-        # A SQL backend answers with a row count rather than an error, so the
-        # conflict is a plain False and needs no message-matching.
-        token = store.write_text(text, expect, _UNCHECKED)
-        if token is False:
-            raise ConcurrentWriteError(
-                f"{path} changed since it was read - "
-                "re-read the graph and re-apply the change"
-            )
-        return token
+    check_scheme(path)
 
     target = _conditional_fs(path)
     if target is not None:

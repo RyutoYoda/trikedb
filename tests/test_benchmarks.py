@@ -63,27 +63,3 @@ def test_workspace_does_not_delete_existing_files(tmp_path):
     existing=tmp_path/'none';existing.mkdir();(existing/'keep').write_text('keep')
     with pytest.raises(FileExistsError):ab._workspace(tmp_path,'none',tmp_path)
     assert (existing/'keep').read_text()=='keep'
-
-
-def test_backend_cleanup_is_scoped_on_failure(monkeypatch,tmp_path):
-    import backend_bench as bb
-    from trikedb import storage_sql
-    calls=[]
-    class Fake:
-        def __init__(self,*a,**k):pass
-        def __len__(self):return 1
-        def save(self,target=None):
-            if str(target).startswith('snowflake://'):
-                raise RuntimeError('write failed')
-        def sparql(self,*a):return []
-        def add(self,*a):pass
-    monkeypatch.setattr(bb,'TABLE','TEST.PUBLIC.BENCH')
-    monkeypatch.setattr(bb,'SIZES',[3])
-    monkeypatch.setattr(bb,'build',lambda n:Fake())
-    monkeypatch.setattr(bb,'TrikeDB',Fake)
-    monkeypatch.setattr(storage_sql,'open_url',lambda url:SimpleNamespace(_run=lambda sql,params,**k:calls.append((sql,params))))
-    with pytest.raises(RuntimeError,match='write failed'):bb._measure(tmp_path)
-    assert len(calls)==1
-    sql,params=calls[0]
-    assert 'WHERE name = %s' in sql and 'LIKE' not in sql
-    assert params[0].startswith('bench/') and params[0].endswith('/g3')

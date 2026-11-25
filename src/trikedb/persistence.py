@@ -2,7 +2,7 @@
 
 One YAML (or JSON) document holds the ontology, the nodes and the
 triples; a workspace holds paths to several of those and reads them as
-one. Where the bytes actually live — a file, S3, a warehouse row — is
+one. Where the bytes actually live — a local file or object storage — is
 storage.py's question, not this module's.
 
 Free functions taking the store, with `reload` and `save` kept as methods
@@ -43,7 +43,7 @@ def locate(path):
 def load_if_present(db) -> None:
     """Read the document now if there is one. A path with nothing at it is
     not an error — it is an empty graph that knows where it will be saved."""
-    if db.path is not None and _exists(db.path, db._connection):
+    if db.path is not None and _exists(db.path):
         load(db)
 
 
@@ -56,7 +56,7 @@ def reload(db) -> "TrikeDB":
     """
     fresh = type(db)(
         db.path, autosave=db.autosave, read_only=db._read_only_requested,
-        connection=db._connection, sparql_engine=db.sparql_engine,
+        sparql_engine=db.sparql_engine,
         validate_on_load=db.validate_on_load,
     )
     # Parsing can fail when a person is halfway through an edit. Keep the
@@ -77,16 +77,16 @@ def reload_local_if_changed(db) -> None:
     retain explicit reload semantics; stale Python writes fail on save.
     """
     if (isinstance(db.path, Path) and db.workspace is None
-            and _version_of(db.path, db._connection) != db._version):
+            and _version_of(db.path) != db._version):
         reload(db)
 
 
 def load(db) -> None:
     # Version first, content second — the other order can hand us a token
     # that belongs to bytes we never saw. See storage.version.
-    db._version = _version_of(db.path, db._connection)
+    db._version = _version_of(db.path)
     try:
-        data = _parse_document(_read_text(db.path, connection=db._connection))
+        data = _parse_document(_read_text(db.path))
     except yaml.YAMLError as exc:
         # PyYAML reports "<unicode string>", never the file it came from,
         # which is no help at all in a workspace of five members.
@@ -95,8 +95,7 @@ def load(db) -> None:
         # Valid YAML that isn't a mapping — a bare string or list. Reaching
         # .get() on it blames whichever key we happened to ask for first,
         # which sends the reader looking in the wrong place entirely. More
-        # than a theoretical worry once the graph lives somewhere other
-        # people can write to, like a shared warehouse table.
+        # than a theoretical worry once the graph lives in shared storage.
         raise ValueError(
             f"{db.path} does not hold a graph: expected a YAML mapping "
             f"with triples/nodes/ontology keys, found {type(data).__name__}"
@@ -303,7 +302,7 @@ def load_workspace(db, graphs: dict) -> None:
         # warehouse has to reach it the same way this graph did, and a
         # host that cannot open its own connection cannot open one here
         # either.
-        if not _exists(gpath, db._connection):
+        if not _exists(gpath):
             # Not the same as an empty member: the workspace named this
             # file, so a typo here silently drops a whole graph out of
             # the union and every query just returns less.
@@ -314,7 +313,7 @@ def load_workspace(db, graphs: dict) -> None:
         # A member of a workspace is another store of the same kind, so
         # ask the instance rather than importing the class back — the one
         # place this module would otherwise have to know about db.py.
-        sub = type(db)(gpath, connection=db._connection)
+        sub = type(db)(gpath)
         for k, v in sub.ontology.items():
             db.ontology.setdefault(k, v)
         for k, v in sub.predicate_descriptions_ja.items():
@@ -358,15 +357,13 @@ def guard_writable(db) -> None:
 def save(db, path: Union[str, Path, None] = None):
     """Write the graph back out. Plain triples stay on one line.
 
-    Works for local paths, remote URLs (s3://, ...) and warehouse rows
-    (snowflake://) alike. On local files, S3 and in a warehouse the write is
+    Works for local paths and object URLs (s3://, ...). On local files and S3 the write is
     conditional on the stored graph still being the one this copy was
     read from: if another writer got there first, nothing is written and
     ``ConcurrentWriteError`` is raised — call ``reload()`` and re-apply.
     Other remote backends without conditional writes stay last-write-wins.
 
-    Files get YAML, because a person reads those. A warehouse row gets
-    JSON, so SQL can see inside it; see ``storage.serialization``.
+    Files get YAML by default because a person reads those. A .json path gets JSON.
     """
     guard_writable(db)
     rules.settle(db)   # a file that breaks its own ontology never gets out
@@ -397,8 +394,8 @@ def save(db, path: Union[str, Path, None] = None):
         )
     if target == db.path:
         # Same file we read: refuse to overwrite someone else's save.
-        db._version = _write_text(target, text, expect=db._version, connection=db._connection)
+        db._version = _write_text(target, text, expect=db._version)
     else:  # save-as: nothing to compare against
-        db._version = _write_text(target, text, connection=db._connection)
+        db._version = _write_text(target, text)
     db.path = target
     return target

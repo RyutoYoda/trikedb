@@ -11,7 +11,7 @@ Every feature, and how to use it. For the design rationale see
 
 API-returned triples/properties are snapshots; use mutation APIs, not edits to returned objects. `batch()` rolls back its in-memory state on body or final-save failure; explicit saves/external effects inside it cannot be undone. `reload()` uses the stored ontology. The whitelist applies to API insertions when configured, with HTTP(S) predicate exceptions. Hand-edited files open by default for repair; `audit` reports undeclared predicates as errors, and `validate_on_load=True` rejects all audit errors on open and reload. SHACL remains a separate validation step.
 
-Local writes compare the file's content hash under a per-file lock before atomic replacement; stale saves raise `ConcurrentWriteError`. MCP/REST reload a local file changed by another writer before each request. Python callers use `reload()` after a conflict. S3/SQL conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. HTML uses vis-network/Oxigraph CDNs by default; `offline=True` embeds pinned assets for local viewing. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
+Local writes compare the file's content hash under a per-file lock before atomic replacement; stale saves raise `ConcurrentWriteError`. MCP/REST reload a local file changed by another writer before each request. Python callers use `reload()` after a conflict. S3 conditional saves use the token returned by their own commit. Other fsspec backends lack that guarantee. HTML uses vis-network/Oxigraph CDNs by default; `offline=True` embeds pinned assets for local viewing. See [the API contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
 
 
 **Performance numbers below are historical measurements on their recorded hardware and version, not freshly measured guarantees for this release.**
@@ -30,7 +30,7 @@ flowchart LR
     end
 
     subgraph store["Store"]
-        Y[("graph.yaml<br/>local · s3:// · snowflake:// · workspace union")]
+        Y[("graph.yaml<br/>local · s3:// · workspace union")]
         H("health: check · audit · SHACL")
     end
 
@@ -254,21 +254,6 @@ Every triple in a union carries a `graph:` attribute naming its source;
 shared node names auto-join across members; writes are refused with a
 pointer to the member files.
 
-Members can be warehouse rows too, and they inherit the connection — which
-is what makes a union usable somewhere that cannot open one of its own:
-
-```yaml
-# workspace.yaml, itself stored as a row
-graphs:
-  ontology: snowflake://DB.SCHEMA.T/kg/ontology
-  skills:   snowflake://DB.SCHEMA.T/kg/skills
-```
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
-             connection=get_active_session(), read_only=True)
-```
-
 **Let `TrikeDB` build the union rather than reading the members and merging
 them yourself.** Three details decide what a union contains, and getting
 one wrong is silent — the graph just comes out slightly poorer than the
@@ -373,7 +358,7 @@ quadratic and takes minutes; inside `batch()` the same load is seconds.
 | `TrikeDB(path, read_only=True)` | Open a graph for reading only; every mutation raises. Survives `reload()` |
 | `TrikeDB(path, validate_on_load=True)` | Reject audit errors, including undeclared predicates in hand-edited YAML; default loading stays repairable |
 | `TrikeDB(path, sparql_engine="rdflib")` | Pin the SPARQL engine; the default is the core dependency oxigraph, with rdflib fallback |
-| `TrikeDB(url, connection=conn)` | Run through an already-open warehouse connection or Snowpark session instead of building one |
+
 | `save(path=)` | Write YAML (local or remote URL). `autosave=True` does this on every mutation |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | State attributes |
 
@@ -407,9 +392,7 @@ Everything the API can do (`pip install trikedb`, or `uvx --from trikedb trikedb
 | `trikedb mcp FILE` | MCP server over stdio |
 | `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--actor-claim] [--stateless]` | UI + REST + MCP over Streamable HTTP |
 
-All `FILE` arguments accept local paths, `s3://`/`gs://`/`https://`
-URLs (`[remote]` extra), `snowflake://` graphs (`[snowflake]` extra),
-and workspace files.
+All `FILE` arguments accept local paths, object URLs (`[remote]` extra), and workspace files.
 
 ### Starting from a template
 
@@ -767,26 +750,7 @@ is the flag.
 
 #### Concurrent writes
 
-A save rewrites the whole document, so two writers that both read version
-N each produce a version N+1 and one of them would vanish. On S3 and on a
-warehouse that does not happen: the save is conditional on the stored
-graph still being the one it was read from, and a write that would clobber
-someone else is refused with `ConcurrentWriteError` instead. The MCP write
-tools recover on their own — they re-read the graph, re-apply the single
-change they were asked to make, and save again, backing off between tries.
-
-Ten concurrent `add_triple` calls against one S3 file, through a Lambda
-that scales out to a container per request, land all ten. Before the
-conditional write they landed four, and the other six disappeared with no
-error anywhere. Ten concurrent writers against one `snowflake://` row land
-all ten as well.
-
-The two backends express the same guarantee differently. S3 compares an
-ETag through `If-Match` and reports a failed precondition as an error. A
-warehouse compares a version column inside the statement itself
-(`UPDATE ... WHERE name = ? AND version = ?`) and reports the outcome as
-an affected-row count, so a conflict is a plain zero rather than an error
-to interpret.
+A save rewrites a whole graph file. Local files use a content-hash check under a lock; S3 uses conditional ETags. A stale save raises `ConcurrentWriteError`, and MCP write tools reload and retry the requested change.
 
 Two limits worth knowing:
 
@@ -1077,282 +1041,11 @@ trikedb stores no credentials and your bucket policy is the access
 control. `gs://`, `az://` and read-only `https://` work the same way with
 the matching fsspec backend installed.
 
-**A warehouse table** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
-or `TrikeDB("bigquery://project.dataset.TABLE/sales/crm")` keeps the graph in
-a row (`[snowflake]` / `[bigquery]` extras). One table holds many
-graphs, so adopting trikedb costs one table rather than one per graph:
-
-| column | |
-|---|---|
-| `name` | the graph, from the path after the table |
-| `doc` | the YAML document, byte for byte |
-| `version` | the token that makes a save conditional |
-| `updated_at` | when it last changed |
-
-There is no local copy and nothing to synchronise — the row *is* the
-graph. The whole document is read on open and written on save, so this
-suits graphs up to a few MB rather than tens.
-
-That also means there is no working tree and no diff before the fact
-lands, so choosing it chooses where review happens too — see
-[Curating it through a screen](#curating-it-through-a-screen).
-
-`doc` holds JSON here, where a file holds YAML. That is the one place the
-stored format differs, and it buys the next section: SQL has no YAML
-parser, so a YAML string in a column would be a graph nothing but trikedb
-could read. JSON is a subset of YAML, so the loader is unchanged and
-neither is anything above it.
-
-### Reading the graph from SQL
-
-`sql-init` creates four views beside the table, and they are what make a
-warehouse graph worth choosing: the same graph answers SPARQL from memory
-and SQL from the warehouse, with no second copy to keep in step.
-
-| View | Columns |
-|---|---|
-| `KG_NODE` | `GRAPH`, `NODE_ID`, `NODE_TYPE`, `NAME`, `PROPS`, `TS_UPDATED` |
-| `KG_EDGE` | `GRAPH`, `EDGE_ID`, `SRC_ID`, `DST_ID`, `EDGE_TYPE`, `PROPS`, `TS_UPDATED` |
-| `KG_PREDICATE` | `GRAPH`, `PREDICATE`, `DESCRIPTION` |
-| `KG_TRIPLE` | `GRAPH`, `S`, `P`, `O`, `ATTRS` |
-
-`KG_NODE` and `KG_EDGE` follow the node/edge column shape conventionally
-used for property graphs on Snowflake — the same layout as the
-[Snowflake-Labs knowledge-graph reference implementation][kg-ref] — so a
-Cortex Analyst semantic model or query pattern written against that shape
-applies here too. That alignment is an intended byproduct, not a
-dependency: nothing is imported from there, the SQL is generated from
-trikedb's own model, and trikedb is not affiliated with or endorsed by
-Snowflake.
-
-Projecting a stored document into node/edge/triple views is a generic
-idea; only the SQL that spells it is dialect-specific — `TRY_PARSE_JSON`
-and `LATERAL FLATTEN` here, `jsonb_to_recordset` on Postgres, `json_each`
-on SQLite. So the views live on the `_Dialect` alongside its types and
-upsert syntax, and a second warehouse is one more `_Dialect` literal
-rather than a change spread across the module. `NODE_ID`, `SRC_ID` and
-`EDGE_TYPE` are ordinary property-graph terms and carry over unchanged.
-
-[kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
-
-The projection is the one `to_networkx()` already performs — triples to
-nodes and edges — pointed at SQL instead of networkx. `KG_PREDICATE` has
-no counterpart there: a property graph's edge type is a bare label, while
-a predicate here is a first-class name the ontology describes, and
-dropping it would change what the graph means. `KG_TRIPLE` is the RDF view
-of the same rows, for anyone who thinks in triples.
-
-Node properties land in `PROPS` and edge attributes in the edge's `PROPS`,
-both as VARIANT, so adding a predicate or an attribute never needs a DDL
-change. `type` and `label` are lifted into `NODE_TYPE` and `NAME` because
-they already carry meaning in the workbench, which makes
-`WHERE NODE_TYPE = 'table'` the natural filter. `EDGE_ID` is an MD5 of
-`s|p|o`: a triple is unique on those three, so re-reading the view never
-renames an edge that did not change.
-
-This is what the whole arrangement is for — asking whether the graph still
-matches reality:
-
-```sql
-SELECT k.NODE_ID, t.TABLE_NAME
-FROM MYDB.PUBLIC.KG_NODE k
-LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
-WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- claimed, but gone
-```
-
-Views rather than tables on purpose: nothing is stored twice, nothing can
-drift, and the cost is zero. Snowflake pushes `AT(TIMESTAMP => ...)` down
-to the base table, so a view reads the past as happily as the present:
-
-```sql
-SELECT * FROM MYDB.PUBLIC.KG_TRIPLE AT(TIMESTAMP => '2026-08-20 01:21:03-07:00');
-```
-
-The trade is that a view cannot prune. Snowflake's own guidance is to
-flatten into relational columns once that starts to cost you, so
-materialize then — `CLUSTER BY (NODE_TYPE)` on nodes,
-`(EDGE_TYPE, SRC_ID, DST_ID)` on edges — and not before. `--no-views`
-skips them entirely.
-
-Create the table before first use; trikedb will not run DDL in your
-warehouse on its own:
-
-```bash
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # show the DDL
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # or run it
-trikedb sql-init … --no-views                                    # table only
-```
-
-Pick the schema deliberately. Five objects appear — one table and four
-views — and if something in your environment counts objects per schema
-(a data-quality dashboard using the total as a denominator, a layer
-prefix convention), they will show up there. A schema of trikedb's own
-avoids the question.
-
-Connection settings come from the environment — `SNOWFLAKE_ACCOUNT`,
-`SNOWFLAKE_USER`, and either `SNOWFLAKE_PRIVATE_KEY_PATH` (a PKCS#8 PEM)
-or `SNOWFLAKE_PASSWORD`, plus optional `SNOWFLAKE_ROLE`,
-`SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` and
-`SNOWFLAKE_AUTHENTICATOR`. If your organisation already standardises
-Snowflake access in `connections.toml`, name the entry instead and the
-rest is deferred to it:
-
-```bash
-export SNOWFLAKE_CONNECTION_NAME=analytics
-```
-
-If your account uses browser-based SSO (`authenticator = externalbrowser`),
-install the connector's `secure-local-storage` extra as well. Without it
-the SSO token is not cached and *every process* opens a browser — which
-makes the CLI unusable in a loop and a CI step impossible:
-
-```bash
-pip install 'snowflake-connector-python[secure-local-storage]'
-```
-
-**Bringing your own connection.** Some hosts have a session and no way to
-make another: inside Streamlit in Snowflake there are no credentials to
-find and no outbound connection to open, only the session the host already
-holds. Pass it in:
-
-```python
-from snowflake.snowpark.context import get_active_session
-
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
-             connection=get_active_session(),
-             read_only=True)
-```
-
-A DB-API connection works too. Dispatch is on what the object can do, not
-on an imported type, so neither driver has to be installed for the other
-path to work: `cursor()` means DB-API and affected rows come from
-`rowcount`; `sql()` means Snowpark, where `collect()` returns rows either
-way and Snowflake's own answer to DML *is* a row whose first cell is the
-count. An injected connection is used as-is — trikedb neither caches nor
-reconnects it, because its lifetime belongs to whoever passed it.
-
-**Opening a graph read-only.** `TrikeDB(url, read_only=True)` refuses
-every mutation — `add`, `remove`, `set_node`, `save` and SPARQL updates
-alike — and keeps refusing after `reload()`. An app that only reads has no
-business holding a write path: a bug or an agent cannot spend a capability
-it was never given. This is the shape to use when writes belong to a
-reviewed file in git and the warehouse is there for distribution and SQL
-access.
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
-db.sparql("SELECT ?o WHERE { t:crm-sync-job t:INGESTS_TO ?o }")   # fine
-db.add("x", "P", "y")                                             # ValueError
-```
-
-Warehouse DML serialises per table, so writers to *different* graphs in
-one table serialise too. That is invisible at agent-editing rates; shard
-into several tables if you ever push real write throughput through it.
-
-Table names cannot be parameterised, so the one in the URL is validated
-as an identifier (`DATABASE.SCHEMA.TABLE`, at most three parts) rather
-than quoted, and anything else is rejected before a statement is built.
-
-Adding a backend happens in `storage.py` / `storage_sql.py` and nowhere
-else. A warehouse is a `_Dialect` — four SQL templates and a connect
-function.
+For live relational rows in Snowflake, BigQuery, or Databricks, use the separate read-only [R2RML virtual graph](VIRTUAL_GRAPH.md). The curated graph and its mapping stay in files; source rows remain in their database.
 
 ## Speed
 
-The graph lives in memory, so what costs time is opening it and querying it.
-Both are tunable, and neither needs a change to how you write the graph.
-
-Measured on 40,800 triples with `benchmarks/backend_bench.py`, medians of
-three, Apple silicon:
-
-| backend | open | 1-hop | 2-hop join | write 1 fact |
-|---|---|---|---|---|
-| local `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |
-| local `.json` | **57 ms** | 0.04 ms | 55 ms | **148 ms** |
-| `snowflake://` row | 507 ms | 0.04 ms | 56 ms | 2,889 ms |
-
-Three things fall out of that. **Queries do not care where the graph lives** —
-identical across all three, because they run in memory. **The format matters
-more than the medium**: the same graph opens 17x faster as `.json` than as
-`.yaml`, and a warehouse row beats a local YAML file despite crossing a
-network, because its document is already JSON. **Warehouse writes are the
-expensive operation** — read, rewrite, conditional update — so batch with
-`autosave=False` rather than putting them in a loop.
-
-And the engine, on the same graph once built:
-
-| | 1-hop | 2-hop join | count all |
-|---|---|---|---|
-| rdflib | 0.90 ms | 342 ms | 432 ms |
-| oxigraph (default) | **0.04 ms** | **52 ms** | **11 ms** |
-
-One knob, and one thing that is already on — neither changes what is
-stored:
-
-**Store JSON instead of YAML** for a graph that is read far more often than
-it is reviewed — name the file `graph.json`, or keep it in a warehouse row,
-which is JSON already. Same API, same SPARQL, ~30x faster to open. The cost
-is the thing YAML was picked for: nobody enjoys reading a diff of JSON.
-
-**The fast SPARQL engine is already there.** Read queries run on
-[Oxigraph](https://github.com/oxigraph/oxigraph), a Rust engine with real
-indexes; `pyoxigraph` is a core dependency because it was faster at every
-graph size measured, down to a few hundred triples. Both are SPARQL 1.1 and
-the test suite asserts they answer identically — including the sharp edge,
-typed literals, where `?x t:pii true` has to match a boolean rather than the
-string `"true"`. `TrikeDB(..., sparql_engine="rdflib")` pins the old engine, which is worth
-doing if you ever want to compare the two on a real query. If pyoxigraph is
-ever absent — a vendored subset of the files, an interpreter it has no wheel
-for yet — reads fall back to rdflib on their own rather than failing.
-
-Updates (`INSERT`/`DELETE`), OWL inference and SHACL always use rdflib — those
-paths change data or hand the graph to `owlrl`/`pyshacl`, and a second
-implementation buys nothing there.
-
-What is *not* tunable is the shape: the whole document is read on open and
-rewritten on save. That is the price of a graph you can review in a diff, and
-it is why the practical ceiling is a few MB rather than a few GB.
-
-Two things make a big graph feel slow that are not the graph's fault:
-
-- **`autosave=True` in a loop.** One full rewrite per mutation. 28k triples
-  that way is about an hour; the same load inside `with db.batch():` is
-  seconds.
-- **Encoding for semantic search.** 27.5k sentences take ~10s to embed the
-  first time, ~0.1s after — see below.
-
-### The embedding model
-
-The first `search()` or `find()` **downloads the model** — about 1 GB, from
-Hugging Face — and caches it. Every search after that needs no network. This
-is the only place any part of trikedb reaches the network on its own, and it
-happens inside an extra you chose to install; the base package fetches
-nothing.
-
-`TRIKEDB_EMBED_MODEL` points it somewhere else: a local directory holding the
-model, or the same model's name on a mirror you can reach. Set it on a
-machine that cannot reach `huggingface.co`, or anywhere a 1 GB fetch is
-something somebody has to approve first. A load that fails names the model it
-wanted and what to set instead of failing as if the feature were broken.
-
-### Embedding cache
-
-`search()` and `find()` embed the graph, and the vectors are cached so they
-are computed once. Keyed per *sentence*, so adding one fact re-encodes one
-sentence rather than the corpus (27.5k sentences: 10.4s cold, 0.11s warm,
-0.10s after a write).
-
-The cache is **not** stored beside the graph — a binary blob next to a YAML
-whose point is being a reviewable diff gets committed by the first
-`git add -A`. It lives in `TRIKEDB_CACHE_DIR` if set, else
-`$XDG_CACHE_HOME/trikedb`, else `~/.cache/trikedb`, as one file per (graph,
-model). Deleting it is always safe. Graphs on S3 or in a warehouse are not
-cached at all.
-
-A hit on a node whose property holds a whole document returns a labelled
-preview of that value plus `chunk_text`, the passage that actually matched —
-a 540k-character body used to come back whole. `node()` / `get_node` still
-return the untouched value.
+Curated YAML/JSON files are loaded into memory. `.json` opens faster but is harder to review. R2RML virtual reads use the source database at query time; bound subjects and literal columns are pushed to SQL, while SPARQL joins run in RDFLib. Full graph export may scan entire source tables. See [virtual graph mapping](VIRTUAL_GRAPH.md).
 
 ## Validation & inference
 
@@ -1450,45 +1143,7 @@ the Japanese should read like — and that belongs to whoever runs the
 graph. A copied file can be edited; a library screen can only be
 configured.
 
-**Where you point it decides where review happens.** `TRIKEDB_GRAPH`
-takes a path or any storage URL, and the form is identical either way;
-only the last section of the page differs:
-
-| `TRIKEDB_GRAPH` | Who can write | Where review happens |
-|---|---|---|
-| `ontology/graph.yaml`, in a clone of the repo | whoever has the repo checked out | the screen shows the diff and pushes a branch — the pull request is the gate, as usual |
-| `snowflake://DB.SCHEMA.TABLE/sales/crm` | anyone who can open the page | the write lands at once; one pull request a day carries the day's work |
-
-The second row is what makes the screen usable by people who do not have
-git, which was the point of building it. What it moves is *when* review
-happens:
-
-```
-a file:      write -> pull request -> review -> the fact is in the graph
-a warehouse: write -> the fact is in the graph -> pull request -> review
-```
-
-The half that catches dangerous mistakes is kept either way, because the
-ontology guard runs at the moment of writing: an undeclared predicate, an
-edge written backwards and an action whose precondition never happened
-are refused at the screen and never reach the store. What the pull
-request adds on top is judgement — *is this true?* — and reading that
-once a day is usually fine for a curated graph. Where a well-formed but
-wrong fact would be expensive (who owns what, which service is live, who
-may read a table), keep that graph on the file path and leave the rest on
-the warehouse.
-
-`examples/export_to_git.py` is the daily job: it reads the warehouse
-graph, `db.save()`s it into the repo as YAML, and opens the pull request —
-or says nothing changed and exits. `examples/graph-export.yml` is the
-GitHub Actions schedule that runs it. Nothing in the library exists for
-their sake; `db.save(path)` already writes YAML wherever the graph was
-read from, which is the whole export.
-
-Running inside Streamlit in Snowflake, the warehouse connection is the
-session the app is already in — `get_active_session()`, passed to
-`TrikeDB(..., connection=)`. No token, no network rule, no secret to
-rotate, and the graph never leaves the account.
+The example edits a YAML file in a repository and shows its diff before a pull request. Object storage can hold the same file, but review still belongs in the repository workflow.
 
 ## Where the HTML workbench goes
 
@@ -1498,16 +1153,13 @@ graph lives never decides where the page goes:
 ```bash
 trike ui generate graph.yaml                      # -> graph.html, next to it
 trike ui generate s3://bucket/kg/graph.yaml       # -> graph.html in the working dir
-trike ui generate snowflake://DB.SCHEMA.T/sales/crm   # -> crm.html in the working dir
 trike ui generate graph.yaml -o docs/index.html   # or say where explicitly
 trike ui generate graph.yaml -o s3://site/kg.html # publish it to a bucket
 ```
 
 A remote graph renders to the working directory by default, named after
 the graph, because a URL has no sibling file to put it next to. `-o`
-accepts a local path or an object URL. It does not accept a warehouse
-URL — a row there holds a graph, and writing a page into it would replace
-the graph with markup the loader cannot read.
+accepts a local path or an object URL.
 
 The page is single-file, CDN-dependent (one file, no build step, no server), so
 "publishing" it is just putting it somewhere: commit it for GitHub Pages,
@@ -1541,24 +1193,10 @@ is a log doing its job.
 heuristics are an agent's job, with the ontology guard keeping whatever
 the agent writes inside your vocabulary.
 
-**How the review step works depends on where the graph lives**, and this
-is worth deciding before you pick a backend:
-
-- **A file in git** — the original story, and still the strongest one.
-  Every change is a reviewable diff; `audit` and `check` run in CI;
-  history and blame come free. Choose this whenever the graph is small
-  enough to review and the writers are few.
-- **An object or warehouse graph** — there is no pull request. Writes
-  land immediately, so review has to move somewhere else: the ontology
-  guard at the write boundary (which is why it exists), `audit` on a
-  schedule rather than per-change, and the backend's own history — S3
-  object versions, or a warehouse's time travel and the `updated_at`
-  column. Agents editing a shared graph is exactly the case this is for.
-- **Both, deliberately** — some teams keep the reviewed graph in git and
-  let agents write to a separate shared graph, then union the two with a
-  workspace file. Curation and accumulation stay separate, and neither
-  blocks the other.
-
+**Review curated graph definitions in git.** Every change is a diff; run
+`audit` and `check` in CI. A shared object-storage graph can use object
+versions and an external review process. R2RML virtual graphs are read-only;
+their source rows stay in the relational database.
 Whichever you pick, the loop is the same shape: write, regenerate the
 view, check, audit, act on findings. Only the gate at the end moves.
 
@@ -1571,8 +1209,8 @@ view, check, audit, act on findings. Only the gate at the end moves.
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` etc. | fsspec, s3fs; add gcsfs for gs:// |
-| `[snowflake]` | `snowflake://` graphs | snowflake-connector-python |
-| `[bigquery]` | `bigquery://` graphs | google-cloud-bigquery |
+| `[snowflake]` | connector for R2RML virtual reads | snowflake-connector-python |
+| `[bigquery]` | connector for R2RML virtual reads | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search` (embeddings, multilingual, no torch) | model2vec, numpy — **first use downloads ~1 GB**, see [The embedding model](#the-embedding-model) |

@@ -30,7 +30,7 @@ flowchart LR
     end
 
     subgraph store["存储"]
-        Y[("graph.yaml<br/>本地 · s3:// · snowflake:// · workspace union")]
+        Y[("graph.yaml<br/>本地 · s3:// · workspace union")]
         H("健康检查: check · audit · SHACL")
     end
 
@@ -229,21 +229,6 @@ graphs:                # 本地路径和远端 URL 可以随意混用
 union 里的每条三元组都带一个 `graph:` 属性标明来源；同名节点在成员之间自动
 连接；写入会被拒绝，并返回指向成员文件的提示。
 
-成员也可以是数仓里的行，而且它们**继承连接** —— 这正是让 union 能在
-"自己开不了连接的地方"也用得起来的原因：
-
-```yaml
-# workspace.yaml 自己也可以存成一行
-graphs:
-  ontology: snowflake://DB.SCHEMA.T/kg/ontology
-  skills:   snowflake://DB.SCHEMA.T/kg/skills
-```
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
-             connection=get_active_session(), read_only=True)
-```
-
 **让 `TrikeDB` 去组装 union，不要自己读成员再合并。** 有三个细节决定一个
 union 里到底有什么，而弄错其中任何一个都是**静默的** —— 图只是比它所依据的
 那些文件稍微贫瘠了一点：
@@ -343,7 +328,6 @@ db = TrikeDB("graph.yaml", ontology={...})   # autosave=True 是默认值
 | `TrikeDB(path, read_only=True)` | 以只读方式打开一张图；任何变更都会抛错。`reload()` 之后依然有效 |
 | `TrikeDB(path, validate_on_load=True)` | 拒绝 audit 错误，包括手工编辑 YAML 中未声明的谓词；默认加载仍可用于修复 |
 | `TrikeDB(path, sparql_engine="rdflib")` | 固定 SPARQL 引擎；默认是核心依赖 oxigraph，并以 rdflib 兜底 |
-| `TrikeDB(url, connection=conn)` | 用一个已经打开的数仓连接或 Snowpark session，而不是自己再建一个 |
 | `save(path=)` | 写出 YAML（本地或远端 URL）。`autosave=True` 会在每次变更时做这件事 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状态属性 |
 
@@ -380,8 +364,7 @@ API 能做的事，命令行都能做（`pip install trikedb`，或者
 | `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--actor-claim] [--stateless]` | 基于 Streamable HTTP 的 UI + REST + MCP |
 
 所有 `FILE` 参数都接受本地路径、`s3://`/`gs://`/`https://` URL
-（`[remote]` extra）、`snowflake://` 图（`[snowflake]` extra），
-以及 workspace 文件。
+（`[remote]` extra）、以及 workspace 文件。
 
 ### 从模板开始
 
@@ -688,20 +671,7 @@ OAUTH_ISSUER=https://idp.example.com/
 
 #### 并发写入
 
-一次保存会重写整份文档，所以两个都读到版本 N 的写入者，各自产出一个版本
-N+1，其中一个就会凭空消失。在 S3 上和在数仓上不会发生这种事：保存是有
-条件的——要求存储中的图仍然是当初读出来的那一份，而一个会覆盖掉别人的
-写入会被拒绝，抛出 `ConcurrentWriteError`。MCP 的写入工具会自己恢复 ——
-重新读图，把它被要求做的那一处变更重新施加一遍，再保存，并在重试之间退避。
-
-十个并发的 `add_triple` 打向同一个 S3 文件，经由一个每请求扩一个容器的
-Lambda，十个全部落地。在引入条件写之前，落地的是四个，另外六个消失了，
-而且任何地方都没有报错。十个并发写入者打向同一行 `snowflake://` 同样十个全落。
-
-这两种后端用不同方式表达同一个保证。S3 通过 `If-Match` 比较 ETag，并把
-前置条件失败报成一个错误。数仓则在语句内部比较一个版本列
-（`UPDATE ... WHERE name = ? AND version = ?`），把结果报成受影响行数，
-于是冲突就是一个朴素的零，而不是一个需要解读的错误。
+保存会重写整个图文件。本地文件在锁下比较内容哈希，S3 使用条件 ETag 检测冲突。旧版本写入会抛出 `ConcurrentWriteError`，MCP 会重新加载并重试请求的变更。
 
 有两条限制值得知道：
 
@@ -792,247 +762,11 @@ JS/WASM 和许可证声明；文件更大，但可从无网络的 `file://` 打�
 IAM 角色）；trikedb 不存任何凭据，你的 bucket policy 就是访问控制。
 装上对应的 fsspec 后端之后，`gs://`、`az://` 和只读的 `https://` 也是一样的。
 
-**数仓的一行** —— `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
-或 `TrikeDB("bigquery://project.dataset.TABLE/sales/crm")` 把图存在一行里
-（`[snowflake]` / `[bigquery]` extra）。一张表装很多张图，所以引入 trikedb
-的代价是一张表，而不是每张图一张表：
-
-| 列 | |
-|---|---|
-| `name` | 是哪张图，取自表名之后的那段路径 |
-| `doc` | YAML 文档，一个字节不差 |
-| `version` | 让保存变成有条件的那个令牌 |
-| `updated_at` | 上次变更的时间 |
-
-没有本地副本，也没有什么需要同步的 —— 那一行**就是**图。打开时读整份文档，
-保存时写整份文档，所以这适合几 MB 以内的图，而不是几十 MB。
-
-这同时也意味着这里没有工作区，事实落库之前也没有 diff —— 换句话说，
-**选存在哪里，也就是在选评审发生在哪里** ——
-见[用一个页面来养这张图](#用一个页面来养这张图)。
-
-在这里 `doc` 存的是 JSON，而文件里存的是 YAML。这是存储格式唯一不同的地方，
-而它换来了下一节：SQL 没有 YAML 解析器，所以列里放一个 YAML 字符串，等于
-造出一张除了 trikedb 谁都读不了的图。JSON 是 YAML 的子集，所以加载器不用改，
-它之上的任何东西也不用改。
-
-### 用 SQL 读这张图
-
-`sql-init` 会在表旁边建四个视图，而它们正是"选数仓来放图"值得的原因：
-同一张图，在内存里回答 SPARQL，在数仓里回答 SQL，不需要维护第二份副本。
-
-| 视图 | 列 |
-|---|---|
-| `KG_NODE` | `GRAPH`、`NODE_ID`、`NODE_TYPE`、`NAME`、`PROPS`、`TS_UPDATED` |
-| `KG_EDGE` | `GRAPH`、`EDGE_ID`、`SRC_ID`、`DST_ID`、`EDGE_TYPE`、`PROPS`、`TS_UPDATED` |
-| `KG_PREDICATE` | `GRAPH`、`PREDICATE`、`DESCRIPTION` |
-| `KG_TRIPLE` | `GRAPH`、`S`、`P`、`O`、`ATTRS` |
-
-`KG_NODE` 和 `KG_EDGE` 遵循 Snowflake 上属性图惯用的节点/边列形状 ——
-和 [Snowflake-Labs 的知识图谱参考实现][kg-ref] 同一套布局 —— 所以照着那个
-形状写的 Cortex Analyst 语义模型或查询模式，在这里同样适用。这种对齐是
-有意为之的副产品，不是依赖：没有从那边引入任何东西，SQL 是从 trikedb
-自己的模型生成的，而且 trikedb 与 Snowflake 没有任何隶属关系，也未获其背书。
-
-把一份存下来的文档投影成节点/边/三元组视图，这个想法是通用的；只有把它
-写出来的那段 SQL 是方言相关的 —— 这里是 `TRY_PARSE_JSON` 和
-`LATERAL FLATTEN`，Postgres 上是 `jsonb_to_recordset`，SQLite 上是
-`json_each`。所以视图和类型、upsert 语法一起放在 `_Dialect` 上，
-于是接第二个数仓就是多一个 `_Dialect` 字面量，而不是一堆散落在模块各处的改动。
-`NODE_ID`、`SRC_ID` 和 `EDGE_TYPE` 是属性图的通用术语，原样沿用。
-
-[kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
-
-这个投影就是 `to_networkx()` 已经在做的那一个 —— 三元组变节点和边 ——
-只不过对象换成了 SQL 而不是 networkx。`KG_PREDICATE` 在那边没有对应物：
-属性图的边类型只是一个光秃秃的标签，而这里的述语是本体会描述的一等名字，
-丢掉它会改变这张图的含义。`KG_TRIPLE` 是同一批行的 RDF 视图，给那些用
-三元组思考的人。
-
-节点属性落在 `PROPS` 里，边属性落在边的 `PROPS` 里，都是 VARIANT，
-所以加一个述语或一个属性，永远不需要改 DDL。`type` 和 `label` 被提升成
-`NODE_TYPE` 和 `NAME`，因为它们在工作台里本来就有含义，这让
-`WHERE NODE_TYPE = 'table'` 成了最自然的过滤写法。`EDGE_ID` 是
-`s|p|o` 的 MD5：一条三元组正是由这三者唯一确定，所以重新读视图，
-永远不会把一条没变过的边改名。
-
-整套安排就是为了这件事 —— 去问图是不是还和现实对得上：
-
-```sql
-SELECT k.NODE_ID, t.TABLE_NAME
-FROM MYDB.PUBLIC.KG_NODE k
-LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
-WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- 图里说有，实际已经没了
-```
-
-刻意用视图而不是表：什么都不会存两份，什么都不会漂移，代价是零。
-Snowflake 会把 `AT(TIMESTAMP => ...)` 下推到基表，所以视图读过去和读现在
-一样自然：
-
-```sql
-SELECT * FROM MYDB.PUBLIC.KG_TRIPLE AT(TIMESTAMP => '2026-08-20 01:21:03-07:00');
-```
-
-代价是视图没法剪枝。Snowflake 自己的建议是：等这开始让你心疼了，再拍平成
-关系列，所以到那时再物化 —— 节点上 `CLUSTER BY (NODE_TYPE)`，边上
-`(EDGE_TYPE, SRC_ID, DST_ID)` —— 不要提前。`--no-views` 可以完全跳过它们。
-
-第一次使用前先把表建出来；trikedb 不会擅自在你的数仓里跑 DDL：
-
-```bash
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # 打印 DDL
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # 或者直接执行
-trikedb sql-init … --no-views                                    # 只建表
-```
-
-schema 要挑得有意为之。会出现五个对象 —— 一张表和四个视图 —— 如果你的环境里
-有什么东西按 schema 统计对象数（用总数当分母的数据质量看板、层级前缀约定），
-它们就会出现在那里面。给 trikedb 单开一个 schema 就避开了这个问题。
-
-连接配置来自环境变量 —— `SNOWFLAKE_ACCOUNT`、`SNOWFLAKE_USER`，以及
-`SNOWFLAKE_PRIVATE_KEY_PATH`（一份 PKCS#8 PEM）或 `SNOWFLAKE_PASSWORD`
-二选一，另外还有可选的 `SNOWFLAKE_ROLE`、`SNOWFLAKE_WAREHOUSE`、
-`SNOWFLAKE_DATABASE`、`SNOWFLAKE_SCHEMA` 和 `SNOWFLAKE_AUTHENTICATOR`。
-如果你们组织已经用 `connections.toml` 统一了 Snowflake 接入，那就直接写
-条目名，剩下的交给它：
-
-```bash
-export SNOWFLAKE_CONNECTION_NAME=analytics
-```
-
-如果你的账号走浏览器 SSO（`authenticator = externalbrowser`），还要把
-connector 的 `secure-local-storage` extra 一并装上。没有它，SSO token
-不会被缓存，于是**每一个进程**都会弹一次浏览器 —— 这让 CLI 在循环里没法用，
-CI 步骤更是不可能：
-
-```bash
-pip install 'snowflake-connector-python[secure-local-storage]'
-```
-
-**自带连接。** 有些宿主环境只有一个 session，而且没办法再开一个：
-在 Streamlit in Snowflake 里面，既找不到凭据，也开不了对外连接，
-只有宿主已经持有的那个 session。那就把它传进来：
-
-```python
-from snowflake.snowpark.context import get_active_session
-
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
-             connection=get_active_session(),
-             read_only=True)
-```
-
-DB-API 连接同样可以。分派看的是这个对象能做什么，而不是某个 import 进来的
-类型，所以两条路径互不要求对方的驱动被安装：有 `cursor()` 就是 DB-API，
-受影响行数从 `rowcount` 取；有 `sql()` 就是 Snowpark，那里 `collect()`
-两种情况都返回行，而 Snowflake 对 DML 的回答**本身**就是一行，其第一格
-就是条数。注入进来的连接会被原样使用 —— trikedb 既不缓存也不重连，
-因为它的生命周期属于把它传进来的那个人。
-
-**以只读方式打开一张图。** `TrikeDB(url, read_only=True)` 拒绝一切变更 ——
-`add`、`remove`、`set_node`、`save` 和 SPARQL 更新一律拒绝 —— 而且
-`reload()` 之后依然拒绝。一个只读的应用，没理由握着一条写路径：
-一个 bug 或者一个 agent，花不掉它从来没被给过的能力。当写入属于 git 里
-一份经过评审的文件、而数仓是用来分发和 SQL 访问时，就该用这个形状。
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
-db.sparql("SELECT ?o WHERE { t:crm-sync-job t:INGESTS_TO ?o }")   # 没问题
-db.add("x", "P", "y")                                             # ValueError
-```
-
-数仓的 DML 按表串行，所以就算写的是同一张表里*不同的*图，也会串行。
-在 agent 编辑的速率下这是看不见的；真要往里推实际写入吞吐量，就分片成几张表。
-
-表名没法参数化，所以 URL 里的那个会被当作标识符校验
-（`DATABASE.SCHEMA.TABLE`，最多三段）而不是加引号，别的写法在语句被拼出来
-之前就会被拒掉。
-
-加一个后端只发生在 `storage.py` / `storage_sql.py` 里，别处都不用动。
-一个数仓就是一个 `_Dialect` —— 四段 SQL 模板加一个连接函数。
+Snowflake、BigQuery 和 Databricks 的现有表可通过单独的[只读 R2RML 虚拟图](VIRTUAL_GRAPH.md)访问。定义和映射保存在文件中，源数据仍留在数据库中。
 
 ## 速度
 
-图活在内存里，所以耗时的是打开它和查询它。两者都可调，而且都不需要改变
-你写图的方式。
-
-在 40,800 条三元组上用 `benchmarks/backend_bench.py` 实测，三次取中位数，
-Apple silicon：
-
-| 后端 | 打开 | 1 跳 | 2 跳连接 | 写 1 条事实 |
-|---|---|---|---|---|
-| 本地 `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |
-| 本地 `.json` | **57 ms** | 0.04 ms | 55 ms | **148 ms** |
-| `snowflake://` 行 | 507 ms | 0.04 ms | 56 ms | 2,889 ms |
-
-从中能看出三件事。**查询不在乎图存在哪里** —— 三者完全一致，因为它们都跑在
-内存里。**格式比介质更重要**：同一张图存成 `.json` 打开比 `.yaml` 快 17 倍，
-而数仓里的一行尽管要过网络，仍然快过本地 YAML 文件，因为它的文档本来就是
-JSON。**数仓写入是昂贵的那一步** —— 读、重写、条件更新 —— 所以用
-`autosave=False` 批量来，而不是把它放进循环里。
-
-引擎这边，在同一张已经建好的图上：
-
-| | 1 跳 | 2 跳连接 | 全量计数 |
-|---|---|---|---|
-| rdflib | 0.90 ms | 342 ms | 432 ms |
-| oxigraph（默认） | **0.04 ms** | **52 ms** | **11 ms** |
-
-一个可调的旋钮，和一件已经开着的事 —— 两者都不改变存下来的内容：
-
-**存 JSON 而不是 YAML**，如果这张图被读的次数远远多过被评审的次数 ——
-把文件叫作 `graph.json`，或者放进数仓的一行里，那本来就是 JSON。
-API 一样，SPARQL 一样，打开快约 30 倍。代价正是当初选 YAML 的理由：
-没人愿意读一份 JSON 的 diff。
-
-**快的那个 SPARQL 引擎已经在那儿了。** 读查询跑在
-[Oxigraph](https://github.com/oxigraph/oxigraph) 上，一个带真索引的 Rust
-引擎；`pyoxigraph` 是核心依赖，因为在实测过的每一种图规模上它都更快，
-小到几百条三元组也是。两者都是 SPARQL 1.1，而测试套件断言它们的答案一致
-—— 包括那个扎手的地方，带类型的字面量：`?x t:pii true` 必须匹配一个布尔值，
-而不是字符串 `"true"`。`TrikeDB(..., sparql_engine="rdflib")` 可以钉住旧引擎，
-如果你想拿真实查询把两者比一比，这是值得做的。万一哪天 pyoxigraph 不在
-—— 只 vendor 了一部分文件、或者某个还没有 wheel 的解释器 —— 读会自己退回
-rdflib，而不是直接失败。
-
-更新（`INSERT`/`DELETE`）、OWL 推理和 SHACL 一律走 rdflib —— 这些路径要么
-改数据，要么把图交给 `owlrl`/`pyshacl`，在那里做第二套实现毫无收益。
-
-**不可调**的是这个形状：打开时读整份文档，保存时重写整份文档。这是"一张
-能在 diff 里评审的图"的价码，也是为什么实用上限是几 MB 而不是几 GB。
-
-有两件事会让一张大图感觉很慢，但那不是图的错：
-
-- **在循环里 `autosave=True`。** 每次变更都整份重写一遍。28k 条三元组这么
-  装大概要一个小时；同样的加载放进 `with db.batch():` 里只要几秒。
-- **为语义搜索做编码。** 27.5k 个句子第一次嵌入约 10 秒，之后约 0.1 秒
-  —— 见下文。
-
-### 嵌入模型
-
-第一次 `search()` / `find()` 会**下载模型** —— 从 Hugging Face，约 1 GB —— 然后
-缓存下来，之后的每次搜索都不需要网络。这是 trikedb 唯一一处自己去访问网络的地方，
-而且只发生在你主动安装的 extra 里；主包不会去取任何东西。
-
-`TRIKEDB_EMBED_MODEL` 可以改取模型的地方：放着模型的本地目录，或者你能访问到的
-镜像上同一个模型的名字。在访问不了 `huggingface.co` 的机器上，或者 1 GB 的下载
-需要有人先批准的环境里，设置它。加载失败时会说出它想要哪个模型、以及该设置什么，
-而不是像功能坏了一样报错。
-
-### 嵌入缓存
-
-`search()` 和 `find()` 会把图嵌入成向量，而这些向量会被缓存，所以只算一次。
-键是按*句子*来的，所以多加一条事实只会重新编码一个句子，而不是整个语料
-（27.5k 个句子：冷启动 10.4 秒，热 0.11 秒，写入之后 0.10 秒）。
-
-这个缓存**不会**放在图的旁边 —— 一个二进制 blob 挨着一份"存在意义就是可评审
-diff"的 YAML，第一次 `git add -A` 就会被提交进去。它放在 `TRIKEDB_CACHE_DIR`
-（如果设了），否则 `$XDG_CACHE_HOME/trikedb`，再否则 `~/.cache/trikedb`，
-每个（图，模型）组合一个文件。删掉它永远是安全的。放在 S3 或数仓里的图
-完全不做缓存。
-
-如果命中的节点，其某个属性里装着一整份文档，返回的是那个值的带标签预览，
-外加 `chunk_text`，也就是真正匹配上的那一段 —— 以前一个 54 万字符的正文
-会被整个返回回来。`node()` / `get_node` 仍然返回原封不动的值。
+本体的 YAML/JSON 文件会加载到内存中。`.json` 读取更快，但差异更难审阅。R2RML 虚拟图在查询时读取源数据库，将基本条件下推至 SQL；SPARQL 连接由 RDFLib 处理，完整导出可能扫描整个源表。参见[虚拟图映射](VIRTUAL_GRAPH.md)。
 
 ## 校验与推理
 
@@ -1116,38 +850,7 @@ trikedb validate graph.yaml shapes.ttl --base https://example.org/kg/
 日文该怎么说 —— 这些属于运营这张图的人。复制过去的文件可以改；
 库里的页面只能配。
 
-**你把它指向哪里，就决定了评审发生在哪里。** `TRIKEDB_GRAPH` 接受一个路径
-或任意存储 URL，表单两边完全一样，只有页面最后一节不同：
-
-| `TRIKEDB_GRAPH` | 谁能写 | 评审在哪里发生 |
-|---|---|---|
-| clone 下来的仓库里的 `ontology/graph.yaml` | 手上有这个仓库的人 | 页面把 diff 摆出来并推一个分支 —— 照旧由 pull request 把门 |
-| `snowflake://DB.SCHEMA.TABLE/sales/crm` | 任何打得开这个页面的人 | 写入立刻落库；一天的量由一个 pull request 一起带走 |
-
-第二行才是让没有 git 的人也用得上这个页面的那一行 —— 这正是做它的目的。
-它挪动的不是"要不要评审"，而是**评审的时刻**：
-
-```
-文件：  写 -> pull request -> 评审 -> 事实进入图
-数仓：  写 -> 事实进入图 -> pull request -> 评审
-```
-
-能挡住危险错误的那一半，两边都留着：本体守卫是在**写下去的那一刻**跑的，
-所以没声明过的述语、方向写反的边、前置条件根本没发生过的动作，都会在页面上
-被拒绝，压根到不了存储。pull request 在这之上补的是判断 —— *这是真的吗* ——
-对一张精心维护的图来说，一天读一次通常就够了。如果某处"格式正确但内容是错的"
-代价很高（谁拥有什么、哪个服务还活着、谁可以读哪张表），就把那张图留在文件
-这一侧，其余的放数仓。
-
-`examples/export_to_git.py` 就是那个每日任务：读数仓里的图，用 `db.save()`
-把它作为 YAML 写进仓库，然后开 pull request —— 没有变化就一声不响地退出。
-`examples/graph-export.yml` 是跑它的 GitHub Actions 定时任务。库里没有任何
-东西是为它们加的：`db.save(path)` 本来就能把任何来源的图写成 YAML，
-这就是导出的全部。
-
-如果跑在 Streamlit in Snowflake 里，到数仓的连接就是这个应用已经身处其中的
-那个会话 —— 把 `get_active_session()` 交给 `TrikeDB(..., connection=)` 即可。
-不需要 token，不需要网络规则，没有要轮换的 secret，图也从不离开这个账号。
+示例编辑仓库中的 YAML 文件，在拉取请求前显示差异。对象存储也可保存文件，评审仍应遵循仓库流程。
 
 ## HTML 工作台输出到哪里
 
@@ -1156,7 +859,6 @@ trikedb validate graph.yaml shapes.ttl --base https://example.org/kg/
 ```bash
 trike ui generate graph.yaml                      # -> graph.html，就在它旁边
 trike ui generate s3://bucket/kg/graph.yaml       # -> 工作目录下的 graph.html
-trike ui generate snowflake://DB.SCHEMA.T/sales/crm   # -> 工作目录下的 crm.html
 trike ui generate graph.yaml -o docs/index.html   # 或者明确指定写到哪
 trike ui generate graph.yaml -o s3://site/kg.html # 直接发布到一个 bucket
 ```
@@ -1219,8 +921,8 @@ flowchart LR
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` 等 | fsspec, s3fs；gs:// 再加 gcsfs |
-| `[snowflake]` | `snowflake://` 图 | snowflake-connector-python |
-| `[bigquery]` | `bigquery://` 图 | google-cloud-bigquery |
+| `[snowflake]` | R2RML 虚拟读取连接器 | snowflake-connector-python |
+| `[bigquery]` | R2RML 虚拟读取连接器 | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`（嵌入，多语言，不需要 torch） | model2vec, numpy —— **首次使用会下载约 1 GB**，见上面的「嵌入模型」 |
