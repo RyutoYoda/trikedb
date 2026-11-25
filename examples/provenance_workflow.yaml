@@ -1,0 +1,31 @@
+# A fictional plan and one execution record in the same graph document.
+# The workflow is authored with TrikeDB's shorthand; execution provenance
+# uses the published P-Plan and W3C PROV-O IRIs directly.
+ontology:
+  predicates:
+    HAS_STEP: workflow membership
+    NEXT_STEP: step order
+    "http://purl.org/net/p-plan#correspondsToStep": execution to planned step
+    "http://www.w3.org/ns/prov#used": activity to input
+    "http://www.w3.org/ns/prov#wasAssociatedWith": activity to responsible agent
+    "http://www.w3.org/ns/prov#wasGeneratedBy": output to activity
+    "http://www.w3.org/ns/prov#wasRevisionOf": newer output to older output
+workflows:
+  sample-report:
+    label: Prepare a sample report
+    steps:
+      - id: gather-input
+        next: build-report
+      - id: build-report
+nodes:
+  run-001: {type: "http://www.w3.org/ns/prov#Activity"}
+  example-operator: {type: "http://www.w3.org/ns/prov#Agent"}
+  sample-input: {type: "http://www.w3.org/ns/prov#Entity"}
+  report-v1: {type: "http://www.w3.org/ns/prov#Entity"}
+  report-v2: {type: "http://www.w3.org/ns/prov#Entity"}
+triples:
+  - {s: run-001, p: "http://purl.org/net/p-plan#correspondsToStep", o: build-report}
+  - {s: run-001, p: "http://www.w3.org/ns/prov#used", o: sample-input}
+  - {s: run-001, p: "http://www.w3.org/ns/prov#wasAssociatedWith", o: example-operator}
+  - {s: report-v2, p: "http://www.w3.org/ns/prov#wasGeneratedBy", o: run-001}
+  - {s: report-v2, p: "http://www.w3.org/ns/prov#wasRevisionOf", o: report-v1}

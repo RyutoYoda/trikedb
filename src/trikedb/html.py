@@ -1958,7 +1958,7 @@ document.getElementById("btn-run").onclick = async () => {
   box.innerHTML = '<span class="hint">loading engine\\u2026</span>';
   try {
     const s = await ensureStore();
-    const result = s.query("PREFIX t: <" + BASE + ">\\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\\n" + document.getElementById("sparql-input").value);
+    const result = s.query("PREFIX t: <" + BASE + ">\\nPREFIX pplan: <http://purl.org/net/p-plan#>\\nPREFIX prov: <http://www.w3.org/ns/prov#>\\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\\n" + document.getElementById("sparql-input").value);
     if (typeof result === "boolean") {
       if (queryHits !== null) clearFocus();
       box.innerHTML = `<table><tr><th>ASK</th></tr><tr><td>${result ? "yes" : "no"}</td></tr></table>`;

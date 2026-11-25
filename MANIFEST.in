@@ -10,3 +10,6 @@ recursive-include docs *.md
 global-exclude __pycache__ *.pyc
 
 prune mcp
+prune examples/review_app/cloudflare/node_modules
+prune examples/review_app/cloudflare/.wrangler
+prune examples/review_app/cloudflare/dist
