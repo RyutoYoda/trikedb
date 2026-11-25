@@ -828,13 +828,24 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 各工程の `agent:` には使用ツール `tools`、開始条件 `entry`、成果物 `outputs`、
 完了条件 `gates` を宣言できる。gate の種類は `test`、`e2e`、`review`、`manual`。
 
-操作は `list`、`start`、`next`、`complete`、`resume`。`complete` には全成果物の
-参照先と、各 gate の `pass` と証拠の参照先が必要。すべての前工程が完了してから
-次工程へ進むため、分岐は並列に必要な作業を表す。定義変更後の実行は閲覧できるが
-続行できず、新しい実行を開始する。
+操作は `list`、`select(query)`、`start`、`next`、`complete`、`choose`、
+`skip`、`resume`。`select` はID・ラベル・概要・工程名を字句で照合して候補と
+一致語を返し、実行は開始しない。`complete` には全成果物の参照先と、各 gate の
+`pass` と証拠の参照先が必要。通常の分岐は並列の必須作業。工程に
+`next_mode: choose_one` を宣言すると、完了後に `choose` で接続先を一つ選び、
+理由を残せる。選ばなかった経路はスキップとして記録される。`skip` は
+`agent.skippable: true` と宣言した実行可能な工程だけに使え、理由が必須。
+定義変更後の実行は閲覧できるが続行できず、新しい実行を開始する。
 
-ツールは外部サービスやテストを実行・独立検証しない。証拠はエージェントの申告として
-保存する。実行記録は YAML と分けたローカル SQLite に保存し、コンテナでは
+通常の証拠はエージェントの申告として保存する。`test` / `e2e` の gate に
+`verifier: junit` を宣言すると、`TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR` 配下の
+相対パスにある JUnit XML を読み、テストが存在して失敗・エラー・スキップがない
+ことを確認する。`verifier: github_actions` では宣言した `repository` と
+`subject_artifact` のコミットSHAが、成功済みの GitHub Actions run と一致する
+ことをAPIで確認する。非公開リポジトリ用トークンは実行環境の
+`TRIKEDB_GITHUB_TOKEN` に置き、YAMLには書かない。外部ツールや任意コマンドは
+実行しない。架空の[分岐サンプル](../examples/agent_workflow_decision.yaml)を参照。
+実行記録は YAML と分けたローカル SQLite に保存し、コンテナでは
 `TRIKEDB_AGENT_WORKFLOW_STATE_DIR` を永続ボリュームに設定する。OAuth では
 本人の実行だけ再開できる。複数ホストで使うには共有ストアが必要。読み取り専用の
 Cloudflare Worker サンプルには、このツールはまだ含まれない。詳細は

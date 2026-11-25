@@ -762,12 +762,20 @@ JS/WASM 和许可证声明；文件更大，但可从无网络的 `file://` 打�
 `tools`、开始条件 `entry`、成果物 `outputs` 和完成门槛 `gates`。
 门槛种类包括 `test`、`e2e`、`review`、`manual`。
 
-操作包括 `list`、`start`、`next`、`complete` 和 `resume`。完成步骤须提交所有
-成果物的引用，以及每个门槛的 `pass` 结果和证据引用。只有全部前置步骤完成，
-后续步骤才可执行；分支表示必须并行完成的工作。定义变更后旧执行仍可读取，
+操作包括 `list`、`select(query)`、`start`、`next`、`complete`、`choose`、
+`skip` 和 `resume`。`select` 按 ID、名称、摘要和步骤名称进行词面匹配，返回候选
+及匹配词，不会自动开始执行。完成步骤须提交所有成果物与门槛证据。普通分支仍表示
+并行的必需工作；声明 `next_mode: choose_one` 后，完成该步骤即可用 `choose`
+选一个后续步骤并记录理由，其他路线会标为跳过。`skip` 仅适用于声明
+`agent.skippable: true` 的可执行步骤，而且必须说明理由。定义变更后旧执行仍可读取，
 但不能继续，须开始新的执行。
 
-本工具不运行或独立验证外部系统和测试；引用是 agent 的报告。执行记录保存在
+普通引用仍由 agent 报告。对 `test` / `e2e` 门槛，`verifier: junit` 会读取
+`TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR` 中相对路径指向的 JUnit XML，确认有测试且
+没有失败、错误或跳过。`verifier: github_actions` 会通过 API 核对已声明的
+`repository` 与 `subject_artifact` 中的提交 SHA，并要求运行成功完成。私有仓库的
+令牌只放在运行环境的 `TRIKEDB_GITHUB_TOKEN`，不写入 YAML。本工具不会执行外部
+工具或任意命令。参见[虚构的分支示例](../examples/agent_workflow_decision.yaml)。执行记录保存在
 本地 SQLite 中，不写入本体 YAML。在容器中应将
 `TRIKEDB_AGENT_WORKFLOW_STATE_DIR` 指向持久卷。OAuth 调用方只能恢复自己的
 执行。多个主机共享执行需要另行实现共享存储。只读 Cloudflare Worker 示例尚未

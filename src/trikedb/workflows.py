@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 def validate_agent_spec(value, where: str) -> dict:
     """Validate the optional agent-facing contract on a process step.
@@ -12,10 +14,15 @@ def validate_agent_spec(value, where: str) -> dict:
     """
     if not isinstance(value, dict):
         raise ValueError(f"{where}: 'agent' must be a mapping")
-    unknown = set(value) - {"tools", "entry", "outputs", "gates"}
+    unknown = set(value) - {"tools", "entry", "outputs", "gates", "skippable"}
     if unknown:
         raise ValueError(f"{where}: unknown agent field(s): {', '.join(sorted(unknown))}")
     result = {}
+    if "skippable" in value:
+        if not isinstance(value["skippable"], bool):
+            raise ValueError(f"{where}.agent.skippable: must be a boolean")
+        if value["skippable"]:
+            result["skippable"] = True
     for key in ("tools", "entry", "outputs"):
         items = value.get(key, [])
         if not isinstance(items, list) or any(
@@ -30,7 +37,7 @@ def validate_agent_spec(value, where: str) -> dict:
         raise ValueError(f"{where}.agent.gates: must be a list")
     seen = set()
     for gate in gates:
-        if not isinstance(gate, dict) or set(gate) != {"id", "kind", "description"}:
+        if not isinstance(gate, dict) or not {"id", "kind", "description"} <= set(gate):
             raise ValueError(f"{where}.agent.gates: each gate needs id, kind and description")
         if not isinstance(gate["kind"], str) or gate["kind"] not in {"test", "e2e", "review", "manual"}:
             raise ValueError(f"{where}.agent.gates: invalid kind {gate['kind']!r}")
@@ -39,6 +46,27 @@ def validate_agent_spec(value, where: str) -> dict:
             raise ValueError(f"{where}.agent.gates: id and description must be non-empty strings")
         if gate["id"] in seen:
             raise ValueError(f"{where}.agent.gates: duplicate id {gate['id']!r}")
+        verifier = gate.get("verifier")
+        if verifier is None:
+            allowed = {"id", "kind", "description"}
+        elif verifier == "junit":
+            allowed = {"id", "kind", "description", "verifier"}
+            if gate["kind"] not in {"test", "e2e"}:
+                raise ValueError(f"{where}.agent.gates: junit requires a test or e2e gate")
+        elif verifier == "github_actions":
+            allowed = {"id", "kind", "description", "verifier", "repository", "subject_artifact"}
+            if gate["kind"] not in {"test", "e2e"}:
+                raise ValueError(f"{where}.agent.gates: github_actions requires a test or e2e gate")
+            if not isinstance(gate.get("repository"), str) or not re.fullmatch(
+                r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", gate["repository"]
+            ):
+                raise ValueError(f"{where}.agent.gates: github_actions needs a repository")
+            if gate.get("subject_artifact") not in result["outputs"]:
+                raise ValueError(f"{where}.agent.gates: subject_artifact must name an output")
+        else:
+            raise ValueError(f"{where}.agent.gates: unsupported verifier")
+        if set(gate) != allowed:
+            raise ValueError(f"{where}.agent.gates: unexpected or missing verifier fields")
         seen.add(gate["id"])
     result["gates"] = gates
     return result

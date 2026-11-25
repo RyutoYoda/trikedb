@@ -1,0 +1,28 @@
+# Fictional example of a verified gate, one chosen route, and an optional step.
+ontology:
+  predicates:
+    HAS_STEP: workflow to process step
+    NEXT_STEP: process step to next step
+workflows:
+  example-order-report:
+    label: Prepare an example order report
+    summary: Check fictional orders, then publish or request corrections.
+    steps:
+      - id: inspect-orders
+        label: Inspect example orders
+        agent:
+          outputs: [checked-orders]
+          gates:
+            - {id: order-tests, kind: test, description: Check the example orders, verifier: junit}
+        next: [publish-report, request-corrections]
+        next_mode: choose_one
+      - id: publish-report
+        label: Publish report
+        next: [close-request]
+      - id: request-corrections
+        label: Request corrections
+        next: [close-request]
+      - id: close-request
+        label: Close the example request
+        agent:
+          skippable: true

@@ -151,16 +151,21 @@ target must exist in that workflow, and the step graph must be connected and
 acyclic. Explicit `order` values must increase along each `NEXT_STEP` edge;
 when omitted, order follows the step list. Branches and rejoins are valid.
 Put decision conditions in a step's `description` or `properties`; the
-sequence graph records order, not the business meaning of a branch.
+sequence graph records order. An explicit `next_mode: choose_one` lets an
+agent select one successor and record why. Without it, successors remain
+parallel required work.
 
 ### Guide an agent through the workflow
 
 Install `trikedb[mcp]` and serve the graph as MCP. The new `agent_workflow`
-tool lists workflows, starts a run, returns only steps whose predecessors are
-complete, records results, and resumes after a restart. It does not call the
+tool searches or lists workflows, starts a run, returns steps on active routes,
+records a branch choice or a declared optional skip with a reason, checks
+supported evidence, and resumes after a restart. It does not call the
 named Snowflake, dbt, Tableau or other external tools itself. A step may have
 an `agent:` mapping with `tools`, `entry`, `outputs` and `gates`; declared
 outputs and passing test/E2E gate references are required to complete it.
+JUnit reports and GitHub Actions runs can be checked when a gate declares a
+verifier; ordinary references remain agent-reported.
 See the [fictional example](https://github.com/RyutoYoda/trikedb/blob/main/examples/agent_workflow.yaml) and the
 [MCP contract](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#agent-workflow-mcp).
 
