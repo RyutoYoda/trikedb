@@ -5,6 +5,8 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.0
+
 - Remove the legacy Snowflake/BigQuery one-row graph-document backend and
   `sql-init`. Keep curated graph definitions in files. Warehouse tables can
   be read through the separate R2RML virtual RDF API. This is a breaking
