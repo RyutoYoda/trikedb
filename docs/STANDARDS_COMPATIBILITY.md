@@ -8,7 +8,7 @@ standard does not imply support for every construct in another.
 | --- | --- |
 | [RDF 1.1](https://www.w3.org/TR/rdf11-concepts/) and [Turtle](https://www.w3.org/TR/turtle/) | RDF interchange and SPARQL terms; the curated YAML format is TrikeDB's own compact syntax. |
 | [SPARQL 1.1 Query](https://www.w3.org/TR/sparql11-query/) | Curated graphs use Oxigraph. Virtual relational graphs use RDFLib with a narrow SQL pushdown for same-subject basic graph patterns. |
-| [R2RML](https://www.w3.org/TR/r2rml/) | Strict subset for virtual relational views. Supported: `rr:tableName`, subject IRI templates, `rr:class`, constant predicates, object columns/templates/constants, and parent triples map joins with `rr:joinCondition`. Unsupported mapping properties are rejected. No full-conformance claim. |
+| [R2RML](https://www.w3.org/TR/r2rml/) | The virtual relational view passes all 63 R2RML cases in the pinned W3C test suite on SQLite, including negative cases. It supports SQL views, shortcut maps, term maps, named graphs, blank nodes, joins, and tested SQL-to-RDF conversions. This is a tested compatibility claim, not a guarantee for every SQL backend or untested edge case. |
 | [Direct Mapping](https://www.w3.org/TR/rdb-direct-mapping/) | Not implemented. This is a separate automatic RDB-to-RDF mapping standard. |
 | [SHACL](https://www.w3.org/TR/shacl/) | Optional shape validation for curated graphs; not inferred from relational schemas. |
 | [PROV-O](https://www.w3.org/TR/prov-o/) | Can be represented with explicit IRIs. TrikeDB-specific provenance and event fields are not automatically converted into PROV-O activities or agents. |
@@ -19,15 +19,21 @@ TrikeDB projects declared workflows to its current `isPrecededBy` vocabulary
 in RDF output; this does not turn step execution into a PROV-O activity by
 itself.
 
-## R2RML gaps
+## R2RML test coverage and limits
 
-The virtual view has not passed the [W3C R2RML test
-cases](https://www.w3.org/TR/rdb2rdf-test-cases/). Known unsupported areas
-include `rr:sqlQuery` and SQL views, shortcut subject/predicate/object/graph
-forms, predicate and graph term maps, named graphs, blank-node subjects,
-`rr:inverseExpression`, IRI-valued column maps, and the full SQL-to-RDF
-datatype conversion rules. Some supported constructs may still have edge
-cases; passing the official test suite is the gate for claiming conformance.
+CI downloads the [W3C RDB2RDF test suite](https://www.w3.org/TR/rdb2rdf-test-cases/)
+from a pinned archive, verifies its SHA-256, and compares the generated RDF
+dataset including named graphs and blank-node isomorphism. All 63 R2RML
+cases pass with SQLite. The suite is a W3C Working Group Note, not a formal
+certification program. It does not cover every valid R2RML mapping, all SQL
+2008 behavior, or every connector. In particular, schema-qualified table
+names and non-SQLite datatype behavior need backend-specific testing.
+
+`rr:inverseExpression` is accepted as optimization metadata; TrikeDB does
+not use it to reverse-map terms into SQL filters. The `rr:sqlQuery` path
+currently requires a single `SELECT` statement that the connected database
+accepts. Nontrivial virtual queries and RDF exports can scan full source
+tables, including the parent side of referencing-object-map joins.
 
 SPARQL-to-SQL query optimization is a separate implementation concern. This
 release combines one eligible same-subject basic graph pattern into one SQL

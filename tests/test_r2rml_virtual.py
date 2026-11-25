@@ -68,12 +68,30 @@ def test_same_mapping_exports_standard_rdf_for_neo4j(tmp_path):
                              URIRef("https://example.org/name")) == Literal("Ada")
 
 
-def test_rejects_unimplemented_mapping_instead_of_silently_dropping_it(tmp_path):
+def test_sql_query_mapping_reads_relational_source(tmp_path):
     connection, mapping = _fixture(tmp_path)
     mapping.write_text(MAPPING.replace('rr:tableName "people"',
                                       'rr:sqlQuery "SELECT * FROM people"'), encoding="utf-8")
-    with pytest.raises(ValueError, match="unsupported"):
-        R2RMLVirtualGraph(mapping, connection)
+    graph = R2RMLVirtualGraph(mapping, connection)
+    assert '<https://example.org/person/1> <https://example.org/name> "Ada" .' in graph.export_rdf("nt")
+
+
+def test_untyped_mapping_allows_metadata_and_uses_base_iri_concatenation(tmp_path):
+    connection, mapping = _fixture(tmp_path)
+    mapping.write_text("""@prefix rr: <http://www.w3.org/ns/r2rml#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex: <https://example.org/> .
+<#People> rdfs:label "People mapping" ;
+  rr:logicalTable [ rr:tableName "people" ] ;
+  rr:subjectMap [ rr:column "name" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicate ex:id ; rr:objectMap [ rr:column "id" ] ] .
+""", encoding="utf-8")
+    view = R2RMLVirtualGraph(mapping, connection, base_iri="https://example.org/base/")
+    assert (URIRef("https://example.org/base/Ada"), URIRef("https://example.org/id"),
+            Literal(1)) in view.graph
+    connection.execute("INSERT INTO people VALUES (3, '../relative', NULL)")
+    assert (URIRef("https://example.org/base/../relative"),
+            URIRef("https://example.org/id"), Literal(3)) in view.graph
 
 
 def test_null_join_and_iri_escape(tmp_path):
@@ -87,20 +105,20 @@ def test_null_join_and_iri_escape(tmp_path):
     }"""))
 
 
-def test_rejects_unsafe_identifier_and_unhandled_predicate_map(tmp_path):
+def test_rejects_unsafe_identifier_and_accepts_predicate_map(tmp_path):
     connection, mapping = _fixture(tmp_path)
     mapping.write_text(MAPPING.replace('rr:tableName "people"',
                                       'rr:tableName "people; DROP TABLE companies"'),
                        encoding="utf-8")
-    with pytest.raises(ValueError, match="unsafe SQL identifier"):
+    with pytest.raises(ValueError, match="invalid SQL identifier"):
         R2RMLVirtualGraph(mapping, connection)
     assert connection.execute("SELECT COUNT(*) FROM companies").fetchone()[0] == 1
 
     mapping.write_text(MAPPING.replace('rr:predicate ex:name',
                                       'rr:predicateMap [ rr:constant ex:name ]'),
                        encoding="utf-8")
-    with pytest.raises(ValueError, match="unsupported"):
-        R2RMLVirtualGraph(mapping, connection)
+    graph = R2RMLVirtualGraph(mapping, connection)
+    assert '<https://example.org/person/1> <https://example.org/name> "Ada" .' in graph.export_rdf("nt")
 
 
 def test_query_pushes_bound_subject_into_sql(tmp_path):
@@ -108,6 +126,7 @@ def test_query_pushes_bound_subject_into_sql(tmp_path):
     statements = []
     connection.set_trace_callback(statements.append)
     graph = R2RMLVirtualGraph(mapping, connection)
+    statements.clear()
     list(graph.sparql("""SELECT ?name WHERE {
       <https://example.org/person/1> <https://example.org/name> ?name
     }"""))
@@ -119,6 +138,7 @@ def test_basic_graph_pattern_joins_and_literal_filter_run_in_one_sql_query(tmp_p
     statements = []
     connection.set_trace_callback(statements.append)
     graph = R2RMLVirtualGraph(mapping, connection)
+    statements.clear()
 
     rows = list(graph.sparql("""PREFIX ex: <https://example.org/>
         SELECT ?person ?company WHERE {
@@ -239,6 +259,10 @@ def test_dbapi_dialects_emit_safe_selects_and_bind_values(tmp_path, dialect):
         def close(self):
             self.inner.close()
 
+        @property
+        def description(self):
+            return self.inner.description
+
     class Connection:
         def cursor(self):
             return Cursor()
@@ -273,6 +297,10 @@ def test_bigquery_executes_unbound_queries_without_an_empty_parameter_tuple(tmp_
 
         def close(self):
             self.inner.close()
+
+        @property
+        def description(self):
+            return self.inner.description
 
     class Connection:
         def cursor(self):

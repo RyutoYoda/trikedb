@@ -46,7 +46,7 @@ Rows that already live in a relational database can also be viewed as a
 **virtual RDF graph** using a standard R2RML Turtle mapping. The rows stay in
 their source; a read-only DB-API connection supplies live SPARQL results. The
 same mapping can export an RDF snapshot for other graph systems. See
-[virtual graph mapping](https://github.com/RyutoYoda/trikedb/blob/main/docs/VIRTUAL_GRAPH.md) for the supported R2RML subset,
+[virtual graph mapping](https://github.com/RyutoYoda/trikedb/blob/main/docs/VIRTUAL_GRAPH.md) for R2RML support and test coverage,
 warehouse connectors, performance limits, and Neo4j interoperability.
 The [standards compatibility](https://github.com/RyutoYoda/trikedb/blob/main/docs/STANDARDS_COMPATIBILITY.md)
 page distinguishes supported W3C features from planned ones.

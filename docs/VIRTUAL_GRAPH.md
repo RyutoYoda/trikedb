@@ -7,13 +7,13 @@ the source tables at request time. No row data is copied into the YAML graph
 or into a warehouse graph-document row. Curated graphs and R2RML mappings
 remain reviewable files.
 
-This is an initial, **strict subset** of [W3C R2RML](https://www.w3.org/TR/r2rml/),
-not a claim of full R2RML conformance. The mapping is standard Turtle, not a
-TrikeDB-specific relational-mapping dialect. Supported features are
-`rr:tableName`, subject IRI templates, `rr:class`, constant predicates,
-object columns/templates/constants, and parent-triples-map joins with
-`rr:joinCondition`. Named graphs, blank-node maps, inverse
-expressions, and other features are rejected rather than ignored.
+The mapping is standard [W3C R2RML](https://www.w3.org/TR/r2rml/) Turtle,
+not a TrikeDB-specific relational-mapping dialect. The SQLite implementation
+passes all 63 R2RML cases in the pinned W3C suite. It supports base tables,
+`rr:sqlQuery` views, subject/predicate/object/graph maps and shortcuts,
+named graphs, blank nodes, classes, and parent-map joins. The suite does not
+cover every SQL dialect or mapping edge case; see
+[standards compatibility](STANDARDS_COMPATIBILITY.md).
 
 ## Example
 
@@ -48,13 +48,18 @@ for row in rows:
 # A snapshot for another RDF system, including Neo4j n10s on supported
 # self-managed editions. This export is explicit and can be large.
 open("orders.nt", "w", encoding="utf-8").write(view.export_rdf("nt"))
+
+# Preserve named graphs with view.export_rdf("nquads") when the mapping
+# includes rr:graph or rr:graphMap.
 ```
 
 Pass an already authenticated, **read-only** DB-API connection and set
 `dialect="snowflake"`, `"bigquery"`, or `"databricks"` as appropriate.
 The default binding marker is `%s` for the Snowflake Python connector and `?`
 for BigQuery and Databricks connectors. Set `placeholder` explicitly when
-your connector uses a different binding style. Table names must be trusted
+your connector uses a different binding style. Pass `base_iri=` when the
+mapping generates relative IRIs and needs a base other than its Turtle
+`@base`; R2RML concatenates this base with the generated value. Table names must be trusted
 and match the database's case-sensitive quoted identifiers. In particular,
 Snowflake mappings should use uppercase names for unquoted tables.
 
@@ -84,8 +89,8 @@ optimizer. Full-graph queries and RDF export may read entire tables. Apply
 source access control and use selective query patterns for large tables.
 
 R2RML defines *mapping semantics*, not a required SPARQL-to-SQL optimizer.
-See [standards compatibility](STANDARDS_COMPATIBILITY.md) for the supported
-subset, omitted W3C constructs, and the separate query standards.
+See [standards compatibility](STANDARDS_COMPATIBILITY.md) for test coverage,
+SQL-backend limits, and the separate query standards.
 
 An N-Triples export is a portable RDF interchange artifact. Neo4j's n10s can
 import RDF in supported self-managed deployments; Neo4j Aura needs a separate

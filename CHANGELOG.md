@@ -5,6 +5,17 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.4
+
+- Pass all 63 R2RML cases in the pinned W3C RDB2RDF test suite on SQLite,
+  comparing complete RDF datasets including named graphs and blank nodes.
+- Support R2RML SQL views, term maps and shortcuts, blank nodes, named graphs,
+  joins, and tested SQL-to-RDF datatype conversions in the virtual RDF view.
+- Accept untyped triples maps and non-R2RML mapping metadata; resolve
+  generated relative IRIs by the R2RML base-IRI concatenation rule.
+- Add a pinned official conformance job to CI and document backend-specific
+  limits separately from the 63-case result.
+
 ## 2.0.3
 
 - Compile eligible same-subject SPARQL basic graph patterns over the R2RML

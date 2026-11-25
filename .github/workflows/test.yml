@@ -7,6 +7,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  r2rml-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Download pinned W3C R2RML suite
+        run: |
+          curl -fsSL --retry 3 -o /tmp/rdb2rdf-ts.zip https://dvcs.w3.org/hg/rdb2rdf-tests/raw-file/default/rdb2rdf-ts.zip
+          echo '128270b483042fd7612e10c071c3b81eb44c1c534f341ec6d5c2286675781f71  /tmp/rdb2rdf-ts.zip' | sha256sum -c -
+          mkdir -p /tmp/rdb2rdf-ts
+          unzip -q /tmp/rdb2rdf-ts.zip -d /tmp/rdb2rdf-ts
+      - name: Run official R2RML cases
+        env:
+          TRIKEDB_W3C_R2RML_SUITE: /tmp/rdb2rdf-ts
+        run: uv run --extra dev python -m pytest -q tests/test_r2rml_w3c.py
   test:
     runs-on: ubuntu-latest
     strategy:
