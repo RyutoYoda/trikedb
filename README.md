@@ -162,7 +162,7 @@ are derived RDF statements, not duplicate YAML records. The original
 Tool links and agent gates remain TrikeDB extensions; they are not P-Plan
 input variables. P-Plan's published predicate is spelled `isPreceededBy`.
 You can also describe a real execution and its revisions with W3C PROV-O
-IRIs in the **same YAML file**. See the [fictional plan and execution](examples/provenance_workflow.yaml).
+IRIs in the **same YAML file**. See the [fictional plan and execution](https://github.com/RyutoYoda/trikedb/blob/main/examples/provenance_workflow.yaml).
 Use full IRIs in YAML; `prov:` and `pplan:` are pre-bound in SPARQL. Existing
 `prov:` edge attributes are source notes, not PROV-O predicates, and TrikeDB
 does not reinterpret every change event as a revision. The MCP run ledger
