@@ -143,6 +143,48 @@ class ReviewAppTests(unittest.TestCase):
                 "test-token", "GET", "/commits?path=ontology/example.yaml&per_page=30"
             )
 
+    def test_pr_status_checks_ownership_and_survives_deleted_head_repository(self):
+        pull = {
+            "number": 27,
+            "state": "closed",
+            "merged_at": "2026-11-25T00:00:00Z",
+            "title": "Graph proposal: ontology/example.yaml",
+            "base": {"ref": "main", "repo": {"full_name": "example-org/graph-repo"}},
+            "head": {"ref": "trikedb/review-0123456789abcdef", "repo": None},
+        }
+        with (
+            patch.object(module, "configured", return_value=True),
+            patch.object(module, "EDITOR_TOKEN", "editor-secret"),
+            patch.object(module, "REPOSITORY", "example-org/graph-repo"),
+            patch.object(module, "REPO_FILE", "ontology/example.yaml"),
+            patch.object(module, "installation_token", return_value="test-token"),
+            patch.object(module, "git_request", return_value=pull) as github,
+        ):
+            self.assertEqual(self.client.get("/api/pr-status?number=27").status_code, 403)
+            headers = {"X-Editor-Token": "editor-secret"}
+            response = self.client.get("/api/pr-status?number=27", headers=headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["state"], "merged")
+            self.assertEqual(
+                response.json()["url"], "https://github.com/example-org/graph-repo/pull/27"
+            )
+            github.assert_called_once_with("test-token", "GET", "/pulls/27")
+            pull["merged_at"] = None
+            self.assertEqual(
+                self.client.get("/api/pr-status?number=27", headers=headers).json()["state"],
+                "closed",
+            )
+            pull["state"] = "open"
+            self.assertEqual(
+                self.client.get("/api/pr-status?number=27", headers=headers).json()["state"],
+                "open",
+            )
+            pull["title"] = "Unrelated proposal"
+            self.assertEqual(
+                self.client.get("/api/pr-status?number=27", headers=headers).status_code,
+                404,
+            )
+
     def test_draft_pr_requires_current_preview_and_targets_main(self):
         calls = []
 

@@ -47,6 +47,10 @@ const messages = {
     noRelations: "This node has no direct relationships.",
     sourceBadge: "local demo",
     githubBadge: "GitHub main",
+    openPr: "PR #{number} under review ↗",
+    mergedPr: "PR #{number} was merged. Showing current main.",
+    closedPr: "PR #{number} was closed. Showing current main.",
+    prStatusError: "Could not check PR #{number}; current main is shown.",
     name: "Name",
     description: "Description",
     summary: "Summary",
@@ -130,6 +134,10 @@ const messages = {
     noRelations: "このノードには直接の関係がありません。",
     sourceBadge: "ローカルの例",
     githubBadge: "GitHub正本",
+    openPr: "レビュー中のPR #{number} ↗",
+    mergedPr: "PR #{number}はマージ済みです。最新の正本を表示しています。",
+    closedPr: "PR #{number}はクローズ済みです。最新の正本を表示しています。",
+    prStatusError: "PR #{number}の状態を確認できません。正本を表示しています。",
     name: "名前",
     description: "説明",
     summary: "概要",
@@ -194,11 +202,48 @@ function translatePage() {
   $("redo").setAttribute("aria-label", t("redo"));
   $("undo").title = `${t("undo")} (⌘Z / Ctrl+Z)`;
   $("redo").title = `${t("redo")} (⇧⌘Z / Ctrl+Y)`;
+  if (!$("active-pr").hidden) {
+    const number = new URLSearchParams(location.search).get("pr");
+    if (number)
+      $("active-pr").textContent = t("openPr").replace("{number}", number);
+  }
   if (state) render();
 }
 
 function status(message) {
   $("status").textContent = message;
+}
+function clearPrQuery() {
+  const url = new URL(location.href);
+  url.searchParams.delete("pr");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+async function refreshPrStatus() {
+  $("active-pr").hidden = true;
+  const number = new URLSearchParams(location.search).get("pr");
+  if (!number) return;
+  if (!state.publishing || !/^[1-9]\d*$/.test(number)) {
+    clearPrQuery();
+    return;
+  }
+  try {
+    const response = await fetch(`/api/pr-status?number=${encodeURIComponent(number)}`, {
+      cache: "no-store",
+      headers: editorToken ? { "X-Editor-Token": editorToken } : {},
+    });
+    if (!response.ok) throw new Error(`PR status ${response.status}`);
+    const pull = await response.json();
+    if (pull.state === "open") {
+      $("active-pr").href = pull.url;
+      $("active-pr").textContent = t("openPr").replace("{number}", number);
+      $("active-pr").hidden = false;
+    } else {
+      clearPrQuery();
+      status(t(pull.state === "merged" ? "mergedPr" : "closedPr").replace("{number}", number));
+    }
+  } catch (_) {
+    status(t("prStatusError").replace("{number}", number));
+  }
 }
 function item(tag, className, label) {
   const element = document.createElement(tag);
@@ -936,6 +981,7 @@ async function load() {
         ? t("invalidDraft")
         : t("loaded"),
     );
+    await refreshPrStatus();
   } catch (error) {
     status(error.message);
   }
@@ -1009,6 +1055,10 @@ $("publish").addEventListener("click", async () => {
     $("pr-link").href = result.url;
     $("pr-link").textContent = `Draft PR #${result.number} opened on GitHub ↗`;
     $("pr-link").hidden = false;
+    const url = new URL(location.href);
+    url.searchParams.set("pr", String(result.number));
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    await refreshPrStatus();
     draft = [];
     redoDraft = [];
     saveDraft();
@@ -1077,7 +1127,9 @@ async function setupStatus() {
   if (result.install_url) $("install-link").href = result.install_url;
   if (new URLSearchParams(location.search).get("setup") === "registered") {
     $("setup-dialog").showModal();
-    history.replaceState(null, "", location.pathname);
+    const url = new URL(location.href);
+    url.searchParams.delete("setup");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
   }
 }
 $("setup-open").addEventListener("click", () => $("setup-dialog").showModal());
