@@ -3,6 +3,14 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 1.3.0
+
+- Deliver linked `SKILL.md` files to ready workflow steps through `read_skill`.
+  Record a content digest and block completion until every required skill has
+  been delivered; private GitHub credentials remain runtime-only.
+- Optionally bind GitHub Actions gates to a specific workflow ID and exact
+  successful test or E2E jobs on the declared commit and run attempt.
+
 ## 1.2.1
 
 - Read workflow candidates and step membership through the SPARQL engine for

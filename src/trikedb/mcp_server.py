@@ -205,6 +205,7 @@ def build_server(
             "adding facts: predicates outside the declared ontology are rejected. "
             "For a declared process, call agent_workflow(action='select', query=...) "
             "or list, then start/next/complete/choose/skip/resume with the same run_id. "
+            "For a ready step with linked skill nodes, call read_skill for each before complete. "
             "Complete a step only after providing its declared outputs and gate evidence. "
             "To get facts out of a document, call extraction_prompt(text) and "
             "follow what it returns, then preview_triples(rows) to see what they "
@@ -221,14 +222,14 @@ def build_server(
         artifacts: Optional[dict[str, str]] = None,
         evidence: Optional[list[dict[str, str]]] = None,
         query: Optional[str] = None, target_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        reason: Optional[str] = None, skill_id: Optional[str] = None,
     ) -> dict:
         """Guide an agent through a declared workflow without executing tools.
 
         Actions: list; select(query); start(workflow_id); next(run_id);
         complete(run_id, step_id, artifacts, evidence);
         choose(run_id, step_id, target_id, reason); skip(run_id, step_id, reason);
-        resume(run_id). `ready` contains only steps on active routes whose
+        read_skill(run_id, step_id, skill_id); resume(run_id). `ready` contains only steps on active routes whose
         predecessors are settled. Each evidence item is
         {gate, result: "pass", reference}; references are recorded claims, not
         independently verified external test results unless a gate declares
@@ -239,7 +240,7 @@ def build_server(
             db.reload()  # read the current remote definition before advancing a run
         return workflow_service.handle(
             action, _identity(actor_claim) or "", workflow_id, run_id,
-            step_id, artifacts, evidence, query, target_id, reason,
+            step_id, artifacts, evidence, query, target_id, reason, skill_id,
         )
 
     @server.tool()

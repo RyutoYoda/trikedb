@@ -7,19 +7,24 @@ out of the canonical graph, so a work session never becomes an ontology edit.
 from __future__ import annotations
 
 import hashlib
+import base64
+import binascii
 import json
 import os
 import re
 import secrets
 import sqlite3
+import subprocess
 import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
+
+import yaml
 
 from .workflows import _validate_workflows, validate_agent_spec
 
@@ -48,6 +53,20 @@ def _definition(db, workflow_id: str) -> dict:
     for membership in sorted(members, key=lambda t: (t.attrs.get("order", 0), t.o)):
         meta = db.node(membership.o)
         spec = validate_agent_spec(meta.get("agent", {}), f"node {membership.o}")
+        skills = []
+        for edge in db.triples(s=membership.o, p="USES"):
+            source = db.node(edge.o)
+            if source.get("type") != "skill":
+                continue
+            if (bool(source.get("url")) == bool(source.get("path"))):
+                raise ValueError(f"skill {edge.o!r}: declare exactly one url or path")
+            if source.get("url"):
+                _github_skill_source(source["url"])
+            else:
+                _local_skill_path(source["path"], db.path)
+            skills.append({"id": edge.o, "label": source.get("label", edge.o),
+                           **({"url": source["url"]} if source.get("url") else
+                              {"path": source["path"]})})
         step = {
             "id": membership.o,
             "label": meta.get("label", membership.o),
@@ -57,6 +76,8 @@ def _definition(db, workflow_id: str) -> dict:
             "next": sorted(outgoing[membership.o]),
             "agent": spec,
         }
+        if skills:
+            step["skills"] = sorted(skills, key=lambda item: item["id"])
         if meta.get("next_mode") == "choose_one":
             if len(outgoing[membership.o]) < 2:
                 raise ValueError(f"step {membership.o!r}: choose_one needs two successors")
@@ -73,6 +94,102 @@ def _definition(db, workflow_id: str) -> dict:
 def _fingerprint(plan: dict) -> str:
     payload = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _github_skill_source(url: str) -> tuple[str, str, str]:
+    if not isinstance(url, str):
+        raise ValueError("skill URL must be a GitHub SKILL.md blob pinned to a full commit SHA")
+    parsed = urlparse(url)
+    match = re.fullmatch(
+        r"/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/blob/([0-9a-fA-F]{40})/"
+        r"([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*/SKILL\.md)", parsed.path,
+    )
+    if (parsed.scheme != "https" or parsed.netloc.lower() != "github.com"
+            or parsed.query or parsed.fragment or not match
+            or match.group(1) in {".", ".."} or match.group(2) in {".", ".."}
+            or any(part in {".", ".."} for part in match.group(4).split("/"))):
+        raise ValueError("skill URL must be a GitHub SKILL.md blob pinned to a full commit SHA")
+    return f"{match.group(1)}/{match.group(2)}", match.group(3), match.group(4)
+
+
+def _local_skill_path(reference: str, graph_path) -> Path:
+    if not isinstance(graph_path, Path) or not isinstance(reference, str):
+        raise ValueError("local skill path requires a local graph")
+    relative = Path(reference)
+    if (relative.is_absolute() or not relative.parts or relative.name != "SKILL.md"
+            or any(part in {".", ".."} for part in relative.parts)):
+        raise ValueError("skill path must be a relative SKILL.md within the graph directory")
+    root = graph_path.parent.resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("skill path must stay within the graph directory")
+    return path
+
+
+def _read_skill_source(skill: dict, graph_path) -> tuple[str, str]:
+    if "path" in skill:
+        path = _local_skill_path(skill["path"], graph_path)
+        if not path.is_file() or path.stat().st_size > 200_000:
+            raise ValueError("skill file is missing or too large")
+        content = path.read_bytes()
+    else:
+        repository, commit, path = _github_skill_source(skill["url"])
+        headers = {"Accept": "application/vnd.github+json",
+                   "User-Agent": "trikedb-agent-workflow"}
+        token = os.environ.get("TRIKEDB_GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = Request(
+            f"https://api.github.com/repos/{repository}/contents/{quote(path)}?ref={commit}",
+            headers=headers,
+        )
+        try:
+            try:
+                with urlopen(request, timeout=10) as response:
+                    payload = response.read(300_001)
+            except HTTPError as exc:
+                if token or exc.code not in {401, 403, 404}:
+                    raise
+                # A local agent may already have `gh auth login` for a private
+                # repository. Invoke gh without a shell; never copy its token
+                # into YAML, the run ledger, or an error message.
+                result = subprocess.run(
+                    ["gh", "api", "-X", "GET", request.full_url],
+                    capture_output=True, timeout=15, check=False,
+                )
+                if result.returncode:
+                    raise ValueError("authenticated GitHub skill fetch failed")
+                payload = result.stdout
+            if len(payload) > 300_000:
+                raise ValueError("skill response is too large")
+            document = json.loads(payload)
+            if (document.get("type") != "file" or document.get("encoding") != "base64"
+                    or document.get("path") != path
+                    or type(document.get("size")) is not int or document["size"] > 200_000):
+                raise ValueError("GitHub did not return the declared skill file")
+            if not isinstance(document.get("content"), str):
+                raise ValueError("GitHub skill content is missing")
+            content = base64.b64decode("".join(document["content"].split()), validate=True)
+            if len(content) != document["size"]:
+                raise ValueError("GitHub skill size does not match")
+        except (HTTPError, URLError, OSError, subprocess.TimeoutExpired,
+                json.JSONDecodeError, binascii.Error, KeyError, ValueError) as exc:
+            raise ValueError("skill could not be fetched from GitHub") from exc
+        if len(content) > 200_000:
+            raise ValueError("skill file is too large")
+    try:
+        body = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("skill must be UTF-8") from exc
+    if not body.startswith("---\n") or "\n---\n" not in body[4:]:
+        raise ValueError("skill must contain YAML frontmatter")
+    frontmatter = yaml.safe_load(body[4:body.index("\n---\n", 4)])
+    if not isinstance(frontmatter, dict) or not all(
+        isinstance(frontmatter.get(key), str) and frontmatter[key].strip()
+        for key in ("name", "description")
+    ):
+        raise ValueError("skill frontmatter needs name and description")
+    return body, hashlib.sha256(content).hexdigest()
 
 
 def _select_workflows(db, query: str) -> list[dict]:
@@ -198,8 +315,36 @@ def _verify_github_actions(reference: str, gate: dict, artifacts: dict) -> dict:
         raise ValueError("GitHub Actions run does not match the declared repository and commit")
     if run.get("status") != "completed" or run.get("conclusion") != "success":
         raise ValueError("GitHub Actions run has not passed")
+    if "workflow_id" in gate and run.get("workflow_id") != gate["workflow_id"]:
+        raise ValueError("GitHub Actions run is not the declared workflow")
+    verified_jobs = []
+    if "required_jobs" in gate:
+        jobs_request = Request(
+            f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100&filter=latest",
+            headers=headers,
+        )
+        try:
+            with urlopen(jobs_request, timeout=10) as response:
+                jobs_content = response.read(1_000_001)
+            if len(jobs_content) > 1_000_000:
+                raise ValueError("GitHub Actions jobs response is too large")
+            jobs_payload = json.loads(jobs_content)
+        except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+            raise ValueError("GitHub Actions jobs could not be verified") from exc
+        jobs = jobs_payload.get("jobs", [])
+        if (not isinstance(jobs, list) or not isinstance(jobs_payload.get("total_count"), int)
+                or jobs_payload["total_count"] > len(jobs)):
+            raise ValueError("GitHub Actions required jobs could not be fully verified")
+        for name in gate["required_jobs"]:
+            matches = [job for job in jobs if job.get("name") == name]
+            if (len(matches) != 1 or matches[0].get("status") != "completed"
+                    or matches[0].get("conclusion") != "success"
+                    or matches[0].get("run_attempt") != run.get("run_attempt")):
+                raise ValueError(f"GitHub Actions required jobs did not pass: {name}")
+            verified_jobs.append(name)
     return {"verifier": "github_actions", "run_id": run_id,
-            "head_sha": expected_sha.lower()}
+            "head_sha": expected_sha.lower(), "workflow_id": run.get("workflow_id"),
+            "required_jobs": verified_jobs}
 
 
 def _state_path(graph_path, state_dir=None) -> Path:
@@ -266,8 +411,11 @@ class RunStore:
         conn.execute("""CREATE TABLE IF NOT EXISTS runs (
             run_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, owner TEXT NOT NULL,
             plan TEXT NOT NULL, fingerprint TEXT NOT NULL,
-            completed TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            completed TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            skill_reads TEXT NOT NULL DEFAULT '{}'
         )""")
+        if "skill_reads" not in {column[1] for column in conn.execute("PRAGMA table_info(runs)")}:
+            conn.execute("ALTER TABLE runs ADD COLUMN skill_reads TEXT NOT NULL DEFAULT '{}'")
         return conn
 
     @contextmanager
@@ -283,12 +431,14 @@ class RunStore:
         now = _stamp()
         run = {"run_id": secrets.token_urlsafe(24), "workflow_id": plan["id"],
                "owner": owner, "plan": plan, "fingerprint": _fingerprint(plan),
-               "completed": {}, "created_at": now, "updated_at": now}
+               "completed": {}, "skill_reads": {}, "created_at": now, "updated_at": now}
         with self.transaction() as conn:
-            conn.execute("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            conn.execute("""INSERT INTO runs
+                (run_id, workflow_id, owner, plan, fingerprint, completed,
+                 created_at, updated_at, skill_reads) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                          (run["run_id"], run["workflow_id"], owner,
                           json.dumps(plan, ensure_ascii=False), run["fingerprint"],
-                          "{}", now, now))
+                          "{}", now, now, "{}"))
         return run
 
     @staticmethod
@@ -299,6 +449,7 @@ class RunStore:
         run = dict(row)
         run["plan"] = json.loads(run["plan"])
         run["completed"] = json.loads(run["completed"])
+        run["skill_reads"] = json.loads(run["skill_reads"])
         return run
 
     def get(self, run_id: str, owner: str) -> dict:
@@ -308,14 +459,30 @@ class RunStore:
     @staticmethod
     def _save(conn, run: dict) -> None:
         run["updated_at"] = _stamp()
-        conn.execute("UPDATE runs SET completed=?, updated_at=? WHERE run_id=?",
+        conn.execute("UPDATE runs SET completed=?, skill_reads=?, updated_at=? WHERE run_id=?",
                      (json.dumps(run["completed"], ensure_ascii=False),
+                      json.dumps(run["skill_reads"], ensure_ascii=False),
                       run["updated_at"], run["run_id"]))
 
     @staticmethod
     def _require_current(run: dict, current_fingerprint: str) -> None:
         if run["fingerprint"] != current_fingerprint:
             raise ValueError("workflow definition changed; start a new run")
+
+    def record_skill(self, run_id: str, owner: str, step_id: str, skill_id: str,
+                     digest: str, current_fingerprint: str) -> dict:
+        with self.transaction() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            run = self._load(conn, run_id, owner)
+            self._require_current(run, current_fingerprint)
+            step = next((s for s in _ready_steps(run) if s["id"] == step_id), None)
+            if step is None or skill_id not in {s["id"] for s in step.get("skills", [])}:
+                raise ValueError("skill is not required by a ready step")
+            run["skill_reads"].setdefault(step_id, {})[skill_id] = {
+                "sha256": digest, "at": _stamp(),
+            }
+            self._save(conn, run)
+            return run
 
     def choose(self, run_id: str, owner: str, step_id: str, target_id: str,
                reason: str, current_fingerprint: str) -> dict:
@@ -375,6 +542,11 @@ class RunStore:
                 raise ValueError(f"step {step_id!r} is already complete")
             if step not in _ready_steps(run):
                 raise ValueError("finish predecessor step(s) and choose an active route first")
+            missing_skills = {skill["id"] for skill in step.get("skills", [])} - set(
+                run["skill_reads"].get(step_id, {})
+            )
+            if missing_skills:
+                raise ValueError(f"read required skill(s) before completing: {sorted(missing_skills)}")
             required = set(step["agent"]["outputs"])
             if not isinstance(artifacts, dict) or set(artifacts) != required or any(
                 not isinstance(v, str) or not v.strip() for v in artifacts.values()
@@ -414,7 +586,10 @@ class RunStore:
 def _result(run: dict, current_fingerprint: str) -> dict:
     plan = run["plan"]
     completed = run["completed"]
-    ready = _ready_steps(run)
+    ready = [{**step, **({"skills": [
+        {**skill, "read": skill["id"] in run["skill_reads"].get(step["id"], {})}
+        for skill in step["skills"]]} if step.get("skills") else {})}
+        for step in _ready_steps(run)]
     return {
         "run_id": run["run_id"], "workflow_id": run["workflow_id"],
         "workflow": {"label": plan["label"], "summary": plan["summary"]},
@@ -439,7 +614,7 @@ class AgentWorkflow:
                run_id: str | None = None, step_id: str | None = None,
                artifacts: dict | None = None, evidence: list[dict] | None = None,
                query: str | None = None, target_id: str | None = None,
-               reason: str | None = None) -> dict:
+               reason: str | None = None, skill_id: str | None = None) -> dict:
         if action == "select":
             return {"query": query, "candidates": _select_workflows(self.db, query)}
         if action == "list":
@@ -457,8 +632,8 @@ class AgentWorkflow:
             plan = _definition(self.db, workflow_id)
             run = self.store.create(plan, owner)
             return _result(run, run["fingerprint"])
-        if action not in {"next", "resume", "complete", "choose", "skip"}:
-            raise ValueError("action must be list, select, start, next, complete, choose, skip or resume")
+        if action not in {"next", "resume", "complete", "choose", "skip", "read_skill"}:
+            raise ValueError("action must be list, select, start, next, complete, choose, skip, read_skill or resume")
         if not run_id:
             raise ValueError(f"{action} requires run_id")
         run = self.store.get(run_id, owner)
@@ -466,6 +641,18 @@ class AgentWorkflow:
             current = _fingerprint(_definition(self.db, run["workflow_id"]))
         except ValueError:
             current = "missing"
+        if action == "read_skill":
+            if not step_id or not skill_id:
+                raise ValueError("read_skill requires step_id and skill_id")
+            step = next((s for s in _ready_steps(run) if s["id"] == step_id), None)
+            skill = next((s for s in step.get("skills", []) if s["id"] == skill_id), None) if step else None
+            if skill is None:
+                raise ValueError("skill is not required by a ready step")
+            body, digest = _read_skill_source(skill, self.db.path)
+            self.store.record_skill(run_id, owner, step_id, skill_id, digest, current)
+            return {"run_id": run_id, "step_id": step_id, "skill_id": skill_id,
+                    "content": body, "sha256": digest,
+                    "note": "Skill content was delivered; completion still requires declared evidence."}
         if action == "complete":
             if not step_id:
                 raise ValueError("complete requires step_id")

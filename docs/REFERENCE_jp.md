@@ -829,13 +829,22 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 完了条件 `gates` を宣言できる。gate の種類は `test`、`e2e`、`review`、`manual`。
 
 操作は `list`、`select(query)`、`start`、`next`、`complete`、`choose`、
-`skip`、`resume`。`select` はSPARQL（既定はPyOxigraph）でワークフローと工程の関係を取得し、ID・ラベル・概要・工程名をPythonで字句照合して候補と
+`skip`、`read_skill`、`resume`。`select` はSPARQL（既定はPyOxigraph）でワークフローと工程の関係を取得し、ID・ラベル・概要・工程名をPythonで字句照合して候補と
 一致語を返し、実行は開始しない。`complete` には全成果物の参照先と、各 gate の
 `pass` と証拠の参照先が必要。通常の分岐は並列の必須作業。工程に
 `next_mode: choose_one` を宣言すると、完了後に `choose` で接続先を一つ選び、
 理由を残せる。選ばなかった経路はスキップとして記録される。`skip` は
 `agent.skippable: true` と宣言した実行可能な工程だけに使え、理由が必須。
 定義変更後の実行は閲覧できるが続行できず、新しい実行を開始する。
+
+工程から `type: skill` のノードへ `USES` 関係を張ると、そのスキルは必須になる。
+ノードにはグラフのディレクトリ内の `SKILL.md` 相対 `path`、またはフルコミットSHAで
+固定したGitHubの `url` を指定する。`ready` に参照が現れ、
+`read_skill(run_id, step_id, skill_id)` が本文を返し、ハッシュを実行記録に残す。
+全必須スキルを取得するまで `complete` は拒否される。これは本文がMCP経由で渡った
+ことの証明で、モデルが手順を守った保証ではない。非公開GitHubの認証は実行環境の
+`TRIKEDB_GITHUB_TOKEN` を使う。秘密情報はYAMLやスキル本文へ書かない。
+実行環境にトークンがない場合、認証済みの `gh` CLI でも非公開ファイルを取得できる。
 
 通常の証拠はエージェントの申告として保存する。`test` / `e2e` の gate に
 `verifier: junit` を宣言すると、`TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR` 配下の
@@ -845,6 +854,8 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 ことをAPIで確認する。非公開リポジトリ用トークンは実行環境の
 `TRIKEDB_GITHUB_TOKEN` に置き、YAMLには書かない。外部ツールや任意コマンドは
 実行しない。架空の[分岐サンプル](../examples/agent_workflow_decision.yaml)を参照。
+厳格なゲートでは `workflow_id` と `required_jobs` を併記する。指定ワークフローの
+同じ実行回で、列挙したジョブがすべて成功した場合だけ完了を認める。
 実行記録は YAML と分けたローカル SQLite に保存し、コンテナでは
 `TRIKEDB_AGENT_WORKFLOW_STATE_DIR` を永続ボリュームに設定する。OAuth では
 本人の実行だけ再開できる。複数ホストで使うには共有ストアが必要。読み取り専用の
