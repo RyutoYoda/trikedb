@@ -9,6 +9,8 @@ Notable changes, newest first. Versions before 0.30.0 are in the
   source rows on demand, supports table/column mappings and parent joins,
   and exports a standard RDF snapshot. Unsupported mapping constructs fail
   explicitly. The one-document YAML and warehouse storage APIs stay intact.
+- Quote Databricks SQL identifiers with backticks. This was caught by a live
+  Databricks SQL Warehouse E2E after the initial virtual-view merge.
 
 ## 1.3.0
 

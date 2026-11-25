@@ -178,7 +178,7 @@ class _VirtualStore(Store):
         self.placeholder = placeholder
 
     def _q(self, identifier):
-        mark = "`" if self.dialect == "bigquery" else '"'
+        mark = "`" if self.dialect in {"bigquery", "databricks"} else '"'
         return ".".join(mark + _identifier(part) + mark for part in identifier.split("."))
 
     def _rows(self, table, columns, where=(), params=()):
