@@ -1,7 +1,8 @@
-"""Read-only virtual RDF graph over DB-API tables using a strict R2RML subset.
+"""Read-only virtual RDF graph over DB-API tables using R2RML mappings.
 
 The database remains the source of truth. Mapping and query results are never
-written to the TrikeDB YAML store. Unsupported R2RML features fail closed.
+written to the TrikeDB YAML store. Eligible queries use a SQL fast path;
+other mappings use the graph-aware R2RML processor.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from rdflib import Graph, Literal, Namespace, RDF, URIRef, Variable
 from rdflib.plugins.sparql.processor import prepareQuery
 from rdflib.query import Result
 from rdflib.store import Store
+from .r2rml_processor import R2RMLProcessor
 
 
 RR = Namespace("http://www.w3.org/ns/r2rml#")
@@ -39,9 +41,13 @@ def _one(graph, subject, predicate, required=True):
 
 def _identifier(name):
     text = str(name)
-    if not _IDENT.fullmatch(text):
-        raise ValueError(f"unsafe SQL identifier: {text!r}")
-    return text
+    if len(text) >= 2 and text[0] == text[-1] == '"':
+        inner = text[1:-1].replace('""', '"')
+        if inner and all(ord(char) >= 32 for char in inner):
+            return inner
+    if _IDENT.fullmatch(text):
+        return text
+    raise ValueError(f"unsafe SQL identifier: {text!r}")
 
 
 def _plain_string_filter(term, obj):
@@ -74,7 +80,7 @@ class _TermMap:
         values = {column: row[column] for column in self.columns()}
         if any(value is None for value in values.values()):
             return None
-        uri = _SLOT.sub(lambda match: quote(str(values[match.group(1)]), safe=""),
+        uri = _SLOT.sub(lambda match: quote(str(values[_identifier(match.group(1))]), safe=""),
                         str(self.value))
         return URIRef(uri)
 
@@ -187,7 +193,8 @@ class _VirtualStore(Store):
 
     def _q(self, identifier):
         mark = "`" if self.dialect in {"bigquery", "databricks"} else '"'
-        return ".".join(mark + _identifier(part) + mark for part in identifier.split("."))
+        return ".".join(mark + part.replace(mark, mark + mark) + mark
+                        for part in identifier.split("."))
 
     def _rows(self, table, columns, where=(), params=()):
         names = sorted(set(columns))
@@ -291,6 +298,25 @@ class _VirtualStore(Store):
         return sum(1 for _ in self.triples((None, None, None)))
 
 
+class _ProcessorStore(Store):
+    """Expose the processor's default graph through the existing Graph API."""
+
+    context_aware = False
+    formula_aware = False
+    graph_aware = False
+
+    def __init__(self, processor):
+        super().__init__()
+        self.processor = processor
+
+    def triples(self, triple_pattern, context=None):
+        for triple in self.processor.dataset().default_graph.triples(triple_pattern):
+            yield triple, iter(())
+
+    def __len__(self, context=None):
+        return len(self.processor.dataset().default_graph)
+
+
 class R2RMLVirtualGraph:
     """A read-only RDF view of R2RML-mapped tables on a DB-API connection.
 
@@ -299,18 +325,36 @@ class R2RMLVirtualGraph:
     ``placeholder`` is connector-specific: ``?`` or ``%s``.
     """
 
-    def __init__(self, mapping, connection, *, dialect="sqlite", placeholder=None):
+    def __init__(self, mapping, connection, *, dialect="sqlite", placeholder=None, base_iri=None):
         if dialect not in {"sqlite", "snowflake", "bigquery", "databricks"}:
             raise ValueError(f"unsupported SQL dialect: {dialect}")
-        self.mapping = _parse(mapping)
+        self.processor = R2RMLProcessor(mapping, connection, dialect=dialect, base_iri=base_iri)
+        try:
+            self.mapping = _parse(mapping)
+        except ValueError:
+            self.mapping = None
+        if base_iri is not None:
+            self.mapping = None
+        # The legacy direct store does not model fixed-width CHAR padding,
+        # temporal values, binary data, or SQL boolean conversion. Use the
+        # full processor for these maps even when their syntax is otherwise
+        # simple enough for the SQL BGP fast path.
+        if any(re.match(r"^\s*CHAR\s*\(", sql_type, re.I) or
+               any(token in sql_type.upper() for token in
+                   ("DATE", "TIME", "BINARY", "BLOB", "BOOL"))
+               for source in self.processor.maps.values() for sql_type in source.types.values()):
+            self.mapping = None
         if placeholder is None:
             placeholder = "%s" if dialect == "snowflake" else "?"
         if placeholder not in {"?", "%s"}:
             raise ValueError("unsupported DB-API placeholder")
-        self.graph = Graph(store=_VirtualStore(self.mapping, connection, dialect, placeholder))
+        self.graph = (Graph(store=_VirtualStore(self.mapping, connection, dialect, placeholder))
+                      if self.mapping is not None else Graph(store=_ProcessorStore(self.processor)))
 
     def sparql(self, query):
         """Run a SPARQL query against the live virtual graph."""
+        if self.mapping is None:
+            return self.processor.dataset().query(query)
         pushed = self._pushdown_bgp(query)
         if pushed is not None:
             return pushed
@@ -496,9 +540,9 @@ class R2RMLVirtualGraph:
 
     def export_rdf(self, format="nt"):
         """Materialize an interoperable RDF snapshot (e.g. N-Triples for n10s)."""
-        if format not in {"nt", "turtle"}:
-            raise ValueError("supported RDF exports: nt, turtle")
-        snapshot = Graph()
-        for triple, _ in self.graph.store.triples((None, None, None)):
-            snapshot.add(triple)
-        return snapshot.serialize(format=format)
+        if format not in {"nt", "turtle", "nquads"}:
+            raise ValueError("supported RDF exports: nt, turtle, nquads")
+        dataset = self.processor.dataset()
+        if format == "nquads":
+            return dataset.serialize(format="nquads")
+        return dataset.default_graph.serialize(format=format)
