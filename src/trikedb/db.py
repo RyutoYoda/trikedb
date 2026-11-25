@@ -120,6 +120,8 @@ class TrikeDB:
         #: Round-trip YAML tree; authored workflows remain the editable source.
         self._source_document = None
         self._workflow_states: dict = {}
+        #: Graph fingerprint at the last read/write; avoids reflowing untouched YAML.
+        self._loaded_content_hash: str | None = None
         #: open batch() blocks; while any is open, autosave holds its write
         self._batch_depth = 0
         #: One list per open batch, holding (triple, attrs-before) for
