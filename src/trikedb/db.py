@@ -117,6 +117,9 @@ class TrikeDB:
         #: that reads one, and so a graph that declares nothing pays nothing.
         self.predicate_rules: dict = {}
         self._triples: list = []
+        #: Round-trip YAML tree; authored workflows remain the editable source.
+        self._source_document = None
+        self._workflow_states: dict = {}
         #: open batch() blocks; while any is open, autosave holds its write
         self._batch_depth = 0
         #: One list per open batch, holding (triple, attrs-before) for

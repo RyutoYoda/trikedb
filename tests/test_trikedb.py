@@ -1392,16 +1392,192 @@ def test_dedicated_workflow_yaml_compiles_to_rdf_and_roundtrips(tmp_path):
     assert "顧客データ更新" in html
     assert "domain:customer-data" in html
 
-    # The dedicated syntax is an authoring shorthand. Save writes the single
-    # canonical graph representation, which can be queried by either engine.
+    # The authored workflow stays readable; the RDF projection is derived.
     db.save()
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert "workflows" not in doc
-    assert {"s": "customer-refresh", "p": "HAS_STEP", "o": "extract-records", "order": 1} in doc["triples"]
-    assert {"s": "extract-records", "p": "NEXT_STEP", "o": "validate-records"} in doc["triples"]
+    assert doc["workflows"]["customer-refresh"]["steps"][0]["id"] == "extract-records"
+    assert not any(t["p"] in {"HAS_STEP", "NEXT_STEP"} for t in doc.get("triples", []))
     assert TrikeDB(path).sparql(
         "ASK { t:validate-records t:NEXT_STEP t:transform-records }"
     ) is True
+
+
+def test_authored_workflow_keeps_comments_and_updates_graph_edits(tmp_path):
+    path = tmp_path / "graph.yaml"
+    path.write_text("""# Review this workflow before release.
+ontology:
+  predicates:
+    HAS_STEP: workflow membership
+    NEXT_STEP: directed order
+workflows:
+  report:  # reporting plan
+    label: Report
+    steps:
+      - id: collect  # data intake
+        label: Collect
+        next: [publish]
+      - id: publish
+        label: Publish
+""", encoding="utf-8")
+    original_source = path.read_text(encoding="utf-8")
+    db = TrikeDB(path)
+    db.save()
+    original = path.read_text(encoding="utf-8")
+    assert original == original_source
+    assert "# Review this workflow before release." in original
+    assert "# data intake" in original
+    assert "workflows:" in original
+    assert "nodes:" not in original
+
+    db.set_node("publish", label="Publish approved report")
+    with db.batch():
+        db.add("report", "HAS_STEP", "archive", order=3)
+        db.set_node("archive", type="process_step", label="Archive")
+        db.add("publish", "NEXT_STEP", "archive")
+    text = path.read_text(encoding="utf-8")
+    doc = yaml.safe_load(text)
+    assert [step["id"] for step in doc["workflows"]["report"]["steps"]] == [
+        "collect", "publish", "archive"]
+    assert doc["workflows"]["report"]["steps"][1]["label"] == "Publish approved report"
+    assert "# Review this workflow before release." in text
+    assert "# reporting plan" in text
+    assert "# data intake" in text
+    assert TrikeDB(path).sparql("ASK { t:publish t:NEXT_STEP t:archive }")
+
+
+def test_canonical_yaml_edits_keep_unrelated_comments(tmp_path):
+    path = tmp_path / "graph.yaml"
+    path.write_text("""# A graph for review
+nodes:
+  first: {type: document, label: First}  # keep this note
+triples:
+  - {s: first, p: USES, o: second}  # reviewed relation
+""", encoding="utf-8")
+    db = TrikeDB(path)
+    db.set_node("second", type="document", label="Second")
+    db.add("second", "USES", "first")
+    text = path.read_text(encoding="utf-8")
+    assert "# A graph for review" in text
+    assert "# keep this note" in text
+    assert "# reviewed relation" in text
+    assert TrikeDB(path).sparql("ASK { t:second t:USES t:first }")
+
+
+def test_fmt_expands_long_inline_yaml_without_changing_graph(tmp_path):
+    from trikedb.cli import main
+
+    path = tmp_path / "graph.yaml"
+    path.write_text("""# reviewed graph
+nodes:
+  report: {type: document, label: Long report name, description: A long description that makes this YAML entry hard to read when kept on a single line in a code review}
+triples:
+  - {s: report, p: USES, o: input}
+""", encoding="utf-8")
+    before = TrikeDB(path).to_rdflib().serialize(format="nt")
+    assert main(["fmt", str(path)]) == 0
+    first = path.read_text(encoding="utf-8")
+    assert "# reviewed graph" in first
+    assert "report:\n" in first
+    assert "    description:" in first
+    assert TrikeDB(path).to_rdflib().serialize(format="nt") == before
+    assert main(["fmt", str(path)]) == 0
+    assert path.read_text(encoding="utf-8") == first
+
+
+def test_workflow_save_does_not_write_an_incomplete_authoring_form(tmp_path):
+    path = tmp_path / "graph.yaml"
+    path.write_text("""workflows:
+  report:
+    steps:
+      - id: collect
+        next: [publish]
+      - id: publish
+""", encoding="utf-8")
+    before = path.read_text(encoding="utf-8")
+    db = TrikeDB(path, autosave=False)
+    db.add("report", "HAS_STEP", "unconnected", order=3)
+    with pytest.raises(ValueError, match="disconnected"):
+        db.save()
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_yaml_review_roundtrip_keeps_boolean_like_strings(tmp_path):
+    path = tmp_path / "graph.yaml"
+    path.write_text("""nodes:
+  mode: {type: setting, label: 'on'}
+triples: []
+""", encoding="utf-8")
+    db = TrikeDB(path)
+    db.set_node("other", type="setting", label="yes")
+    reloaded = TrikeDB(path)
+    assert reloaded.nodes_meta["mode"]["label"] == "on"
+    assert reloaded.nodes_meta["other"]["label"] == "yes"
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["nodes"]["other"]["label"] == "yes"
+
+
+def test_saving_unchanged_demo_does_not_create_review_noise(tmp_path):
+    source = Path(__file__).resolve().parents[1] / "examples/review_app/demo.yaml"
+    target = tmp_path / "demo.yaml"
+    target.write_bytes(source.read_bytes())
+    TrikeDB(target).save()
+    assert target.read_bytes() == source.read_bytes()
+
+
+def test_fmt_can_promote_canonical_workflow_without_changing_rdf(tmp_path):
+    from trikedb.cli import main
+    from rdflib.compare import isomorphic
+
+    path = tmp_path / "graph.yaml"
+    db = TrikeDB(path, autosave=False)
+    db.set_node("report", type="workflow", label="Review report")
+    db.set_node("collect", type="process_step", label="Collect")
+    db.set_node("publish", type="process_step", label="Publish")
+    db.add("report", "HAS_STEP", "collect", order=1)
+    db.add("report", "HAS_STEP", "publish", order=2)
+    db.add("collect", "NEXT_STEP", "publish")
+    db.add("collect", "USES", "guide")
+    db.save()
+    before = TrikeDB(path).to_rdflib()
+    assert main(["fmt", str(path), "--workflows"]) == 0
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert [step["id"] for step in doc["workflows"]["report"]["steps"]] == ["collect", "publish"]
+    assert "report" not in doc.get("nodes", {})
+    assert not any(t["p"] in {"HAS_STEP", "NEXT_STEP"} for t in doc.get("triples", []))
+    assert {"s": "collect", "p": "USES", "o": "guide"} in doc["triples"]
+    assert isomorphic(TrikeDB(path).to_rdflib(), before)
+
+
+def test_fmt_refuses_workflow_conversion_that_would_drop_comments(tmp_path):
+    from trikedb.persistence import format_for_review
+
+    path = tmp_path / "graph.yaml"
+    original = """nodes:
+  report: {type: workflow, label: Report}
+  collect: {type: process_step, label: Collect}
+triples:
+  - {s: report, p: HAS_STEP, o: collect, order: 1}  # Keep this reason
+"""
+    path.write_text(original, encoding="utf-8")
+    with pytest.raises(ValueError, match="relation comments"):
+        format_for_review(TrikeDB(path), workflows=True)
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_yaml_comments_follow_reordered_events_with_the_same_spo():
+    from io import StringIO
+    from trikedb.yaml_source import _roundtrip_yaml, _sync_triples
+
+    parser = _roundtrip_yaml()
+    doc = parser.load("""triples:
+  - {s: item, p: CHANGED, o: state, at: '2025-01-01'}  # first event
+  - {s: item, p: CHANGED, o: state, at: '2025-02-01'}  # second event
+""")
+    _sync_triples(doc["triples"], [dict(doc["triples"][1]), dict(doc["triples"][0])])
+    output = StringIO()
+    parser.dump(doc, output)
+    lines = [line for line in output.getvalue().splitlines() if "CHANGED" in line]
+    assert "2025-02-01" in lines[0] and "# second event" in lines[0]
+    assert "2025-01-01" in lines[1] and "# first event" in lines[1]
 
 
 @pytest.mark.parametrize(("workflow", "message"), [

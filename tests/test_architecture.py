@@ -35,6 +35,8 @@ LAYERS = {
     "r2rml": 1,          # read-only virtual RDF projection over DB-API rows
     "reasoning": 1,      # OWL-RL and SHACL over that projection
     "workflows": 1,      # membership and directed process-order semantics
+    "workflow_source": 1,  # authored workflow projection to and from facts
+    "yaml_source": 1,   # source layout and comment-preserving YAML edits
     # 2 — read the whole document and say something about it.
     "audit": 2,
     "merge": 2,          # what incoming triples would do
@@ -66,7 +68,8 @@ def modules():
 
 def import_time_deps(module):
     """Sibling modules imported at module level — not inside a function."""
-    tree = ast.parse(open(os.path.join(SRC, module + ".py")).read())
+    with open(os.path.join(SRC, module + ".py"), encoding="utf-8") as source:
+        tree = ast.parse(source.read())
     known, found = set(modules()), set()
     for node in tree.body:                       # top level only, on purpose
         if isinstance(node, ast.ImportFrom):

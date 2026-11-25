@@ -82,7 +82,7 @@ pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
 pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3 and virtual SQL graphs
 ```
 
-Every optional feature is an extra, so the core stays PyYAML + rdflib + pyoxigraph.
+Every optional feature is an extra, so the core stays PyYAML + ruamel.yaml + rdflib + pyoxigraph.
 The full list is in [the reference](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#extras).
 
 ## Start with three facts
@@ -108,12 +108,13 @@ trikedb init graph.yaml --template agent-memory   # a starting graph with a real
 trikedb add graph.yaml salesflow-crm PROVIDES crm-sync-job
 trikedb query graph.yaml -w "?vendor PROVIDES ?job"
 trikedb ui graph.yaml                             # open it in a browser
+trikedb fmt graph.yaml                            # expand long inline YAML entries for review
 ```
 
 ## Model an ordered workflow in YAML
 
 The `workflows:` section is a concise way to author a business or data process.
-It is an authoring form for a **regular knowledge graph**, not a separate
+It is the editable source form for a **regular knowledge graph**, not a separate
 workflow database: TrikeDB compiles it into RDF nodes and triples that can be
 saved, diffed, and queried with SPARQL through PyOxigraph.
 
@@ -152,8 +153,15 @@ and tags do not infer or change the sequence.
 On load, TrikeDB creates a `workflow` node, a `process_step` node for each
 step, one `HAS_STEP` relation per step (with its order), and a directed
 `NEXT_STEP` relation for each `next` target. These are ordinary RDF facts, so
-the workflow can be queried alongside the rest of the graph. Saving normalizes
-the shorthand to the canonical `nodes:` / `triples:` representation.
+the workflow can be queried alongside the rest of the graph. Saving keeps the
+authored `workflows:` form and its comments; editing graph nodes or step links
+updates that form. `nodes:` and `triples:` remain available for other facts.
+`trikedb fmt` is opt-in: it makes long inline mappings and lists multiline,
+retains comments, and does not change the graph facts. Ordinary saves preserve
+the existing YAML layout instead of reformatting the entire file.
+For an older graph that stores workflow steps as explicit nodes and triples,
+`trikedb fmt graph.yaml --workflows` writes representable plans as `workflows:`
+while preserving the same RDF graph. Review that one-time source change in Git.
 
 RDF queries and Turtle/JSON-LD exports also expose the same process using
 [P-Plan 1.3](https://vocab.linkeddata.es/p-plan/index.html): workflow and step nodes are

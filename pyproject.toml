@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Ryuto Yoda" }]
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0", "rdflib>=7", "pyoxigraph>=0.4"]
+dependencies = ["PyYAML>=6.0", "ruamel.yaml>=0.18", "rdflib>=7", "pyoxigraph>=0.4"]
 keywords = ["knowledge-graph", "rdf", "triple-store", "yaml", "llm", "agents", "ontology"]
 classifiers = [
     # The documented single-file graph contract is frozen for the 1.x series.
