@@ -72,12 +72,20 @@ connection = dbapi.Connection(client=client, prefer_bqstorage_client=False)
 view = R2RMLVirtualGraph("mapping.ttl", connection, dialect="bigquery")
 ```
 
-Queries are virtual: each triple pattern runs SQL against the source, and
-basic bound subjects and literal columns are pushed into `WHERE` clauses.
-SPARQL joins and filters are currently evaluated by RDFLib, so this is **not**
-a general SPARQL-to-SQL optimizer. Full-graph queries and RDF export may read
-entire tables. Apply source access control and use selective query patterns
-for large tables.
+Queries are virtual. A bare `SELECT` or `ASK` basic graph pattern with one
+subject, constant predicates, and exactly one eligible triples map compiles
+to one SQL `SELECT`. The SQL joins the needed source rows and parent maps;
+bound subjects and plain string literals become parameters. Rows that map to
+the same RDF subject are joined by the subject template columns, so RDF graph
+joins do not require both facts to come from the same table row. Other SPARQL
+shapes, cross-map joins, `FILTER`, `OPTIONAL`, `UNION`, and aggregates use
+RDFLib over the virtual store. This is **not** a general SPARQL-to-SQL
+optimizer. Full-graph queries and RDF export may read entire tables. Apply
+source access control and use selective query patterns for large tables.
+
+R2RML defines *mapping semantics*, not a required SPARQL-to-SQL optimizer.
+See [standards compatibility](STANDARDS_COMPATIBILITY.md) for the supported
+subset, omitted W3C constructs, and the separate query standards.
 
 An N-Triples export is a portable RDF interchange artifact. Neo4j's n10s can
 import RDF in supported self-managed deployments; Neo4j Aura needs a separate
