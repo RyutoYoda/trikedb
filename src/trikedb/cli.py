@@ -41,6 +41,11 @@ def main(argv=None) -> int:
     )
 
     p_query = sub.add_parser("query", help="match graph patterns with ?variables")
+
+    p_fmt = sub.add_parser("fmt", help="make long YAML entries readable for code review")
+    p_fmt.add_argument("file", help="existing graph YAML file to format in place")
+    p_fmt.add_argument("--workflows", action="store_true",
+                       help="write representable workflow nodes as readable workflows: definitions")
     p_query.add_argument("file")
     p_query.add_argument(
         "-w", "--where", action="append", required=True, metavar="'?s PRED ?o'",
@@ -406,6 +411,15 @@ def _print_rows(rows, as_json: bool) -> int:
 def _cmd_query(args) -> int:
     db = TrikeDB(args.file)
     return _print_rows(db.query(args.where), args.json)
+
+
+def _cmd_fmt(args) -> int:
+    from .persistence import format_for_review
+
+    db = TrikeDB(args.file)
+    format_for_review(db, workflows=args.workflows)
+    print(args.file)
+    return 0
 
 
 def _cmd_sparql(args) -> int:
@@ -909,6 +923,7 @@ def _cmd_serve(args) -> int:
 
 _COMMANDS = {
     "init": _cmd_init,
+    "fmt": _cmd_fmt,
     "query": _cmd_query,
     "sparql": _cmd_sparql,
     "search": _cmd_search,

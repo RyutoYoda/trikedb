@@ -71,7 +71,7 @@ pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
 pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3 and virtual SQL graphs
 ```
 
-所有可选能力都是 extra，所以内核始终只有 PyYAML + rdflib + pyoxigraph。
+所有可选能力都是 extra，所以内核始终只有 PyYAML + ruamel.yaml + rdflib + pyoxigraph。
 完整清单见[参考手册](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE_zh.md#extras)。
 
 ## 先写三条事实
@@ -97,6 +97,7 @@ trikedb init graph.yaml --template agent-memory   # 写出一个有形状的起�
 trikedb add graph.yaml salesflow-crm PROVIDES crm-sync-job
 trikedb query graph.yaml -w "?vendor PROVIDES ?job"
 trikedb ui graph.yaml                             # 在浏览器里打开
+trikedb fmt graph.yaml                            # 展开过长的行内 YAML，便于审查
 ```
 
 ## 用 YAML 建模有序工作流
@@ -138,7 +139,10 @@ workflows:
 加载时，TrikeDB 会创建一个 `workflow` 节点和每个步骤对应的 `process_step` 节点。
 `HAS_STEP` 记录工作流与步骤的成员关系及顺序，每个 `next` 则生成一条有向的
 `NEXT_STEP` 关系。这些都是普通 RDF 事实，可以与图谱中的其他数据一起查询。保存时，
-简写会规范化为 `nodes:` / `triples:` 格式。
+仍会保留编写的 `workflows:` 形式和注释。步骤或连接的修改会写回原始定义。
+可显式运行 `trikedb fmt`，将过长的行内写法整理为多行格式。
+对于旧的节点和三元组形式，可运行 `trikedb fmt graph.yaml --workflows` 转为易读的
+`workflows:` 定义；RDF 图保持不变，请在 Git 中审查这次源文件改动。
 
 加载器会检查结构：ID 必须唯一，`next` 的目标必须属于当前工作流，步骤图必须连通且
 无环。手动填写的 `order` 必须沿每条 `NEXT_STEP` 边递增；省略时按步骤列表顺序编号。

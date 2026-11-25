@@ -12,13 +12,15 @@ on TrikeDB because they are public.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from io import StringIO
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING
 
 import yaml
 
 from . import rules
-from .model import Triple, _YamlDumper, _parse_document, _plain
+from .model import Triple, _parse_document, _plain, _YamlDumper
 from .storage import check_scheme as _check_scheme
 from .storage import exists as _exists
 from .storage import is_remote as _is_remote
@@ -26,7 +28,21 @@ from .storage import read_text as _read_text
 from .storage import serialization as _serialization
 from .storage import version as _version_of
 from .storage import write_text as _write_text
+from .workflow_source import _authored_workflow, _workflow_state
 from .workflows import _validate_workflows, validate_agent_spec
+from .yaml_source import (
+    _roundtrip_yaml,
+    _sync_authored_workflow,
+    _sync_mapping,
+    _sync_triples,
+    attached_comment,
+    format_long_inline,
+    has_comments,
+    parse_source,
+)
+
+if TYPE_CHECKING:
+    from .db import TrikeDB
 
 
 def locate(path):
@@ -47,7 +63,7 @@ def load_if_present(db) -> None:
         load(db)
 
 
-def reload(db) -> "TrikeDB":
+def reload(db) -> TrikeDB:
     """Replace the in-memory graph only after the new document is valid.
 
     The way out of a ``ConcurrentWriteError``: someone else's version is
@@ -67,6 +83,8 @@ def reload(db) -> "TrikeDB":
                  "_version", "_rdf_cache", "_index", "_index_len",
                  "_pidx", "_eidx", "_pidx_len", "_pending"):
         setattr(db, name, getattr(fresh, name))
+    db._source_document = fresh._source_document
+    db._workflow_states = fresh._workflow_states
     return db
 
 
@@ -85,8 +103,9 @@ def load(db) -> None:
     # Version first, content second — the other order can hand us a token
     # that belongs to bytes we never saw. See storage.version.
     db._version = _version_of(db.path)
+    source_text = _read_text(db.path)
     try:
-        data = _parse_document(_read_text(db.path))
+        data = _parse_document(source_text)
     except yaml.YAMLError as exc:
         # PyYAML reports "<unicode string>", never the file it came from,
         # which is no help at all in a workspace of five members.
@@ -152,12 +171,71 @@ def load(db) -> None:
             raise ValueError(f"{db.path}: {exc}") from exc
     db._rdf_cache = None
     db._index = db._pidx = db._eidx = None
+    if _serialization(db.path) != "json":
+        # Parsing for comments is only needed by writers. Keep reads fast.
+        db._source_document = source_text
+    elif workflows:
+        db._source_document = deepcopy(data)
+    if workflows:
+        db._workflow_states = {str(wid): _workflow_state(db, str(wid)) for wid in workflows}
+
+
+def format_for_review(db, *, width: int = 100, workflows: bool = False):
+    """Make source YAML readable without changing its graph facts."""
+    if db._source_document is None or _serialization(db.path) == "json":
+        raise ValueError("format requires an existing YAML graph file")
+    source = _source_tree(db)
+    if workflows:
+        had_workflows = "workflows" in source
+        authored = source.get("workflows")
+        if authored is None:
+            authored = {}
+            source["workflows"] = authored
+        for wid, meta in db.nodes_meta.items():
+            if meta.get("type") != "workflow" or wid in authored:
+                continue
+            state = _workflow_state(db, wid)
+            declaration = _authored_workflow(state)
+            if declaration is not None:
+                nodes = source.get("nodes") or {}
+                steps = {link["o"] for link in state["membership"]}
+                if any(
+                    attached_comment(nodes, name) or has_comments(nodes.get(name))
+                    for name in {wid, *steps}
+                ):
+                    raise ValueError(
+                        f"workflow {wid!r} has node comments; "
+                        "move them into workflows: before conversion"
+                    )
+                triples = source.get("triples") or []
+                for index, triple in enumerate(triples):
+                    structural = triple["p"] == "HAS_STEP" and triple["s"] == wid
+                    structural |= (
+                        triple["p"] == "NEXT_STEP"
+                        and triple["s"] in steps
+                        and triple["o"] in steps
+                    )
+                    if structural and (attached_comment(triples, index) or has_comments(triple)):
+                        raise ValueError(
+                            f"workflow {wid!r} has relation comments; "
+                            "move them into workflows: before conversion"
+                        )
+                authored[wid] = declaration
+        if not authored and not had_workflows:
+            source.pop("workflows", None)
+    format_long_inline(source, width=width)
+    return save(db, width=width)
+
+
+def _source_tree(db):
+    db._source_document = parse_source(db._source_document)
+    return db._source_document
 
 
 def _compile_workflows(path, workflows: dict, existing_nodes: dict):
     """Expand author-friendly workflow declarations into ordinary graph data.
 
-    ``workflows:`` is only an input shorthand. Its output is the same node
+    ``workflows:`` is an editable source form. Its RDF projection is the same node
     metadata and RDF triples used by every other TrikeDB feature, so queries,
     Oxigraph, and the HTML picker do not have a parallel workflow store.
     """
@@ -354,8 +432,8 @@ def guard_writable(db) -> None:
     )
 
 
-def save(db, path: Union[str, Path, None] = None):
-    """Write the graph back out. Plain triples stay on one line.
+def save(db, path: str | Path | None = None, *, width: int | None = None):
+    """Write the graph back out, retaining authored workflows as workflows.
 
     Works for local paths and object URLs (s3://, ...). On local files and S3 the write is
     conditional on the stored graph still being the one this copy was
@@ -381,8 +459,90 @@ def save(db, path: Union[str, Path, None] = None):
     if db.nodes_meta:
         doc["nodes"] = {k: dict(v) for k, v in db.nodes_meta.items()}
     doc["triples"] = [t.to_dict() for t in db._triples]
+    source = _source_tree(db) if db._source_document is not None else None
+    if source is not None:
+        old_ontology = source.get("ontology") or {}
+        if not isinstance(old_ontology, dict):
+            old_ontology = {}
+        old_predicates = old_ontology.get("predicates", old_ontology)
+        if isinstance(old_predicates, dict) and "ontology" in doc:
+            declarations = doc["ontology"]["predicates"]
+            for predicate, declaration in declarations.items():
+                previous = old_predicates.get(predicate)
+                if (isinstance(previous, dict) and set(previous) == {"description"}
+                        and previous["description"] == declaration):
+                    declarations[predicate] = previous
+            if "predicates" not in old_ontology:
+                doc["ontology"] = declarations
+        authored = {}
+        hidden_nodes = set()
+        hidden_memberships = set()
+        hidden_successors = set()
+        for wid_key, original in source.get("workflows", {}).items():
+            wid = str(wid_key)
+            state = _workflow_state(db, wid)
+            workflow = _authored_workflow(state)
+            if workflow is None:
+                continue
+            # An untouched declaration keeps its spelling, comments and flow style.
+            authored[wid_key] = original if state == db._workflow_states.get(wid) else workflow
+            members = {t["o"] for t in state["membership"]}
+            if hidden_nodes.intersection(members):
+                raise ValueError(f"workflow steps belong to multiple authored workflows: {hidden_nodes & members}")
+            hidden_nodes.update({wid, *members})
+            hidden_memberships.update((t["s"], t["p"], t["o"])
+                                      for t in state["membership"])
+            hidden_successors.update((t["s"], t["p"], t["o"])
+                                     for t in state["successors"])
+        if authored:
+            doc["workflows"] = authored
+        doc["nodes"] = {k: v for k, v in doc.get("nodes", {}).items()
+                        if k not in hidden_nodes}
+        doc["triples"] = [t for t in doc["triples"]
+                          if (t["s"], t["p"], t["o"]) not in
+                          hidden_memberships | hidden_successors]
+        if not doc["nodes"]:
+            doc.pop("nodes")
+        if authored:
+            _, projected = _compile_workflows(target, authored, doc.get("nodes", {}))
+            _validate_workflows(projected, {"NEXT_STEP"}, "HAS_STEP")
+    if source is not None and not doc["triples"] and "triples" not in source:
+        doc.pop("triples")
     if _serialization(target) == "json":
         text = json.dumps(doc, ensure_ascii=False, indent=2)
+    elif source is not None:
+        # Update the source tree in place so comments in unchanged sections
+        # survive edits elsewhere. The graph is still the source of the values.
+        for key in ("ontology", "nodes", "triples", "workflows"):
+            value = doc.get(key)
+            if value is None:
+                source.pop(key, None)
+            elif key == "workflows":
+                existing = source.get("workflows", {})
+                for wid in list(existing):
+                    if wid not in value:
+                        del existing[wid]
+                for wid, workflow in value.items():
+                    if wid not in existing:
+                        existing[wid] = workflow
+                    elif existing[wid] is not workflow:
+                        _sync_authored_workflow(existing[wid], workflow)
+                source["workflows"] = existing
+            elif key not in source:
+                source[key] = value
+            elif key == "triples" and _plain(source[key]) != _plain(value):
+                _sync_triples(source[key], value)
+            elif isinstance(source[key], dict) and isinstance(value, dict):
+                _sync_mapping(source[key], value)
+            elif _plain(source[key]) != _plain(value):
+                source[key] = value
+        formatter = _roundtrip_yaml()
+        formatter.allow_unicode = True
+        formatter.width = width if width is not None else 4096
+        formatter.indent(mapping=2, sequence=4, offset=2)
+        output = StringIO()
+        formatter.dump(source, output)
+        text = output.getvalue()
     else:
         text = yaml.dump(
             doc,
@@ -398,4 +558,8 @@ def save(db, path: Union[str, Path, None] = None):
     else:  # save-as: nothing to compare against
         db._version = _write_text(target, text)
     db.path = target
+    if source is not None:
+        db._source_document = text if _serialization(target) != "json" else json.loads(text)
+        db._workflow_states = {str(wid): _workflow_state(db, str(wid))
+                               for wid in source.get("workflows", {}) if str(wid) in db.nodes_meta}
     return target
