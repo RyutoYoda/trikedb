@@ -3,6 +3,13 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## Unreleased
+
+- Add a read-only R2RML virtual RDF graph over DB-API tables. It queries the
+  source rows on demand, supports table/column mappings and parent joins,
+  and exports a standard RDF snapshot. Unsupported mapping constructs fail
+  explicitly. The one-document YAML and warehouse storage APIs stay intact.
+
 ## 1.3.0
 
 - Deliver linked `SKILL.md` files to ready workflow steps through `read_skill`.
