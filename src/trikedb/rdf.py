@@ -17,6 +17,9 @@ import re
 from .model import OntologyError, Triple, _iri_node, _shorten
 
 
+PPLAN = "http://purl.org/net/p-plan#"
+
+
 def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
               edge_attrs: bool = True):
     """Convert to an rdflib.Graph.
@@ -47,6 +50,7 @@ def to_rdflib(db, base: str = "urn:trikedb:", node_props: bool = True,
     # no reason at all.
     g = Graph(identifier=URIRef(base))
     g.bind("t", base)
+    g.bind("pplan", PPLAN)
     for triple in statements(db, base, node_props, edge_attrs):
         g.add(triple)
     return g
@@ -80,6 +84,41 @@ def statements(db, base: str, node_props: bool = True,
                 yield URIRef(_iri_node(name, base)), URIRef(_iri_node(str(key), base)), Literal(value)
                 if key == "type" and isinstance(value, str) and value:
                     yield URIRef(_iri_node(name, base)), RDF.type, URIRef(_iri_node(value, base))
+    yield from _pplan_statements(db, base, node_props)
+
+
+def _pplan_statements(db, base: str, node_props: bool):
+    """Expose the native workflow graph as P-Plan without duplicating YAML.
+
+    P-Plan's membership and precedence properties point in the opposite
+    direction to HAS_STEP and NEXT_STEP. Only declared workflow members are
+    projected; an unrelated NEXT_STEP edge is not a process dependency.
+    """
+    from rdflib import RDF, URIRef
+
+    workflow_ids = {name for name, meta in db.nodes_meta.items()
+                    if meta.get("type") == "workflow"}
+    step_ids = {name for name, meta in db.nodes_meta.items()
+                if meta.get("type") == "process_step"}
+    if not workflow_ids:
+        return
+    owners: dict[str, set[str]] = {}
+    for triple in db._triples:
+        if (triple.p != "HAS_STEP" or triple.s not in workflow_ids
+                or triple.o not in step_ids):
+            continue
+        owners.setdefault(triple.o, set()).add(triple.s)
+        yield (URIRef(_iri_node(triple.o, base)), URIRef(PPLAN + "isStepOfPlan"),
+               URIRef(_iri_node(triple.s, base)))
+    if node_props:
+        for workflow in workflow_ids:
+            yield URIRef(_iri_node(workflow, base)), RDF.type, URIRef(PPLAN + "Plan")
+        for step in owners:
+            yield URIRef(_iri_node(step, base)), RDF.type, URIRef(PPLAN + "Step")
+    for triple in db._triples:
+        if triple.p == "NEXT_STEP" and owners.get(triple.s, set()) & owners.get(triple.o, set()):
+            yield (URIRef(_iri_node(triple.o, base)), URIRef(PPLAN + "isPreceededBy"),
+                   URIRef(_iri_node(triple.s, base)))
 
 
 def oxigraph_store(db, base: str):
@@ -143,6 +182,7 @@ def sparql(db, query: str, base: str = "urn:trikedb:"):
 
     prefixed = (
         f"PREFIX t: <{base}>\n"
+        f"PREFIX pplan: <{PPLAN}>\n"
         "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query
     )
     if db.sparql_engine == "oxigraph":
@@ -217,6 +257,7 @@ def update(db, query: str, base: str = "urn:trikedb:") -> int:
     from rdflib.plugins.sparql.parser import parseUpdate
     from rdflib.plugins.sparql.algebra import translateUpdate
     prefixed = (f"PREFIX t: <{base}>\n"
+                f"PREFIX pplan: <{PPLAN}>\n"
                 "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" + query)
     parsed = translateUpdate(parseUpdate(prefixed))
     # This is a single default graph, not an RDF dataset. Reject dataset

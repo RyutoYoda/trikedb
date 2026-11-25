@@ -153,6 +153,15 @@ step, one `HAS_STEP` relation per step (with its order), and a directed
 the workflow can be queried alongside the rest of the graph. Saving normalizes
 the shorthand to the canonical `nodes:` / `triples:` representation.
 
+RDF queries and Turtle/JSON-LD exports also expose the same process using
+[P-Plan](https://www.opmw.org/model/p-plan/): workflow and step nodes are
+`p-plan:Plan` and `p-plan:Step`; `step p-plan:isStepOfPlan workflow` expresses
+membership; and `later p-plan:isPreceededBy earlier` expresses order. These
+are derived RDF statements, not duplicate YAML records. The original
+`HAS_STEP` / `NEXT_STEP` facts remain available to existing agents and the UI.
+Tool links and agent gates remain TrikeDB extensions; they are not P-Plan
+input variables. P-Plan's published predicate is spelled `isPreceededBy`.
+
 The loader checks the workflow structure: IDs must be unique, every `next`
 target must exist in that workflow, and the step graph must be connected and
 acyclic. Explicit `order` values must increase along each `NEXT_STEP` edge;
@@ -178,7 +187,7 @@ See the [fictional example](https://github.com/RyutoYoda/trikedb/blob/main/examp
 
 ### Open and explore a workflow
 
-The standard `HAS_STEP` and `NEXT_STEP` predicates enable the workflow picker
+The built-in `HAS_STEP` and `NEXT_STEP` predicates enable the workflow picker
 automatically in the HTML workbench:
 
 ```python
