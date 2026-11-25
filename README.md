@@ -154,13 +154,14 @@ the workflow can be queried alongside the rest of the graph. Saving normalizes
 the shorthand to the canonical `nodes:` / `triples:` representation.
 
 RDF queries and Turtle/JSON-LD exports also expose the same process using
-[P-Plan](https://www.opmw.org/model/p-plan/): workflow and step nodes are
+[P-Plan 1.3](https://vocab.linkeddata.es/p-plan/index.html): workflow and step nodes are
 `p-plan:Plan` and `p-plan:Step`; `step p-plan:isStepOfPlan workflow` expresses
-membership; and `later p-plan:isPreceededBy earlier` expresses order. These
+membership; and `later p-plan:isPrecededBy earlier` expresses order. These
 are derived RDF statements, not duplicate YAML records. The original
 `HAS_STEP` / `NEXT_STEP` facts remain available to existing agents and the UI.
 Tool links and agent gates remain TrikeDB extensions; they are not P-Plan
-input variables. P-Plan's published predicate is spelled `isPreceededBy`.
+input variables. P-Plan 1.3 spells this predicate `isPrecededBy` (the older
+1.1 release used `isPreceededBy`).
 You can also describe a real execution and its revisions with W3C PROV-O
 IRIs in the **same YAML file**. See the [fictional plan and execution](https://github.com/RyutoYoda/trikedb/blob/main/examples/provenance_workflow.yaml).
 Use full IRIs in YAML; `prov:` and `pplan:` are pre-bound in SPARQL. Existing

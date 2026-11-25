@@ -32,12 +32,12 @@ def test_branching_workflow_projects_pplan_in_both_engines_and_after_save(tmp_pa
         (T.collect, PPLAN.isStepOfPlan, T.report),
         (T.publish, PPLAN.isStepOfPlan, T.report),
         (T.revise, PPLAN.isStepOfPlan, T.report),
-        (T.publish, PPLAN.isPreceededBy, T.collect),
-        (T.revise, PPLAN.isPreceededBy, T.collect),
+        (T.publish, PPLAN.isPrecededBy, T.collect),
+        (T.revise, PPLAN.isPrecededBy, T.collect),
     }
     assert expected <= set(graph)
     assert expected <= set(Graph().parse(data=graph.serialize(format="turtle"), format="turtle"))
-    query = "ASK { t:publish pplan:isPreceededBy t:collect }"
+    query = "ASK { t:publish pplan:isPrecededBy t:collect }"
     assert db.sparql(query)
     db.save()
     reopened = TrikeDB(path)
@@ -53,7 +53,7 @@ def test_pplan_projection_only_maps_declared_workflow_steps(tmp_path):
     db.set_node("unrelated", type="document")
     db.set_node("other", type="document")
     graph = db.to_rdflib()
-    assert (T.other, PPLAN.isPreceededBy, T.unrelated) not in graph
+    assert (T.other, PPLAN.isPrecededBy, T.unrelated) not in graph
     assert (T.unrelated, RDF.type, PPLAN.Step) not in graph
 
 
@@ -84,7 +84,7 @@ def test_prov_execution_and_plan_can_share_one_yaml_and_round_trip(tmp_path):
     assert db.sparql("ASK { t:run-001 prov:used t:sample-input }")
     assert db.sparql("ASK { t:report-v2 prov:wasGeneratedBy t:run-001 }")
     assert db.sparql("ASK { t:report-v2 prov:wasRevisionOf t:report-v1 }")
-    assert db.sparql("ASK { t:build-report pplan:isPreceededBy t:gather-input }")
+    assert db.sparql("ASK { t:build-report pplan:isPrecededBy t:gather-input }")
     graph = db.to_rdflib()
     assert (T["run-001"], RDF.type, Namespace("http://www.w3.org/ns/prov#").Activity) in graph
     copy = tmp_path / "copy.yaml"
