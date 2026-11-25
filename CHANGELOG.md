@@ -3,6 +3,14 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 1.2.0
+
+- Extend the MCP `agent_workflow` tool with explainable lexical workflow selection,
+  explicit one-route decisions, and reasoned skips for declared optional steps.
+- Check JUnit reports and repository/commit-bound GitHub Actions runs when a
+  gate requests verification. Keep credentials out of graph YAML and runs out
+  of the canonical graph.
+
 ## 1.1.1
 
 - Show a light-theme public graph sample in all three README languages and on

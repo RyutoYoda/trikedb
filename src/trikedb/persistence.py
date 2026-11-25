@@ -211,7 +211,7 @@ def _compile_workflows(path, workflows: dict, existing_nodes: dict):
             if not isinstance(item, dict):
                 fail(step_where, "must be a mapping")
                 continue
-            allowed_step = {"id", "label", "description", "properties", "order", "next", "agent"}
+            allowed_step = {"id", "label", "description", "properties", "order", "next", "next_mode", "agent"}
             unknown = set(item) - allowed_step
             if unknown:
                 fail(step_where, f"unknown field(s): {', '.join(sorted(map(str, unknown)))}")
@@ -229,13 +229,18 @@ def _compile_workflows(path, workflows: dict, existing_nodes: dict):
             if not isinstance(step_props, dict):
                 fail(f"{step_where}.properties", "must be a mapping")
                 step_props = {}
-            elif set(step_props) & {"type", "label", "description", "agent"}:
+            elif set(step_props) & {"type", "label", "description", "agent", "next_mode"}:
                 fail(f"{step_where}.properties", "put reserved step fields at the step level")
             step_meta = dict(step_props)
             step_meta["type"] = "process_step"
             for field in ("label", "description"):
                 if field in item:
                     step_meta[field] = item[field]
+            if "next_mode" in item:
+                if item["next_mode"] != "choose_one":
+                    fail(step_where, "next_mode must be choose_one")
+                else:
+                    step_meta["next_mode"] = "choose_one"
             if "agent" in item:
                 try:
                     step_meta["agent"] = validate_agent_spec(item["agent"], step_where)
@@ -253,6 +258,8 @@ def _compile_workflows(path, workflows: dict, existing_nodes: dict):
             if not isinstance(next_ids, list):
                 fail(f"{where}.steps[{index - 1}].next", "must be a node id or list of node ids")
                 continue
+            if item.get("next_mode") == "choose_one" and len(next_ids) < 2:
+                fail(step_where, "choose_one requires at least two next steps")
             for target in next_ids:
                 target_id = str(target)
                 if target_id not in step_ids:

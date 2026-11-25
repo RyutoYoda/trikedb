@@ -143,15 +143,17 @@ workflows:
 加载器会检查结构：ID 必须唯一，`next` 的目标必须属于当前工作流，步骤图必须连通且
 无环。手动填写的 `order` 必须沿每条 `NEXT_STEP` 边递增；省略时按步骤列表顺序编号。
 分支和汇合有效。分支条件应写入步骤的 `description` 或 `properties`；顺序图描述前后
-关系，不会推断条件的业务含义。
+关系，不会推断条件的业务含义。显式设置 `next_mode: choose_one` 后，agent 可以
+选择一个后续步骤并记录理由；未设置时，分支仍表示并行的必需步骤。
 
 ### 引导 agent 执行工作流
 
-通过 `trikedb[mcp]` 提供图谱时，`agent_workflow` 工具可以列出工作流、开始执行、
-返回当前可执行的步骤、记录完成结果，并在重启后恢复。它不会自行调用 Snowflake、
+通过 `trikedb[mcp]` 提供图谱时，`agent_workflow` 工具可以搜索或列出工作流、开始执行、
+返回当前可执行的步骤、记录有理由的分支选择与可选步骤的跳过、记录完成结果，并在重启后恢复。它不会自行调用 Snowflake、
 dbt、Tableau 等外部工具。每个步骤可在 `agent:` 中声明工具、开始条件、成果物以及
-测试和 E2E 门槛；完成时须提供成果物与通过门槛的证据引用。参见
-[虚构示例](https://github.com/RyutoYoda/trikedb/blob/main/examples/agent_workflow.yaml)
+测试和 E2E 门槛；完成时须提供成果物与通过门槛的证据引用。JUnit 报告和 GitHub Actions
+结果可由声明的验证器核对；不要在 YAML 中写入凭据。参见
+[虚构示例](https://github.com/RyutoYoda/trikedb/blob/main/examples/agent_workflow_decision.yaml)
 和[工具契约](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md#agent-workflow-mcp)。
 
 ### 打开并浏览工作流

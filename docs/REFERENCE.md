@@ -952,14 +952,16 @@ agent:
   tools: [dbt.run]                  # suggested external tool, never auto-called
   entry: [The source query passed its checks]  # guidance, not an executable rule
   outputs: [model]                 # required artifact key on completion
+  skippable: true                   # optional; skip still requires a reason
   gates:
-    - {id: model-tests, kind: test, description: Run model tests}
+    - {id: model-tests, kind: test, description: Run model tests, verifier: junit}
     - {id: dashboard-e2e, kind: e2e, description: Inspect the rendered view}
 ```
 
 `tools`, `entry` and `outputs` are lists of unique non-empty strings. Gate IDs
 are unique; each gate has an `id`, `description` and one of `test`, `e2e`,
-`review` or `manual` as its `kind`. Invalid declarations fail on load. See
+`review` or `manual` as its `kind`. `skippable` defaults to false. Invalid
+declarations fail on load. See
 [`examples/agent_workflow.yaml`](../examples/agent_workflow.yaml) for a fully
 fictional Snowflake → dbt → Tableau sequence.
 
@@ -968,23 +970,54 @@ Call the **one** `agent_workflow` tool with these actions:
 | Action | Arguments | Result |
 |---|---|---|
 | `list` | none | Workflow IDs, labels and step counts |
+| `select` | `query` | Ranked lexical matches, matched terms and a reason; no run is started |
 | `start` | `workflow_id` | New `run_id` and root `ready` steps |
 | `next` | `run_id` | Current ready steps and recorded completions |
 | `complete` | `run_id`, `step_id`, `artifacts`, `evidence` | Records a ready step and returns newly ready steps |
+| `choose` | `run_id`, `step_id`, `target_id`, `reason` | Chooses one successor of a completed `choose_one` step and records skipped routes |
+| `skip` | `run_id`, `step_id`, `reason` | Skips a ready step declared `agent.skippable: true` |
 | `resume` | `run_id` | Restores a run after a client or server restart |
 
 For `complete`, `artifacts` maps **every** declared output name to a non-empty
 reference. `evidence` is a list with one item per gate, each shaped like
 `{"gate":"model-tests","result":"pass","reference":"https://..."}`.
 Missing, failed, duplicate or unknown gate reports are rejected. A step
-cannot complete before all its predecessors; a rejoin waits for every incoming
-step. Branches therefore represent parallel required work, not conditional
-alternatives. If the workflow definition changes, existing runs remain
+cannot complete before all its predecessors; a rejoin waits for every active
+incoming route to settle. Ordinary branches represent parallel required work.
+To make a conditional branch, put `next_mode: choose_one` on the branching
+step and declare at least two `next` targets. After completing that step, call
+`choose` with a target and reason; other routes are marked skipped, including
+their descendants that have no remaining active incoming route. A choice
+cannot be changed. `skip` is allowed only for a ready step explicitly marked
+skippable, and also records a reason. Both decisions live in the run ledger,
+not in the canonical graph. See
+[`examples/agent_workflow_decision.yaml`](../examples/agent_workflow_decision.yaml).
+If the workflow definition changes, existing runs remain
 readable but cannot advance; start a new run against the new definition.
 
-The tool records **agent-reported references**. It does not execute or
-independently verify Snowflake, dbt, Tableau, tests or E2E; the agent needs
-separate access to those tools, and the reviewer must judge the evidence.
+By default, the tool records **agent-reported references**. A test or E2E gate
+can declare `verifier: junit`. Set `TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR` to a
+directory containing JUnit XML reports, preferably mounted read-only. The
+evidence `reference` must be a relative path inside that directory. Completion
+checks that the report has at least one test and no failed, errored or skipped
+cases, and records its SHA-256 hash. It never runs a command from YAML.
+
+For a GitHub Actions gate, declare `verifier: github_actions`,
+`repository: owner/repo`, and `subject_artifact: commit-sha`; include
+`commit-sha` in the
+step's `outputs`. The evidence reference is the run URL
+`https://github.com/owner/repo/actions/runs/123`. TrikeDB queries GitHub's
+fixed API host and requires a completed, successful run for the declared
+repository and the full 40-character commit SHA in that artifact. Set
+`TRIKEDB_GITHUB_TOKEN` at runtime when a private repository needs read access;
+never put the token in YAML. Invalid or unavailable evidence fails closed.
+The verifier establishes what the report or CI API returned, not who produced
+the artifact or whether the work itself is correct. No external tool is
+executed by `agent_workflow`.
+
+`select` ranks literal terms from workflow IDs, labels, summaries and step
+labels, with Japanese character pairs for partial matches. It is not semantic
+search and never starts a run automatically; choose a candidate explicitly.
 Do not put credentials or raw sensitive results in references. Runs are kept
 outside the ontology YAML in a private local SQLite file, one per graph,
 under `$XDG_STATE_HOME/trikedb/agent-workflow` (or
