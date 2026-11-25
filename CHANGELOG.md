@@ -3,6 +3,11 @@
 Notable changes, newest first. Versions before 0.30.0 are in the
 [commit history](https://github.com/RyutoYoda/trikedb/commits/main).
 
+## 1.2.1
+
+- Read workflow candidates and step membership through the SPARQL engine for
+  `agent_workflow(select)`. Keep the existing language-aware lexical ranking.
+
 ## 1.2.0
 
 - Extend the MCP `agent_workflow` tool with explainable lexical workflow selection,

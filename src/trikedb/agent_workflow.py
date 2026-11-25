@@ -84,17 +84,37 @@ def _select_workflows(db, query: str) -> list[dict]:
     for word in words:
         if len(word) >= 3 and any(ord(char) > 127 for char in word):
             terms.update(word[index:index + 2] for index in range(len(word) - 1))
+    # Use the RDF projection for workflow membership and metadata. TrikeDB's
+    # SELECT path runs on PyOxigraph by default; keep lexical ranking in Python
+    # so NFKC normalization and Japanese partial matches remain consistent.
+    rows = db.sparql("""
+        SELECT ?workflow ?label ?summary ?step ?stepLabel WHERE {
+          ?workflow t:type "workflow" .
+          OPTIONAL { ?workflow t:label ?label }
+          OPTIONAL { ?workflow t:summary ?summary }
+          OPTIONAL {
+            ?workflow t:HAS_STEP ?step .
+            OPTIONAL { ?step t:label ?stepLabel }
+          }
+        }
+    """)
+    workflows = {}
+    for row in rows:
+        workflow_id = row["workflow"]
+        entry = workflows.setdefault(workflow_id, {
+            "id": workflow_id, "label": row.get("label", workflow_id),
+            "summary": row.get("summary", ""), "steps": {},
+        })
+        if "step" in row:
+            entry["steps"][row["step"]] = row.get("stepLabel", row["step"])
     candidates = []
-    for node in db.nodes():
-        if db.node(node).get("type") != "workflow":
-            continue
-        plan = _definition(db, node)
+    for plan in workflows.values():
         fields = [plan["id"], plan["label"], plan["summary"]]
-        fields.extend(step["label"] for step in plan["steps"])
+        fields.extend(plan["steps"].values())
         haystack = unicodedata.normalize("NFKC", " ".join(fields)).casefold()
         matched = sorted(term for term in terms if term in haystack)
         if matched:
-            candidates.append({"id": node, "label": plan["label"],
+            candidates.append({"id": plan["id"], "label": plan["label"],
                                "summary": plan["summary"], "step_count": len(plan["steps"]),
                                "score": len(matched) + (3 if normalized in haystack else 0),
                                "matched_terms": matched,
