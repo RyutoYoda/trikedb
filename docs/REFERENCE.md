@@ -965,6 +965,34 @@ declarations fail on load. See
 [`examples/agent_workflow.yaml`](../examples/agent_workflow.yaml) for a fully
 fictional Snowflake → dbt → Tableau sequence.
 
+To require a skill, connect a process step to a `type: skill` node with `USES`.
+The skill node has either a local `path` to `SKILL.md` under the graph's
+directory or a GitHub `url` pinned to a full 40-character commit SHA:
+
+```yaml
+ontology:
+  predicates: {HAS_STEP: workflow to step, USES: step to skill}
+nodes:
+  example-checks:
+    type: skill
+    path: skills/example-checks/SKILL.md
+triples:
+  - {s: verify-example, p: USES, o: example-checks}
+```
+
+`ready` lists required skills. Call `read_skill(run_id, step_id, skill_id)` to
+receive the full UTF-8 `SKILL.md` and record its SHA-256 digest in the private
+run ledger. The content itself is not stored there. `complete` refuses a step
+until every linked skill has been delivered. This proves delivery through the
+MCP tool, not that the model followed the instructions. Referenced scripts or
+other files are not fetched or executed automatically. A GitHub skill URL uses
+`https://github.com/owner/repo/blob/<full-commit>/path/SKILL.md`; set
+`TRIKEDB_GITHUB_TOKEN` at runtime for private repositories. Do not put tokens
+or secret values in graph YAML or skill files. When no runtime token is set,
+an authenticated local `gh` CLI can fetch a private skill after an anonymous
+GitHub API request is denied. Local paths and symlinks cannot
+escape the graph directory.
+
 Call the **one** `agent_workflow` tool with these actions:
 
 | Action | Arguments | Result |
@@ -976,6 +1004,7 @@ Call the **one** `agent_workflow` tool with these actions:
 | `complete` | `run_id`, `step_id`, `artifacts`, `evidence` | Records a ready step and returns newly ready steps |
 | `choose` | `run_id`, `step_id`, `target_id`, `reason` | Chooses one successor of a completed `choose_one` step and records skipped routes |
 | `skip` | `run_id`, `step_id`, `reason` | Skips a ready step declared `agent.skippable: true` |
+| `read_skill` | `run_id`, `step_id`, `skill_id` | Delivers a required skill and records its content digest |
 | `resume` | `run_id` | Restores a run after a client or server restart |
 
 For `complete`, `artifacts` maps **every** declared output name to a non-empty
@@ -1011,9 +1040,14 @@ fixed API host and requires a completed, successful run for the declared
 repository and the full 40-character commit SHA in that artifact. Set
 `TRIKEDB_GITHUB_TOKEN` at runtime when a private repository needs read access;
 never put the token in YAML. Invalid or unavailable evidence fails closed.
+For a stricter gate, declare both `workflow_id` and `required_jobs` (a list of
+exact job names). Every required job must have completed successfully in the
+same run attempt; a different successful workflow or an omitted/skipped E2E
+job cannot satisfy the gate. A configured gate verifies evidence but does not
+start CI itself.
 The verifier establishes what the report or CI API returned, not who produced
 the artifact or whether the work itself is correct. No external tool is
-executed by `agent_workflow`.
+executed from workflow YAML by `agent_workflow`.
 
 `select` reads workflow metadata and step membership through SPARQL (PyOxigraph
 by default), then ranks literal terms from workflow IDs, labels, summaries and

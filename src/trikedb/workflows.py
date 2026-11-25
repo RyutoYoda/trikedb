@@ -55,6 +55,9 @@ def validate_agent_spec(value, where: str) -> dict:
                 raise ValueError(f"{where}.agent.gates: junit requires a test or e2e gate")
         elif verifier == "github_actions":
             allowed = {"id", "kind", "description", "verifier", "repository", "subject_artifact"}
+            allowed |= set(gate) & {"workflow_id", "required_jobs"}
+            if ("workflow_id" in gate) != ("required_jobs" in gate):
+                raise ValueError(f"{where}.agent.gates: workflow_id and required_jobs must be declared together")
             if gate["kind"] not in {"test", "e2e"}:
                 raise ValueError(f"{where}.agent.gates: github_actions requires a test or e2e gate")
             if not isinstance(gate.get("repository"), str) or not re.fullmatch(
@@ -63,6 +66,15 @@ def validate_agent_spec(value, where: str) -> dict:
                 raise ValueError(f"{where}.agent.gates: github_actions needs a repository")
             if gate.get("subject_artifact") not in result["outputs"]:
                 raise ValueError(f"{where}.agent.gates: subject_artifact must name an output")
+            if "workflow_id" in gate and (type(gate["workflow_id"]) is not int
+                                          or gate["workflow_id"] <= 0):
+                raise ValueError(f"{where}.agent.gates: workflow_id must be a positive integer")
+            if "required_jobs" in gate:
+                jobs = gate["required_jobs"]
+                if (not isinstance(jobs, list) or not jobs
+                        or any(not isinstance(job, str) or not job.strip() for job in jobs)
+                        or len(jobs) != len(set(jobs))):
+                    raise ValueError(f"{where}.agent.gates: required_jobs must be unique non-empty names")
         else:
             raise ValueError(f"{where}.agent.gates: unsupported verifier")
         if set(gate) != allowed:
