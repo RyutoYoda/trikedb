@@ -1550,6 +1550,80 @@ triples:
     assert path.read_text(encoding="utf-8") == original
 
 
+def test_workflow_edits_keep_unrelated_yaml_and_comments_byte_identical(tmp_path):
+    path = tmp_path / "graph.yaml"
+    original = """# Project notes stay here
+nodes:
+  guide: {type: document, label: Guide,
+    description: 'A deliberately wrapped description'}
+triples:
+- {s: collect, p: USES, o: guide,
+   prov: 'https://example.org/guide'}
+workflows:
+  report:
+    label: Report
+    steps:
+      - id: collect
+        label: Collect
+        next: [review]
+      - id: review
+        label: Review
+        next: [publish]
+      - id: publish
+        label: Publish
+
+  # This comment belongs to the next workflow.
+  archive:
+    label: Archive
+    steps:
+      - id: store
+        label: Store
+"""
+    path.write_text(original, encoding="utf-8")
+    db = TrikeDB(path, autosave=False)
+    db.set_node("collect", label="Collect source")
+    db.set_node("review", label="Review source")
+    db.add("collect", "NEXT_STEP", "publish")
+    db.save()
+    result = path.read_text(encoding="utf-8")
+    assert result.split("workflows:\n", 1)[0] == original.split("workflows:\n", 1)[0]
+    assert result.split("  # This comment belongs", 1)[1] == original.split(
+        "  # This comment belongs", 1
+    )[1]
+    reloaded = TrikeDB(path)
+    assert reloaded.nodes_meta["collect"]["label"] == "Collect source"
+    assert reloaded.nodes_meta["review"]["label"] == "Review source"
+    assert reloaded.triples(s="collect", p="NEXT_STEP", o="publish")
+
+
+def test_node_edit_keeps_workflows_and_other_nodes_byte_identical(tmp_path):
+    path = tmp_path / "graph.yaml"
+    original = """# Header comment
+nodes:
+  first: {type: service, label: First}
+  # Keep this comment with the second node.
+  second:
+    type: service
+    label: Second
+workflows:
+  routine:
+    steps:
+      - id: review
+        label: Review
+triples:
+  - {s: first, p: USES, o: second}
+"""
+    path.write_text(original, encoding="utf-8")
+    db = TrikeDB(path, autosave=False)
+    db.set_node("first", label="Updated first")
+    db.save()
+    result = path.read_text(encoding="utf-8")
+    assert result.split("  # Keep this comment", 1)[1] == original.split(
+        "  # Keep this comment", 1
+    )[1]
+    assert TrikeDB(path).nodes_meta["first"]["label"] == "Updated first"
+
+
 def test_fmt_can_promote_canonical_workflow_without_changing_rdf(tmp_path):
     from trikedb.cli import main
     from rdflib.compare import isomorphic

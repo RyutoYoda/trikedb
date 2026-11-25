@@ -38,6 +38,7 @@ from .yaml_source import (
     attached_comment,
     format_long_inline,
     has_comments,
+    patch_source_entries,
     parse_source,
 )
 
@@ -467,7 +468,9 @@ def save(db, path: str | Path | None = None, *, width: int | None = None):
     if db.nodes_meta:
         doc["nodes"] = {k: dict(v) for k, v in db.nodes_meta.items()}
     doc["triples"] = [t.to_dict() for t in db._triples]
+    original_text = db._source_document if isinstance(db._source_document, str) else None
     source = _source_tree(db) if db._source_document is not None else None
+    original_values = _plain(source) if original_text is not None and width is None else None
     if source is not None:
         old_ontology = source.get("ontology") or {}
         if not isinstance(old_ontology, dict):
@@ -544,13 +547,16 @@ def save(db, path: str | Path | None = None, *, width: int | None = None):
                 _sync_mapping(source[key], value)
             elif _plain(source[key]) != _plain(value):
                 source[key] = value
-        formatter = _roundtrip_yaml()
-        formatter.allow_unicode = True
-        formatter.width = width if width is not None else 4096
-        formatter.indent(mapping=2, sequence=4, offset=2)
-        output = StringIO()
-        formatter.dump(source, output)
-        text = output.getvalue()
+        text = (patch_source_entries(original_text, source, original_values)
+                if original_values is not None else None)
+        if text is None:
+            formatter = _roundtrip_yaml()
+            formatter.allow_unicode = True
+            formatter.width = width if width is not None else 4096
+            formatter.indent(mapping=2, sequence=4, offset=2)
+            output = StringIO()
+            formatter.dump(source, output)
+            text = output.getvalue()
     else:
         text = yaml.dump(
             doc,
