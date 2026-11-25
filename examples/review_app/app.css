@@ -416,6 +416,7 @@ dialog {
 .history-row { border: 1px solid #d8e4f2; border-radius: 10px; padding: 12px; margin: 8px 0; }
 .history-row a { font-weight: 700; overflow-wrap: anywhere; }
 .history-row small { display: block; margin-top: 5px; color: #7186a2; }
+.pr-status-link { text-decoration: none; white-space: nowrap; }
 dialog::backdrop {
   background: #1837577d;
 }

@@ -599,6 +599,31 @@ def history(request: Request):
     }
 
 
+@app.get("/api/pr-status")
+def pr_status(request: Request, number: int):
+    if not configured():
+        raise HTTPException(503, "GitHub App is not connected")
+    require_editor(request)
+    if number < 1:
+        raise HTTPException(400, "Invalid PR number")
+    pull = git_request(installation_token(), "GET", f"/pulls/{number}")
+    base = pull.get("base") or {}
+    head = pull.get("head") or {}
+    if not (
+        (base.get("repo") or {}).get("full_name", "").lower()
+        == REPOSITORY.lower()
+        and base.get("ref") == "main"
+        and pull.get("title") == f"Graph proposal: {REPO_FILE}"
+        and re.fullmatch(r"trikedb/review-[0-9a-f]{16}", head.get("ref") or "")
+    ):
+        raise HTTPException(404, "PR does not belong to this graph")
+    return {
+        "number": number,
+        "state": "merged" if pull.get("merged_at") else pull.get("state"),
+        "url": f"https://github.com/{REPOSITORY}/pull/{number}",
+    }
+
+
 @app.post("/api/preview")
 def preview(proposal: Proposal, request: Request):
     if configured():
