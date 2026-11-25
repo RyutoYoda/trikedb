@@ -1523,6 +1523,33 @@ def test_saving_unchanged_demo_does_not_create_review_noise(tmp_path):
     assert target.read_bytes() == source.read_bytes()
 
 
+def test_saving_unchanged_multiline_yaml_keeps_original_bytes(tmp_path):
+    path = tmp_path / "graph.yaml"
+    original = """# Review this workflow
+workflows:
+  report:
+    label: Report
+    tags:
+    - domain:example
+    steps:
+    - id: collect
+      label: Collect
+      next: publish
+    - id: publish
+      label: Publish
+nodes:
+  guide: {type: document, label: Guide,
+    description: 'A long description kept on a separate line'}
+triples:
+- {s: collect, p: USES, o: guide,
+   prov: 'https://example.org/guide'}
+"""
+    path.write_text(original, encoding="utf-8")
+    db = TrikeDB(path)
+    db.save()
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_fmt_can_promote_canonical_workflow_without_changing_rdf(tmp_path):
     from trikedb.cli import main
     from rdflib.compare import isomorphic

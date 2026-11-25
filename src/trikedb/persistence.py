@@ -178,6 +178,7 @@ def load(db) -> None:
         db._source_document = deepcopy(data)
     if workflows:
         db._workflow_states = {str(wid): _workflow_state(db, str(wid)) for wid in workflows}
+    db._loaded_content_hash = db.content_hash()
 
 
 def format_for_review(db, *, width: int = 100, workflows: bool = False):
@@ -451,6 +452,13 @@ def save(db, path: str | Path | None = None, *, width: int | None = None):
         target = path if _is_remote(path) else Path(path)
     if target is None:
         raise ValueError("no path given and TrikeDB was created without one")
+    if (width is None and target == db.path
+            and isinstance(db._source_document, str)
+            and db._loaded_content_hash == db.content_hash()):
+        # A round-trip YAML parser may change indentation or fold long lines
+        # even when the graph did not change. Keep the original bytes exactly.
+        db._version = _write_text(target, db._source_document, expect=db._version)
+        return target
     doc: dict = {}
     if db.ontology:
         doc["ontology"] = {
@@ -562,4 +570,5 @@ def save(db, path: str | Path | None = None, *, width: int | None = None):
         db._source_document = text if _serialization(target) != "json" else json.loads(text)
         db._workflow_states = {str(wid): _workflow_state(db, str(wid))
                                for wid in source.get("workflows", {}) if str(wid) in db.nodes_meta}
+    db._loaded_content_hash = db.content_hash()
     return target
