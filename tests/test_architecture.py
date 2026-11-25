@@ -32,6 +32,7 @@ LAYERS = {
     "storage": 1,        # bytes, wherever they live
     "rules": 1,          # domain / range / requires / by
     "rdf": 1,            # the RDF projection
+    "r2rml": 1,          # read-only virtual RDF projection over DB-API rows
     "reasoning": 1,      # OWL-RL and SHACL over that projection
     "workflows": 1,      # membership and directed process-order semantics
     # 2 — read the whole document and say something about it.

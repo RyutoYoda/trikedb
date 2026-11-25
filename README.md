@@ -42,6 +42,13 @@ real [SPARQL 1.1](https://www.w3.org/TR/sparql11-query/) — executed by
 [Oxigraph](https://github.com/oxigraph/oxigraph), not a homegrown subset —
 or just open the file and read it.
 
+Rows that already live in a relational database can also be viewed as a
+**virtual RDF graph** using a standard R2RML Turtle mapping. The rows stay in
+their source; a read-only DB-API connection supplies live SPARQL results. The
+same mapping can export an RDF snapshot for other graph systems. See
+[virtual graph mapping](https://github.com/RyutoYoda/trikedb/blob/main/docs/VIRTUAL_GRAPH.md) for the supported R2RML subset,
+warehouse connectors, performance limits, and Neo4j interoperability.
+
 <p align="center">
   <a href="https://ryutoyoda.github.io/trikedb/workspace.html">
     <img src="https://raw.githubusercontent.com/RyutoYoda/trikedb/main/docs/trikedb-sample.png" alt="TrikeDB light graph view with related Freebase facts and a node detail panel open" />

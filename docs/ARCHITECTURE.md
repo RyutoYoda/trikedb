@@ -2,7 +2,7 @@
 
 # Architecture
 
-One graph is one YAML or JSON document. Storage owns bytes and version tokens; the core owns facts and metadata; adapters expose Python, CLI, MCP and HTTP. This is a small embedded graph library, not a transactional RDF dataset server.
+One curated graph is one YAML or JSON document. Storage owns bytes and version tokens; the core owns facts and metadata; adapters expose Python, CLI, MCP and HTTP. A separate R2RML read path projects existing relational rows as virtual RDF without copying them into that document. This is a small embedded graph library, not a transactional RDF dataset server.
 
 ```mermaid
 flowchart TB
@@ -40,6 +40,9 @@ flowchart TB
     RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
     RS("SQL<br/>BI · dbt · notebook")
+    RT("existing SQL tables<br/>SQLite · Snowflake · BigQuery · Databricks")
+    RM("R2RML mapping<br/>Turtle · read-only DB-API")
+    RV("virtual RDF view<br/>SPARQL · RDF export")
 
     WA --> G
     WC --> G
@@ -65,6 +68,7 @@ flowchart TB
     PN --> RG
     PV --> RS
     PD --> RQ
+    RT --> RM --> RV --> RG
 
     style pick fill:none,stroke:#9aa4b3,stroke-width:1px,stroke-dasharray:4 6,color:#8d97a6
     style query fill:#f5f0ff,stroke:#8055e6,stroke-width:2px,color:#3a2568
@@ -76,8 +80,8 @@ flowchart TB
     class LA,LG,LB,LC,LD,LE lbl
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
-    class SF,SO,SW store
-    class PO,PR,PN,PV,PD,QAPI,QENG proj
+    class SF,SO,SW,RT store
+    class PO,PR,PN,PV,PD,QAPI,QENG,RM,RV proj
 ```
 
 Read the diagram top to bottom: the core is one document, storage is one
@@ -85,6 +89,13 @@ chosen destination, and projections are derived views rather than additional
 copies. Solid arrows move or persist the document; dotted arrows are built on
 demand. The guard protects supported API writes; hand-edited files open for
 repair by default, while `audit` and opt-in strict loading reject audit errors.
+
+The R2RML path is independent of the document storage choice. It reads source
+tables through the caller's DB-API connection and exposes a virtual RDF graph
+through Python. The first implementation pushes simple bound terms into SQL;
+RDFLib evaluates SPARQL joins. It does not yet provide a general SPARQL-to-SQL
+optimizer or expose virtual rows through the existing MCP and HTML adapters.
+See [the mapping contract](VIRTUAL_GRAPH.md).
 
 The native YAML workflow notation remains in the one stored document as
 triples and node metadata. RDF files are interchange formats, not another
