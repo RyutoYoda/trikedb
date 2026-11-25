@@ -5,6 +5,14 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.1
+
+- Project declared workflows to P-Plan classes, membership, and predecessor
+  relations in RDF exports and SPARQL, while keeping the existing YAML,
+  workbench, and agent workflow contracts.
+- Keep local Cloudflare build dependencies and temporary files out of source
+  distributions.
+
 ## 2.0.0
 
 - Remove the legacy Snowflake/BigQuery one-row graph-document backend and
