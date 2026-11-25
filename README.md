@@ -48,6 +48,8 @@ their source; a read-only DB-API connection supplies live SPARQL results. The
 same mapping can export an RDF snapshot for other graph systems. See
 [virtual graph mapping](https://github.com/RyutoYoda/trikedb/blob/main/docs/VIRTUAL_GRAPH.md) for the supported R2RML subset,
 warehouse connectors, performance limits, and Neo4j interoperability.
+The [standards compatibility](https://github.com/RyutoYoda/trikedb/blob/main/docs/STANDARDS_COMPATIBILITY.md)
+page distinguishes supported W3C features from planned ones.
 
 <p align="center">
   <a href="https://ryutoyoda.github.io/trikedb/workspace.html">

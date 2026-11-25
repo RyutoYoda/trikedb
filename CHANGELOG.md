@@ -5,6 +5,14 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.3
+
+- Compile eligible same-subject SPARQL basic graph patterns over the R2RML
+  virtual view into one parameterized SQL query. Preserve graph joins across
+  source rows and fall back for other SPARQL shapes or cross-map joins.
+- Document the R2RML subset and related W3C standards without claiming full
+  R2RML conformance.
+
 ## 2.0.2
 
 - Use the current P-Plan 1.3 `isPrecededBy` IRI for workflow order. The

@@ -114,6 +114,112 @@ def test_query_pushes_bound_subject_into_sql(tmp_path):
     assert any('"id" = ' in sql for sql in statements)
 
 
+def test_basic_graph_pattern_joins_and_literal_filter_run_in_one_sql_query(tmp_path):
+    connection, mapping = _fixture(tmp_path)
+    statements = []
+    connection.set_trace_callback(statements.append)
+    graph = R2RMLVirtualGraph(mapping, connection)
+
+    rows = list(graph.sparql("""PREFIX ex: <https://example.org/>
+        SELECT ?person ?company WHERE {
+          ?person ex:worksFor ?company .
+          ?person ex:name "Ada" .
+        }"""))
+
+    assert rows == [(URIRef("https://example.org/person/1"),
+                     URIRef("https://example.org/company/10"))]
+    selects = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert len(selects) == 1
+    assert 'JOIN "companies"' in selects[0]
+    assert '"name" = ' in selects[0]
+
+
+def test_complex_sparql_keeps_rdflib_semantics(tmp_path):
+    connection, mapping = _fixture(tmp_path)
+    graph = R2RMLVirtualGraph(mapping, connection)
+    rows = list(graph.sparql("""PREFIX ex: <https://example.org/>
+        SELECT ?person WHERE {
+          ?person ex:name ?name .
+          FILTER(?name = "Ada")
+        }"""))
+    assert rows == [(URIRef("https://example.org/person/1"),)]
+
+
+def test_basic_graph_pattern_ask_matches_general_engine(tmp_path):
+    connection, mapping = _fixture(tmp_path)
+    graph = R2RMLVirtualGraph(mapping, connection)
+    for name, expected in (("Ada", True), ("Nobody", False)):
+        query = ("ASK WHERE { ?person <https://example.org/name> "
+                 f'"{name}"' + " }")
+        assert bool(graph.sparql(query)) is expected
+        assert bool(graph.sparql(query)) == bool(graph.graph.query(query))
+
+
+def test_pushdown_preserves_graph_join_when_one_subject_has_multiple_source_rows(tmp_path):
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE facts (id INTEGER, name TEXT, tag TEXT)")
+    connection.executemany("INSERT INTO facts VALUES (?, ?, ?)",
+                           [(1, "Ada", None), (1, None, "reviewed")])
+    mapping = tmp_path / "facts.ttl"
+    mapping.write_text("""@prefix rr: <http://www.w3.org/ns/r2rml#> .
+      @prefix ex: <https://example.org/> .
+      <#Facts> a rr:TriplesMap ;
+        rr:logicalTable [ rr:tableName "facts" ] ;
+        rr:subjectMap [ rr:template "https://example.org/person/{id}" ] ;
+        rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
+        rr:predicateObjectMap [ rr:predicate ex:tag ; rr:objectMap [ rr:column "tag" ] ] .
+    """)
+    graph = R2RMLVirtualGraph(mapping, connection)
+    query = """PREFIX ex: <https://example.org/>
+      SELECT ?person WHERE { ?person ex:name "Ada" ; ex:tag "reviewed" }"""
+    assert list(graph.sparql(query)) == list(graph.graph.query(query))
+    assert list(graph.sparql(query)) == [(URIRef("https://example.org/person/1"),)]
+
+
+def test_cross_map_subject_join_uses_general_sparql(tmp_path):
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE names (id INTEGER, name TEXT, tag TEXT)")
+    connection.execute("CREATE TABLE tags (id INTEGER, tag TEXT)")
+    connection.execute("INSERT INTO names VALUES (1, 'Ada', NULL)")
+    connection.execute("INSERT INTO tags VALUES (1, 'reviewed')")
+    mapping = tmp_path / "mapping.ttl"
+    mapping.write_text("""@prefix rr: <http://www.w3.org/ns/r2rml#> .
+      @prefix ex: <https://example.org/> .
+      <#Names> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "names" ] ;
+        rr:subjectMap [ rr:template "https://example.org/person/{id}" ] ;
+        rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
+        rr:predicateObjectMap [ rr:predicate ex:tag ; rr:objectMap [ rr:column "tag" ] ] .
+      <#Tags> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "tags" ] ;
+        rr:subjectMap [ rr:template "https://example.org/person/{id}" ] ;
+        rr:predicateObjectMap [ rr:predicate ex:tag ; rr:objectMap [ rr:column "tag" ] ] .
+    """, encoding="utf-8")
+    graph = R2RMLVirtualGraph(mapping, connection)
+    query = """PREFIX ex: <https://example.org/>
+      SELECT ?person WHERE { ?person ex:name "Ada" ; ex:tag "reviewed" }"""
+    assert list(graph.sparql(query)) == list(graph.graph.query(query))
+    assert list(graph.sparql(query)) == [(URIRef("https://example.org/person/1"),)]
+
+
+def test_typed_literal_filter_does_not_use_lossy_sql_coercion(tmp_path):
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE facts (id INTEGER, value TEXT)")
+    connection.execute("INSERT INTO facts VALUES (1, '01')")
+    mapping = tmp_path / "mapping.ttl"
+    mapping.write_text("""@prefix rr: <http://www.w3.org/ns/r2rml#> .
+      @prefix ex: <https://example.org/> .
+      <#Facts> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "facts" ] ;
+        rr:subjectMap [ rr:template "https://example.org/fact/{id}" ] ;
+        rr:predicateObjectMap [ rr:predicate ex:value ; rr:objectMap [
+          rr:column "value" ; rr:datatype <http://www.w3.org/2001/XMLSchema#integer>
+        ] ] .
+    """, encoding="utf-8")
+    graph = R2RMLVirtualGraph(mapping, connection)
+    query = """PREFIX ex: <https://example.org/>
+      SELECT ?s WHERE { ?s ex:value "1"^^<http://www.w3.org/2001/XMLSchema#integer> }"""
+    assert list(graph.sparql(query)) == list(graph.graph.query(query))
+    assert list(graph.sparql(query)) == [(URIRef("https://example.org/fact/1"),)]
+
+
 @pytest.mark.parametrize("dialect", ["snowflake", "bigquery", "databricks"])
 def test_dbapi_dialects_emit_safe_selects_and_bind_values(tmp_path, dialect):
     base, mapping = _fixture(tmp_path)

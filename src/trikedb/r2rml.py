@@ -11,7 +11,9 @@ from pathlib import Path
 import re
 from urllib.parse import quote
 
-from rdflib import Graph, Literal, Namespace, RDF, URIRef
+from rdflib import Graph, Literal, Namespace, RDF, URIRef, Variable
+from rdflib.plugins.sparql.processor import prepareQuery
+from rdflib.query import Result
 from rdflib.store import Store
 
 
@@ -40,6 +42,12 @@ def _identifier(name):
     if not _IDENT.fullmatch(text):
         raise ValueError(f"unsafe SQL identifier: {text!r}")
     return text
+
+
+def _plain_string_filter(term, obj):
+    """Only equality that preserves RDF literal terms across SQL type systems."""
+    return (term.kind == "column" and term.datatype is None and term.language is None
+            and isinstance(obj, Literal) and obj.datatype is None and obj.language is None)
 
 
 @dataclass(frozen=True)
@@ -237,9 +245,9 @@ class _VirtualStore(Store):
                 if object_map.term is not None:
                     term = object_map.term
                     where, params = list(subject_where), list(subject_params)
-                    if obj is not None and term.kind == "column" and isinstance(obj, Literal):
+                    if _plain_string_filter(term, obj):
                         where.append(str(term.value))
-                        params.append(obj.toPython())
+                        params.append(str(obj))
                     for row in self._rows(mapping.table, columns | term.columns(), where, params):
                         s, o = mapping.subject.evaluate(row), term.evaluate(row)
                         if s is not None and o is not None and subject in (None, s) and obj in (None, o):
@@ -303,7 +311,188 @@ class R2RMLVirtualGraph:
 
     def sparql(self, query):
         """Run a SPARQL query against the live virtual graph."""
+        pushed = self._pushdown_bgp(query)
+        if pushed is not None:
+            return pushed
         return self.graph.query(query)
+
+    def _pushdown_bgp(self, query):
+        """Combine a same-subject basic graph pattern into one source SELECT.
+
+        Other SPARQL shapes still run through RDFLib. In particular, FILTER,
+        OPTIONAL, UNION, aggregates, and cross-map graph joins must retain
+        their general SPARQL semantics rather than be partly rewritten.
+        """
+        try:
+            algebra = prepareQuery(query).algebra
+        except Exception:
+            return None  # Let RDFLib report malformed SPARQL as usual.
+        if algebra.name not in {"SelectQuery", "AskQuery"} or algebra.datasetClause:
+            return None
+        project = algebra.p
+        if project.name != "Project" or project.p.name != "BGP":
+            return None
+        patterns = project.p.triples
+        if not patterns or any(not isinstance(p, URIRef) for _, p, _ in patterns):
+            return None
+        subjects = {s for s, _, _ in patterns}
+        if len(subjects) != 1:
+            return None
+        if not isinstance(patterns[0][0], (Variable, URIRef)):
+            return None
+
+        candidates = []
+        for mapping in self.mapping.values():
+            selected = []
+            for _, predicate, obj in patterns:
+                if predicate == RDF.type and isinstance(obj, URIRef) and obj in mapping.classes:
+                    selected.append((predicate, obj, None))
+                    continue
+                matches = [om for p, om in mapping.predicate_objects if p == predicate]
+                if len(matches) != 1:
+                    break
+                selected.append((predicate, obj, matches[0]))
+            else:
+                candidates.append((mapping, selected))
+        if len(candidates) != 1:
+            return None
+
+        mapping, selected = candidates[0]
+        # A subject may collect triples from more than one triples map.
+        # A one-map rewrite is safe only if no other map can supply a
+        # predicate used by this basic graph pattern.
+        requested_predicates = {predicate for _, predicate, _ in patterns}
+        for other in self.mapping.values():
+            if other is mapping:
+                continue
+            if (RDF.type in requested_predicates and other.classes or
+                    any(p in requested_predicates for p, _ in other.predicate_objects)):
+                return None
+        store = self.graph.store
+        subject_term = patterns[0][0]
+        bound_subject = subject_term if isinstance(subject_term, URIRef) else None
+        subject_where, subject_params = store._subject_filter(mapping.subject, bound_subject)
+        if subject_where == ("__no_match__",):
+            return self._empty_result(algebra)
+
+        subject_columns = set(mapping.subject.columns())
+        if len(selected) > 1 and not subject_columns:
+            return None
+        child_columns = {"c" + str(i): set(subject_columns) for i in range(len(selected))}
+        parents = {}
+        conditions = [("c0", col, value) for col, value in zip(subject_where, subject_params)]
+        for i, (_, obj, object_map) in enumerate(selected):
+            if object_map is None:
+                continue
+            if object_map.term is not None:
+                term, alias = object_map.term, "c" + str(i)
+                child_columns[alias].update(term.columns())
+            else:
+                parent = self.mapping[object_map.parent_map]
+                alias = "p" + str(i)
+                parents[i] = (alias, parent)
+                term = parent.subject
+                child_columns["c" + str(i)].update(child for child, _ in object_map.joins)
+            if object_map.term is not None and _plain_string_filter(term, obj):
+                conditions.append((alias, str(term.value), str(obj)))
+            elif isinstance(obj, URIRef) and term.kind == "template":
+                where, params = store._subject_filter(term, obj)
+                if where == ("__no_match__",):
+                    return self._empty_result(algebra)
+                conditions.extend((alias, col, value) for col, value in zip(where, params))
+
+        selections = [(alias, col) for alias, columns in child_columns.items()
+                      for col in sorted(columns)]
+        for i, (alias, parent) in parents.items():
+            parent_columns = set(parent.subject.columns())
+            parent_columns.update(col for _, col in selected[i][2].joins)
+            selections.extend((alias, col) for col in sorted(parent_columns))
+        sql = "SELECT " + ", ".join(
+            f"{alias}.{store._q(col)} AS {store._q(alias + '_' + col)}"
+            for alias, col in selections)
+        sql += " FROM " + store._q(mapping.table) + " c0"
+        for i in range(1, len(selected)):
+            alias = "c" + str(i)
+            sql += (" JOIN " + store._q(mapping.table) + " " + alias + " ON " +
+                    " AND ".join(f"c0.{store._q(col)} = {alias}.{store._q(col)}"
+                                 for col in sorted(subject_columns)))
+        for i, (alias, parent) in parents.items():
+            object_map = selected[i][2]
+            sql += (" JOIN " + store._q(parent.table) + " " + alias + " ON " +
+                    " AND ".join(f"c{i}.{store._q(child)} = {alias}.{store._q(parent_col)}"
+                                 for child, parent_col in object_map.joins))
+        if conditions:
+            sql += " WHERE " + " AND ".join(
+                f"{alias}.{store._q(col)} = {store.placeholder}" for alias, col, _ in conditions)
+        params = tuple(value for _, _, value in conditions)
+
+        cursor = store.connection.cursor()
+        bindings = []
+        seen = set()
+        try:
+            cursor.execute(sql, params) if params else cursor.execute(sql)
+            while batch := cursor.fetchmany(1000):
+                for values in batch:
+                    row = dict(zip((alias + "_" + col for alias, col in selections), values))
+                    subject = mapping.subject.evaluate({
+                        col: row["c0_" + col] for col in subject_columns})
+                    if subject is None or bound_subject not in (None, subject):
+                        continue
+                    binding = {}
+                    if isinstance(subject_term, Variable):
+                        binding[subject_term] = subject
+                    valid = True
+                    for i, (_, requested, object_map) in enumerate(selected):
+                        if object_map is None:
+                            value = requested
+                        elif object_map.term is not None:
+                            alias = "c" + str(i)
+                            value = object_map.term.evaluate({
+                                col: row[alias + "_" + col] for col in child_columns[alias]})
+                        else:
+                            alias, parent = parents[i]
+                            parent_row = {col: row[alias + "_" + col]
+                                          for col in parent.subject.columns()}
+                            value = parent.subject.evaluate(parent_row)
+                        if value is None or (not isinstance(requested, Variable)
+                                             and value != requested):
+                            valid = False
+                            break
+                        if isinstance(requested, Variable):
+                            if requested in binding and binding[requested] != value:
+                                valid = False
+                                break
+                            binding[requested] = value
+                    if not valid:
+                        continue
+                    key = tuple(sorted(binding.items(), key=lambda pair: str(pair[0])))
+                    if key not in seen:
+                        seen.add(key)
+                        bindings.append(binding)
+                        if algebra.name == "AskQuery":
+                            result = Result("ASK")
+                            result.askAnswer = True
+                            return result
+        finally:
+            cursor.close()
+        if algebra.name == "AskQuery":
+            return self._empty_result(algebra)
+        result = Result("SELECT")
+        result.vars = project.PV
+        result.bindings = [{variable: binding[variable] for variable in result.vars
+                            if variable in binding} for binding in bindings]
+        return result
+
+    @staticmethod
+    def _empty_result(algebra):
+        if algebra.name == "AskQuery":
+            result = Result("ASK")
+            result.askAnswer = False
+        else:
+            result = Result("SELECT")
+            result.vars = algebra.PV
+            result.bindings = []
+        return result
 
     def export_rdf(self, format="nt"):
         """Materialize an interoperable RDF snapshot (e.g. N-Triples for n10s)."""
