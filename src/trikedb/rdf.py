@@ -119,7 +119,7 @@ def _pplan_statements(db, base: str, node_props: bool):
             yield URIRef(_iri_node(step, base)), RDF.type, URIRef(PPLAN + "Step")
     for triple in db._triples:
         if triple.p == "NEXT_STEP" and owners.get(triple.s, set()) & owners.get(triple.o, set()):
-            yield (URIRef(_iri_node(triple.o, base)), URIRef(PPLAN + "isPreceededBy"),
+            yield (URIRef(_iri_node(triple.o, base)), URIRef(PPLAN + "isPrecededBy"),
                    URIRef(_iri_node(triple.s, base)))
 
 

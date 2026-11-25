@@ -5,6 +5,11 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.2
+
+- Use the current P-Plan 1.3 `isPrecededBy` IRI for workflow order. The
+  earlier P-Plan 1.1 spelling `isPreceededBy` is no longer emitted.
+
 ## 2.0.1
 
 - Project declared workflows to P-Plan classes, membership, and predecessor

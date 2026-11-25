@@ -7,5 +7,5 @@ updated with default-graph SPARQL 1.1 operations. Built for LLM agents.
 from .db import OntologyError, Triple, TrikeDB
 from .r2rml import R2RMLVirtualGraph
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 __all__ = ["TrikeDB", "Triple", "OntologyError", "__version__", "R2RMLVirtualGraph"]
