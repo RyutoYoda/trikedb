@@ -145,3 +145,6 @@ def test_dbapi_dialects_emit_safe_selects_and_bind_values(tmp_path, dialect):
     assert any(params == ("1",) for _, params in statements)
     assert any(("%s" if dialect == "snowflake" else "?") in sql
                for sql, _ in statements)
+    quote = '"' if dialect == "snowflake" else '`'
+    assert any(f'{quote}people{quote}' in sql and f'{quote}name{quote}' in sql
+               for sql, _ in statements)
