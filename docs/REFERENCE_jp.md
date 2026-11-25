@@ -829,7 +829,7 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 完了条件 `gates` を宣言できる。gate の種類は `test`、`e2e`、`review`、`manual`。
 
 操作は `list`、`select(query)`、`start`、`next`、`complete`、`choose`、
-`skip`、`resume`。`select` はID・ラベル・概要・工程名を字句で照合して候補と
+`skip`、`resume`。`select` はSPARQL（既定はPyOxigraph）でワークフローと工程の関係を取得し、ID・ラベル・概要・工程名をPythonで字句照合して候補と
 一致語を返し、実行は開始しない。`complete` には全成果物の参照先と、各 gate の
 `pass` と証拠の参照先が必要。通常の分岐は並列の必須作業。工程に
 `next_mode: choose_one` を宣言すると、完了後に `choose` で接続先を一つ選び、

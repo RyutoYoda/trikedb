@@ -1015,8 +1015,9 @@ The verifier establishes what the report or CI API returned, not who produced
 the artifact or whether the work itself is correct. No external tool is
 executed by `agent_workflow`.
 
-`select` ranks literal terms from workflow IDs, labels, summaries and step
-labels, with Japanese character pairs for partial matches. It is not semantic
+`select` reads workflow metadata and step membership through SPARQL (PyOxigraph
+by default), then ranks literal terms from workflow IDs, labels, summaries and
+step labels in Python, with Japanese character pairs for partial matches. It is not semantic
 search and never starts a run automatically; choose a candidate explicitly.
 Do not put credentials or raw sensitive results in references. Runs are kept
 outside the ontology YAML in a private local SQLite file, one per graph,

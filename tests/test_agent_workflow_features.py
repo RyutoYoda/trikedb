@@ -81,6 +81,28 @@ def test_select_returns_ranked_explainable_candidates_without_starting_run(tmp_p
     assert call(localized, "select", query="注文レポート")["candidates"][0]["id"] == "publish-report"
 
 
+def test_select_queries_workflow_and_step_relations_through_oxigraph(tmp_path, monkeypatch):
+    path = tmp_path / "graph.yaml"
+    path.write_text(FLOW, encoding="utf-8")
+    db = TrikeDB(path)
+    assert db.sparql_engine == "oxigraph"
+    queries = []
+    original_sparql = db.sparql
+
+    def observed_sparql(query):
+        queries.append(query)
+        return original_sparql(query)
+
+    monkeypatch.setattr(db, "sparql", observed_sparql)
+    monkeypatch.setattr(db, "nodes", lambda: pytest.fail("select must query RDF, not scan nodes"))
+    result = agent_workflow._select_workflows(db, "Request corrections")
+    assert result[0]["id"] == "publish-report"
+    assert result[0]["step_count"] == 4
+    assert len(queries) == 1
+    assert "t:HAS_STEP" in queries[0]
+    assert "t:type" in queries[0]
+
+
 def test_explicit_choice_skip_and_join_survive_restart(tmp_path):
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
