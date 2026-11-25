@@ -222,7 +222,7 @@ def _oxigraph_available() -> bool:
 def _parse_document(text: str) -> dict:
     """Parse a stored graph, whichever of the two forms it is in.
 
-    JSON first, because a warehouse row holds JSON and ``json.loads`` reads
+    JSON first, because ``json.loads`` reads
     it about 400x faster than a YAML parser does — 12ms against 5s on 50k
     triples. Feeding JSON to the YAML parser is *correct*, which is why it
     went unnoticed; it is just enormously slower.

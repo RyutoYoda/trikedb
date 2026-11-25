@@ -30,7 +30,7 @@ flowchart LR
     end
 
     subgraph store["ストア"]
-        Y[("graph.yaml<br/>ローカル · s3:// · snowflake:// · workspace統合")]
+        Y[("graph.yaml<br/>ローカル · s3:// · workspace統合")]
         H("健全性: check · audit · SHACL")
     end
 
@@ -243,21 +243,6 @@ union内の各トリプルには出典グラフ名が `graph:` 属性として�
 同名ノードはグラフ間で自動的にジョインされる。書き込みは拒否され、
 メンバーグラフへの案内が返る。
 
-メンバーはウェアハウスの行でもよく、**接続を継承する**。これが「自分では
-接続を開けない場所でunionを使える」理由になる:
-
-```yaml
-# workspace.yaml 自体も1行として保存できる
-graphs:
-  ontology: snowflake://DB.SCHEMA.T/kg/ontology
-  skills:   snowflake://DB.SCHEMA.T/kg/skills
-```
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/kg/workspace",
-             connection=get_active_session(), read_only=True)
-```
-
 **unionは自分でメンバーを読んで合成せず、`TrikeDB` に組ませること。**
 unionの中身を決める細部が3つあり、どれかを間違えても**エラーは出ない** —
 グラフが元のファイルより少し貧しくなるだけになる:
@@ -358,7 +343,6 @@ autosaveのまま1件ずつ入れると二次で、分単位かかる。`batch()
 | `TrikeDB(path, read_only=True)` | 読み取り専用で開く。全ての変更が例外になる。`reload()` 後も維持される |
 | `TrikeDB(path, validate_on_load=True)` | 手編集YAMLの未宣言述語を含むauditエラーを拒否。既定のloadは修復可能なまま |
 | `TrikeDB(path, sparql_engine="rdflib")` | SPARQLエンジンを固定する。既定は `[oxigraph]` が入っていれば oxigraph |
-| `TrikeDB(url, connection=conn)` | 接続を作る代わりに、既存のウェアハウス接続かSnowparkセッションで実行する |
 | `save(path=)` | YAML書き込み(ローカル/リモートURL)。`autosave=True` なら変更のたびに自動 |
 | `.workspace` / `.read_only` / `.ontology` / `.path` | 状態属性 |
 
@@ -393,8 +377,7 @@ APIでできることは全部CLIでもできる(`pip install trikedb` または
 | `trikedb serve FILE [--host] [--port] [--token] [--oauth-issuer] [--public-url] [--oauth-audience] [--required-scope] [--actor-claim] [--stateless]` | UI + REST + Streamable HTTPのMCP |
 
 `FILE` 引数はどれもローカルパス・`s3://`/`gs://`/`https://` URL
-(`[remote]` extra)・`snowflake://` グラフ(`[snowflake]` extra)・
-workspaceファイルを受け付ける。
+(`[remote]` extra)・workspaceファイルを受け付ける。
 
 ### テンプレートから始める
 
@@ -726,21 +709,7 @@ OAUTH_ISSUER=https://idp.example.com/
 
 #### 同時書き込み
 
-保存は文書全体を書き直すので、版Nを読んだ2者がそれぞれ版N+1を作れば
-片方が消えるはずだった。S3とウェアハウスではそうならない。保存は「そのグラフを
-読んだときのままであること」を条件に実行され、他者を上書きしてしまう書き込みは
-`ConcurrentWriteError` で拒否される。MCPの書き込みツールは自力で復帰する —
-グラフを読み直し、依頼された1つの変更を再適用して保存し直す（間隔を空けながら）。
-
-リクエストごとにコンテナが増えるLambda経由で、1つのS3ファイルに `add_triple` を
-10件同時に投げると**10件とも残る**。条件付き書き込みを入れる前は4件で、
-残り6件はどこにもエラーを残さず消えていた。1つの `snowflake://` 行に対する
-10並列の書き込みも**10件とも残る**。
-
-同じ保証を、2つのバックエンドは別の形で表現する。S3は `If-Match` でETagを
-比較し、条件の不成立をエラーとして返す。ウェアハウスは文の中でversion列を
-比較し（`UPDATE ... WHERE name = ? AND version = ?`）、結果を影響行数として
-返す。つまり競合は解釈すべきエラーではなく、ただのゼロになる。
+保存はファイル全体を書き直します。ローカルはロック下で内容ハッシュを比較し、S3は条件付きETagで競合を検出します。古い版からの保存は`ConcurrentWriteError`となり、MCPは読み直して依頼された変更を再試行します。
 
 制約が2つある:
 
@@ -875,260 +844,11 @@ fsspec経由で読み書きする(`[remote]` extra)。認証はAWS標準の認�
 読み取り専用の `https://` も、対応するfsspecバックエンドを入れれば同じ仕組み
 で動く。
 
-**ウェアハウスのテーブル** — `TrikeDB("snowflake://DB.SCHEMA.TABLE/sales/crm")`
-または `TrikeDB("bigquery://project.dataset.TABLE/sales/crm")` がグラフを1行
-として保持する(`[snowflake]` / `[bigquery]` extra)。1つのテーブルが多数の
-グラフを持つので、導入コストは「グラフごとに1テーブル」ではなく「1テーブル」:
-
-| カラム | |
-|---|---|
-| `name` | グラフ名。テーブル名の後ろのパスがそのまま入る |
-| `doc` | YAML文書そのもの(1バイトも変えない) |
-| `version` | 保存を条件付きにするためのトークン |
-| `updated_at` | 最終更新時刻 |
-
-ローカルにコピーは作られず、同期するものも無い — **その行がグラフそのもの**。
-開くときに文書全体を読み、保存で全体を書く。数MB程度までのグラフに向く
-（数十MB級には向かない）。
-
-同時に、ここにはワーキングツリーが無く、事実が入る前のdiffも無い。つまり
-**保存先を選ぶことは、レビューの場所を選ぶこと**でもある —
-[画面から育てる](#画面から育てる)を参照。
-
-ここでは `doc` にJSONが入る（ファイルの場合はYAML）。保存形式が変わるのは
-この1点だけで、その見返りが次節である。SQLにYAMLパーサは無いので、
-カラムにYAML文字列を入れると「trikedb以外の誰も読めないグラフ」になる。
-JSONはYAMLの部分集合なので、ローダーもその上の層も一切変わらない。
-
-### SQLからグラフを読む
-
-`sql-init` はテーブルの隣に4つのビューを作る。ウェアハウスを選ぶ価値は
-ここにある — **同じグラフが、メモリからSPARQLに答え、ウェアハウスからSQLに
-答える**。歩調を合わせるべき2つ目のコピーは存在しない。
-
-| ビュー | カラム |
-|---|---|
-| `KG_NODE` | `GRAPH`, `NODE_ID`, `NODE_TYPE`, `NAME`, `PROPS`, `TS_UPDATED` |
-| `KG_EDGE` | `GRAPH`, `EDGE_ID`, `SRC_ID`, `DST_ID`, `EDGE_TYPE`, `PROPS`, `TS_UPDATED` |
-| `KG_PREDICATE` | `GRAPH`, `PREDICATE`, `DESCRIPTION` |
-| `KG_TRIPLE` | `GRAPH`, `S`, `P`, `O`, `ATTRS` |
-
-`KG_NODE` と `KG_EDGE` は、Snowflake上でプロパティグラフに慣習的に使われる
-node/edge のカラム構成に合わせてある（[Snowflake-Labs の knowledge-graph
-参照実装][kg-ref]と同じ形）。そのため、その形に対して書かれた Cortex Analyst の
-セマンティックモデルやクエリパターンがそのまま通る。この整合は**意図した
-副産物であって依存ではない** — あちらから何も取り込んでおらず、SQLはtrikedb
-自身のモデルから生成している。trikedbはSnowflakeと提携しておらず、その裏付けも
-受けていない。
-
-「保存された文書をnode/edge/tripleのビューに展開する」という発想は完全に汎用で、
-方言依存なのはそれを書き下すSQLだけである（ここでは `TRY_PARSE_JSON` と
-`LATERAL FLATTEN`、Postgresなら `jsonb_to_recordset`、SQLiteなら `json_each`）。
-そのためビューは型やupsert構文と並んで `_Dialect` が持つ。2つ目のウェアハウスは
-モジュール全体に散らばる変更ではなく、`_Dialect` のリテラルが1つ増えるだけになる。
-`NODE_ID` / `SRC_ID` / `EDGE_TYPE` は一般的なプロパティグラフの用語なので
-そのまま通用する。
-
-[kg-ref]: https://github.com/Snowflake-Labs/knowledge-graph-snowflake
-
-この投影は `to_networkx()` が既に行っているもの（トリプル → ノード+エッジ）を、
-networkxではなくSQLに向けただけである。`KG_PREDICATE` にだけ対応物が無い —
-プロパティグラフのedge typeは単なるラベルだが、ここでの述語はオントロジーが
-説明する第一級の名前なので、落とすとグラフの意味が変わる。`KG_TRIPLE` は
-同じ行のRDF的な見え方で、トリプルで考える人向け。
-
-ノードプロパティは `PROPS`、エッジ属性はエッジ側の `PROPS` に入る。どちらも
-VARIANTなので、**述語や属性を増やしてもDDL変更は不要**。`type` と `label` は
-ワークベンチで既に意味を持つので `NODE_TYPE` / `NAME` に引き上げてある
-（`WHERE NODE_TYPE = 'table'` が自然に書けるように）。`EDGE_ID` は `s|p|o` の
-MD5 — トリプルはこの3つで一意なので、ビューを読み直しても変わっていない
-エッジの名前が変わることはない。
-
-この仕組み全体の目的はこれである。**グラフが現実と合っているかを問う**:
-
-```sql
-SELECT k.NODE_ID, t.TABLE_NAME
-FROM MYDB.PUBLIC.KG_NODE k
-LEFT JOIN MYDB.INFORMATION_SCHEMA.TABLES t ON t.TABLE_NAME = k.NODE_ID
-WHERE k.NODE_TYPE = 'table' AND t.TABLE_NAME IS NULL;   -- 主張されているが存在しない
-```
-
-テーブルではなくビューにしているのは意図的。二重に保存されず、ズレようがなく、
-コストがゼロ。Snowflakeは `AT(TIMESTAMP => ...)` を基底テーブルまで押し下げる
-ので、ビューは現在と同じ気軽さで過去を読む:
-
-```sql
-SELECT * FROM MYDB.PUBLIC.KG_TRIPLE AT(TIMESTAMP => '2026-08-20 01:21:03-07:00');
-```
-
-代償はビューでは pruning が効かないこと。Snowflake自身の推奨は「コストになり
-始めたらリレーショナル列にフラット化する」なので、実体化はそのとき行う
-（ノードは `CLUSTER BY (NODE_TYPE)`、エッジは `(EDGE_TYPE, SRC_ID, DST_ID)`）。
-それより前にやる必要はない。`--no-views` で作成を丸ごと省略できる。
-
-テーブルは事前に作る。trikedbが勝手にウェアハウスへDDLを打つことはない:
-
-```bash
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm --print   # DDLを表示
-trikedb sql-init snowflake://DB.SCHEMA.TABLE/sales/crm           # 実行
-trikedb sql-init … --no-views                                    # テーブルのみ
-```
-
-**スキーマは意識して選ぶこと。** オブジェクトが5つ増える（テーブル1本 +
-ビュー4本）。環境側でスキーマ単位のオブジェクト数を数えているものがあると
-（総数を分母に使うデータ品質ダッシュボード、層プレフィックス規約など）
-そこに現れる。trikedb専用のスキーマを切ればこの問題は起きない。
-
-接続設定は環境変数から読む — `SNOWFLAKE_ACCOUNT`・`SNOWFLAKE_USER` と、
-`SNOWFLAKE_PRIVATE_KEY_PATH`(PKCS#8 PEM)または `SNOWFLAKE_PASSWORD`、
-任意で `SNOWFLAKE_ROLE`・`SNOWFLAKE_WAREHOUSE`・`SNOWFLAKE_DATABASE`・
-`SNOWFLAKE_SCHEMA`・`SNOWFLAKE_AUTHENTICATOR`。組織で既に
-`connections.toml` にSnowflakeアクセスを標準化しているなら、その名前を
-指すだけでよく、あとはそちらに委譲される:
-
-```bash
-export SNOWFLAKE_CONNECTION_NAME=analytics
-```
-
-アカウントがブラウザSSO(`authenticator = externalbrowser`)の場合は、
-コネクタの `secure-local-storage` エクストラも入れること。入れないと
-SSOトークンがキャッシュされず、**プロセスごとにブラウザが開く** —
-CLIをループで回せず、CIのステップにもできない:
-
-```bash
-pip install 'snowflake-connector-python[secure-local-storage]'
-```
-
-**既存の接続を渡す。** ホストによっては「セッションはあるが新しく作れない」
-ことがある。Streamlit in Snowflake の中には探すべき認証情報も、張るべき外向き
-接続も存在せず、ホストが既に持っているセッションだけがある。それを渡す:
-
-```python
-from snowflake.snowpark.context import get_active_session
-
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm",
-             connection=get_active_session(),
-             read_only=True)
-```
-
-DB-API接続も渡せる。判定はimportした型ではなく**オブジェクトが何をできるか**で
-行うので、片方のドライバが入っていなくてももう片方の経路が動く。`cursor()` が
-あればDB-APIで影響行数は `rowcount` から、`sql()` があればSnowparkで、
-`collect()` はどちらでも行を返し、DMLに対するSnowflakeの答え自体が
-「先頭セルが件数の行」になっている。渡された接続はそのまま使う — キャッシュも
-再接続もしない。寿命は渡した側のものだから。
-
-**読み取り専用で開く。** `TrikeDB(url, read_only=True)` は全ての変更を拒否する
-（`add`・`remove`・`set_node`・`save`・SPARQL update すべて）。`reload()` 後も
-拒否し続ける。読むだけのアプリが書き込み経路を握っている必要はない —
-与えられていない権能はバグもエージェントも使えない。書き込みはgitのレビュー済み
-ファイルが担い、ウェアハウスは配布とSQLアクセスのために置く、という構成で使う形。
-
-```python
-db = TrikeDB("snowflake://DB.SCHEMA.T/sales/crm", read_only=True)
-db.sparql("SELECT ?o WHERE { t:crm-sync-job t:INGESTS_TO ?o }")   # 通る
-db.add("x", "P", "y")                                             # ValueError
-```
-
-ウェアハウスのDMLはテーブル単位で直列化されるので、同じテーブル内の
-**別のグラフ**への書き込みも直列化される。エージェントが編集する程度の
-頻度では見えない差だが、本格的な書き込みスループットを通すならテーブルを
-分けること。
-
-テーブル名はパラメータにできないため、URL内のテーブル名は引用符で囲むの
-ではなく識別子として検証する(`DATABASE.SCHEMA.TABLE`、最大3階層)。
-それ以外は文を組み立てる前に弾かれる。
-
-バックエンドの追加は `storage.py` / `storage_sql.py` だけで完結する。
-ウェアハウス1つは `_Dialect` — SQLテンプレート4本とconnect関数だけ。
+Snowflake・BigQuery・Databricksの既存テーブルを参照する場合は、別経路の[読み取り専用R2RML仮想グラフ](VIRTUAL_GRAPH.md)を使います。定義とマッピングはファイルに置き、元データはデータベースに残します。
 
 ## 速度
 
-グラフはメモリに載るので、時間を食うのは**開くこと**と**引くこと**の2つ。
-どちらも調整でき、グラフの書き方は変えなくてよい。
-
-40,800トリプルで `benchmarks/backend_bench.py` により実測、3回の中央値、
-Apple silicon:
-
-| バックエンド | 開く | 1ホップ | 2ホップ結合 | 1事実の書き込み |
-|---|---|---|---|---|
-| ローカル `.yaml` | 992 ms | 0.04 ms | 55 ms | 1,957 ms |
-| ローカル `.json` | **57 ms** | 0.04 ms | 55 ms | **148 ms** |
-| `snowflake://` の行 | 507 ms | 0.04 ms | 56 ms | 2,889 ms |
-
-ここから3つ分かる。**クエリはグラフの置き場所を気にしない** — 3つとも同一で、
-メモリ上で走るため。**形式の方が媒体より効く**: 同じグラフが `.json` なら
-`.yaml` の17倍速く開き、ウェアハウスの行はネットワークを越えるのにローカルの
-YAMLより速い（文書が既にJSONだから）。**ウェアハウスへの書き込みが高い操作** —
-読んで書き直して条件付き更新なので、ループに入れず `autosave=False` で
-まとめること。
-
-エンジン側は、構築済みの同じグラフで:
-
-| | 1ホップ | 2ホップ結合 | 全件カウント |
-|---|---|---|---|
-| rdflib | 0.90 ms | 342 ms | 432 ms |
-| oxigraph（既定） | **0.04 ms** | **52 ms** | **11 ms** |
-
-つまみは1つと、既に有効なものが1つ。どちらも保存されるものは変えない。
-
-**YAMLではなくJSONで保存する** — レビューされる回数より読まれる回数が
-ずっと多いグラフ向け。ファイル名を `graph.json` にするか、ウェアハウスの行に
-置く（そちらは既にJSON）。API・SPARQLは同じで、開くのが約30倍速い。代償は
-YAMLを選んだ理由そのもの — JSONのdiffを読みたい人はいない。
-
-**速いSPARQLエンジンは既に入っている。** 読み取りクエリは
-[Oxigraph](https://github.com/oxigraph/oxigraph)（実インデックスを持つRust実装）
-で走る。`pyoxigraph` はコア依存 — 測ったすべてのグラフサイズで、数百トリプルでも
-速かったため。どちらもSPARQL 1.1で、**両者が同一の答えを返すことをテストで固定**して
-いる — 一番危ういのは型付きリテラルで、`?x t:pii true` は文字列 `"true"` ではなく
-boolean に一致しなければならない。`TrikeDB(..., sparql_engine="rdflib")` で旧エンジンに固定できる —
-実際のクエリで2つを比べたいときに使う。pyoxigraph が無い環境
-（ファイルを部分的にvendorした場合、まだホイールが出ていないインタプリタ）では、
-失敗せず自動で rdflib に落ちる。
-
-更新（`INSERT`/`DELETE`）・OWL推論・SHACLは常に rdflib を使う。データを変える
-経路と、グラフを `owlrl`/`pyshacl` に渡す経路であり、2つ目の実装を挟む利点が
-ないため。
-
-**調整できないのは形の方**。開くときに文書全体を読み、保存で全体を書き直す。
-これはdiffでレビューできるグラフの代金であり、実用上の天井が数GBではなく
-数MBである理由でもある。
-
-大きなグラフを「遅い」と感じさせる原因のうち、グラフのせいでないものが2つある。
-
-- **`autosave=True` のままループを回す**。1変更ごとに全体を書き直す。28kトリプルで
-  約1時間。同じ投入を `with db.batch():` の中でやれば秒で終わる。
-- **意味検索のエンコード**。27.5k文で初回約10秒、以降0.1秒 — 下記。
-
-### 埋め込みモデル
-
-最初の `search()` / `find()` で**モデルがダウンロードされる** — Hugging Face
-から約1GB — 以降はキャッシュから読むので、2回目からはネットワークを使わない。
-trikedb が自分からネットワークに出るのはここだけで、しかも自分で入れた extra
-の中だけ。本体は何も取りに行かない。
-
-`TRIKEDB_EMBED_MODEL` で取得元を差し替えられる — モデルを置いたローカルの
-ディレクトリか、到達できるミラー上の同じモデル名。`huggingface.co` に出られない
-マシンや、1GBの取得に誰かの承認が要る環境ではこれを設定する。読み込みに失敗した
-ときは、機能が壊れているかのように落ちるのではなく、どのモデルを取りに行ったかと
-何を設定すればよいかを言う。
-
-### 埋め込みキャッシュ
-
-`search()` と `find()` はグラフを埋め込む。そのベクトルはキャッシュされ、
-計算は一度だけになる。キーは**文単位**なので、1件足したときの再エンコードは
-コーパス全体ではなく1文だけ(27.5k文で cold 10.4s / warm 0.11s / 書き込み直後 0.10s)。
-
-置き場所はグラフの隣**ではない**。diffでレビューできることが売りのYAMLの隣に
-バイナリを置くと、最初の `git add -A` で一緒にコミットされる。`TRIKEDB_CACHE_DIR`、
-なければ `$XDG_CACHE_HOME/trikedb`、なければ `~/.cache/trikedb` に、
-(グラフ, モデル) につき1ファイル。消しても常に安全。S3やウェアハウス上の
-グラフはキャッシュしない。
-
-本文を丸ごと持つプロパティにヒットした場合、その値は「切り詰めた旨が書かれた
-プレビュー」＋実際にマッチした箇所 `chunk_text` として返る。以前は54万字の本文が
-そのまま返っていた。全文は `node()` / `get_node` 側にそのまま残っている。
+定義のYAML/JSONファイルはメモリに読み込みます。`.json` は読み込みが速い一方、差分を読みづらくします。R2RML仮想グラフはクエリ時に元DBを読み、基本的な絞り込みをSQLへ渡します。SPARQLの結合はRDFLibが評価し、全件エクスポートは元表全体を走査する場合があります。[詳細](VIRTUAL_GRAPH.md)。
 
 ## 検証と推論
 
@@ -1219,44 +939,7 @@ RDFからの再取り込みはTrikeDBの編集用構造を復元しません。�
 運用する側のものだ。コピーしたファイルは編集できるが、ライブラリの画面は
 設定しかできない。
 
-**どこを指すかが、レビューの場所を決める。** `TRIKEDB_GRAPH` はパスでも
-ストレージURLでもよく、フォームはどちらでも同一である。変わるのはページ
-最後の節だけ:
-
-| `TRIKEDB_GRAPH` | 誰が書けるか | レビューはどこで起きるか |
-|---|---|---|
-| リポジトリをcloneした中の `ontology/graph.yaml` | リポジトリを持っている人 | 画面がdiffを見せてブランチをpushする。いつも通りプルリクエストが門になる |
-| `snowflake://DB.SCHEMA.TABLE/sales/crm` | そのページを開ける人全員 | 書き込みは即座に入る。1日ぶんをまとめて1本のプルリクエストが運ぶ |
-
-2行目こそが、gitを持っていない人にこの画面を使えるものにする — 作った目的
-そのものである。ここで動いているのは「レビューするかどうか」ではなく
-**レビューの時刻**である:
-
-```
-ファイル:     書く -> プルリクエスト -> レビュー -> 事実がグラフに入る
-ウェアハウス: 書く -> 事実がグラフに入る -> プルリクエスト -> レビュー
-```
-
-危険な間違いを止める側は、どちらでも残っている。オントロジーガードは
-**書いた瞬間**に走るので、宣言されていない述語も、向きが逆の辺も、前提が
-起きていないアクションも、画面で拒否されて保存先には届かない。プルリク
-エストがその上に足すのは判断 — *それは本当か* — であり、キュレーション
-されたグラフならそれを1日1回読めばたいてい足りる。形式は正しいが内容が
-間違っている事実の代償が大きいところ（誰が何を持っているか、どのサービスが
-生きているか、誰がどのテーブルを読んでよいか）は、そのグラフだけファイル側に
-置いて、残りをウェアハウスに置けばよい。
-
-`examples/export_to_git.py` がその日次ジョブである。ウェアハウスのグラフを
-読み、`db.save()` でリポジトリにYAMLとして書き出し、プルリクエストを開く —
-変化が無ければ何も言わずに終わる。`examples/graph-export.yml` はそれを回す
-GitHub Actionsのスケジュールである。この2つのためにライブラリに足したものは
-何も無い。`db.save(path)` は元がどこのグラフでもYAMLで書き出すので、それが
-エクスポートの全部である。
-
-Streamlit in Snowflake の中で動かす場合、ウェアハウスへの接続はアプリが既に
-いるセッションそのものになる — `get_active_session()` を
-`TrikeDB(..., connection=)` に渡すだけ。トークンもネットワークルールも
-ローテーションすべきシークレットも要らず、グラフはアカウントの外に出ない。
+この例はリポジトリ内のYAMLファイルを編集し、プルリクエスト前に差分を表示します。オブジェクトストレージにも同じファイルを置けますが、レビューはリポジトリの手順で行います。
 
 ## HTMLワークベンチはどこに出るのか
 
@@ -1266,7 +949,6 @@ Streamlit in Snowflake の中で動かす場合、ウェアハウスへの接続
 ```bash
 trike ui generate graph.yaml                          # -> graph.html（隣に出る）
 trike ui generate s3://bucket/kg/graph.yaml           # -> カレントに graph.html
-trike ui generate snowflake://DB.SCHEMA.T/sales/crm   # -> カレントに crm.html
 trike ui generate graph.yaml -o docs/index.html       # 明示指定
 trike ui generate graph.yaml -o s3://site/kg.html     # バケットに公開
 ```
@@ -1333,8 +1015,8 @@ flowchart LR
 | `[serve]` | `trikedb serve` | mcp, uvicorn, starlette |
 | `[oauth]` | `trikedb serve --oauth-issuer` | mcp, pyjwt[crypto] |
 | `[remote]` | `s3://` 等 | fsspec, s3fs; add gcsfs for gs:// |
-| `[snowflake]` | `snowflake://` グラフ | snowflake-connector-python |
-| `[bigquery]` | `bigquery://` グラフ | google-cloud-bigquery |
+| `[snowflake]` | R2RML仮想読取用コネクタ | snowflake-connector-python |
+| `[bigquery]` | R2RML仮想読取用コネクタ | google-cloud-bigquery |
 | `[shacl]` | `validate` | pyshacl |
 | `[owl]` | `declare` / `infer` | owlrl |
 | `[semantic]` | `search`(埋め込み・多言語・torch不要) | model2vec, numpy — **初回に約1GB取得**、上の「埋め込みモデル」 |

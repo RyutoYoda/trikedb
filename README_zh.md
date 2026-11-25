@@ -68,7 +68,7 @@ triples:
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
-pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3/warehouse graphs
+pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3 and virtual SQL graphs
 ```
 
 所有可选能力都是 extra，所以内核始终只有 PyYAML + rdflib + pyoxigraph。

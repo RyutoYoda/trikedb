@@ -123,7 +123,7 @@ def test_dbapi_dialects_emit_safe_selects_and_bind_values(tmp_path, dialect):
         def __init__(self):
             self.inner = base.cursor()
 
-        def execute(self, sql, params):
+        def execute(self, sql, params=()):
             statements.append((sql, params))
             self.inner.execute(sql.replace("%s", "?").replace("`", '"'), params)
 
@@ -148,3 +148,42 @@ def test_dbapi_dialects_emit_safe_selects_and_bind_values(tmp_path, dialect):
     quote = '"' if dialect == "snowflake" else '`'
     assert any(f'{quote}people{quote}' in sql and f'{quote}name{quote}' in sql
                for sql, _ in statements)
+
+
+def test_bigquery_executes_unbound_queries_without_an_empty_parameter_tuple(tmp_path):
+    base, mapping = _fixture(tmp_path)
+
+    class Cursor:
+        def __init__(self):
+            self.inner = base.cursor()
+
+        def execute(self, sql, params=None):
+            if "?" not in sql and params is not None:
+                raise TypeError("BigQuery DB-API expects omitted params for unbound SQL")
+            self.inner.execute(sql.replace("`", '"'), params or ())
+
+        def fetchmany(self, size):
+            return self.inner.fetchmany(size)
+
+        def close(self):
+            self.inner.close()
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    graph = R2RMLVirtualGraph(mapping, Connection(), dialect="bigquery")
+    assert Graph().parse(data=graph.export_rdf("nt"), format="nt")
+
+
+def test_legacy_sql_document_urls_are_rejected():
+    from trikedb import TrikeDB
+    from trikedb import storage
+
+    for url in ("snowflake://db.schema.graphs/example", "bigquery://project.dataset.graphs/example"):
+        with pytest.raises(ValueError, match="no backend handles"):
+            TrikeDB(url)
+        with pytest.raises(ValueError, match="no backend handles"):
+            storage.read_text(url)
+    with pytest.raises(ValueError, match="R2RMLVirtualGraph"):
+        TrikeDB("graph.yaml", connection=object())

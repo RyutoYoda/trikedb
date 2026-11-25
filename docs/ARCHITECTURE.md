@@ -24,12 +24,10 @@ flowchart TB
         direction LR
         SF("file<br/>graph.yaml · graph.json")
         SO("object<br/>s3:// · gs:// · az://")
-        SW("table row<br/>snowflake:// · bigquery://")
     end
     PO("oxigraph<br/>SPARQL SELECT · ASK")
     PR("rdflib.Graph<br/>updates · owlrl · pyshacl<br/>Turtle · JSON-LD export")
     PN("networkx<br/>graph algorithms")
-    PV("SQL views<br/>over the warehouse row")
     PD("no engine at all<br/>the document inside the page")
     subgraph query["<b>query & retrieval</b> — derived, never stored"]
         direction TB
@@ -39,7 +37,6 @@ flowchart TB
     end
     RQ("agent MCP · CLI · REST · Python · HTML<br/>every reader of the graph itself")
     RG("program<br/>Python")
-    RS("SQL<br/>BI · dbt · notebook")
     RT("existing SQL tables<br/>SQLite · Snowflake · BigQuery · Databricks")
     RM("R2RML mapping<br/>Turtle · read-only DB-API")
     RV("virtual RDF view<br/>SPARQL · RDF export")
@@ -51,12 +48,9 @@ flowchart TB
     G --> C
     C <--> SF
     C <--> SO
-    C <--> SW
     SF ~~~ PO
     SF ~~~ PR
     SO ~~~ PN
-    SW -.-> PV
-    SW ~~~ PD
     C -.-> PO
     C -.-> PR
     C -.-> PN
@@ -66,7 +60,6 @@ flowchart TB
     PO --> RQ
     PR --> RQ
     PN --> RG
-    PV --> RS
     PD --> RQ
     RT --> RM --> RV --> RG
 
@@ -80,8 +73,8 @@ flowchart TB
     class LA,LG,LB,LC,LD,LE lbl
     class WA,WC,WI,WP,RQ,RG,RS iface
     class C,G core
-    class SF,SO,SW,RT store
-    class PO,PR,PN,PV,PD,QAPI,QENG,RM,RV proj
+    class SF,SO,RT store
+    class PO,PR,PN,PD,QAPI,QENG,RM,RV proj
 ```
 
 Read the diagram top to bottom: the core is one document, storage is one
@@ -106,7 +99,7 @@ and saves only after validation succeeds.
 
 `Triple` stores `s`, `p`, `o`, edge attributes and optional `rdf_terms`. Existing documents retain the legacy mapping: names become IRIs under `urn:trikedb:` (http/https/urn stay absolute); whitespace-containing objects become literals. Explicit RDF terms preserve IRIs, blank nodes, literal datatypes and language tags. Use an explicit IRI object for entity names with spaces.
 
-`_statements()` defines the RDF projection. rdflib and Oxigraph consume it; Turtle and JSON-LD serialize the same projection. Node properties become literals; a string `type` also becomes `rdf:type` for standard class targets. Edge attributes attach to generated blank-node statements. These synthetic triples are readable in UPDATE WHERE but cannot be deleted through SPARQL. NetworkX and warehouse views independently expose a lexical property-graph projection from the document. They are not lossless RDF datasets; KG_NODE includes metadata-only nodes and all edge endpoints.
+`_statements()` defines the RDF projection. rdflib and Oxigraph consume it; Turtle and JSON-LD serialize the same projection. Node properties become literals; a string `type` also becomes `rdf:type` for standard class targets. Edge attributes attach to generated blank-node statements. These synthetic triples are readable in UPDATE WHERE but cannot be deleted through SPARQL. NetworkX exposes a lexical property-graph projection from the document; it is not a lossless RDF dataset.
 
 ## Writes and failures
 
@@ -118,7 +111,7 @@ Public Triple/property returns are detached snapshots. Mutate through APIs to in
 
 Local saves compare a content hash under a stable per-file lock in the user's cache, then write and fsync a same-directory temporary file and replace the destination. Existing permissions and symlink targets are preserved; newly created files are private (0600). Failure before replacement preserves previous bytes. This coordinates TrikeDB processes using the same cache on one host; external programs that ignore the lock can still race. Directory-fsync power-loss durability is not claimed.
 
-S3 uses conditional single PUT (ETag/If-Match or create-if-absent); SQL uses a version predicate and affected-row count. The successful write returns **its own** committed token. Never read HEAD after saving to discover that token: another writer could already have committed. S3 multipart conditional writes are deliberately unsupported. Other fsspec backends have no compare-and-swap guarantee.
+S3 uses conditional single PUT (ETag/If-Match or create-if-absent). The successful write returns **its own** committed token. Never read HEAD after saving to discover that token: another writer could already have committed. S3 multipart conditional writes are deliberately unsupported. Other fsspec backends have no compare-and-swap guarantee.
 
 REST and MCP in one `serve` process share one TrikeDB and serialize operations under its reentrant lock. They check local content hashes and reload external edits before each request. MCP retries conditional conflicts by reloading and reapplying its mutation. Separate processes do not share memory. Python callers must serialize access themselves and reload after a conflict. Read-only flags guard public mutations, not arbitrary Python memory access.
 

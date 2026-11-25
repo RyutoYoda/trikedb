@@ -4,14 +4,15 @@ TrikeDB keeps its YAML graph for curated facts and workflows. For large rows
 already held in a relational database or warehouse, use a separate virtual
 RDF view: R2RML describes how table rows become RDF terms, while queries read
 the source tables at request time. No row data is copied into the YAML graph
-or into the existing `snowflake://` / `bigquery://` document store.
+or into a warehouse graph-document row. Curated graphs and R2RML mappings
+remain reviewable files.
 
 This is an initial, **strict subset** of [W3C R2RML](https://www.w3.org/TR/r2rml/),
 not a claim of full R2RML conformance. The mapping is standard Turtle, not a
 TrikeDB-specific relational-mapping dialect. Supported features are
 `rr:tableName`, subject IRI templates, `rr:class`, constant predicates,
 object columns/templates/constants, and parent-triples-map joins with
-`rr:joinCondition`. `rr:sqlQuery`, named graphs, blank-node maps, inverse
+`rr:joinCondition`. Named graphs, blank-node maps, inverse
 expressions, and other features are rejected rather than ignored.
 
 ## Example
@@ -57,6 +58,20 @@ your connector uses a different binding style. Table names must be trusted
 and match the database's case-sensitive quoted identifiers. In particular,
 Snowflake mappings should use uppercase names for unquoted tables.
 
+For BigQuery, use `google.cloud.bigquery.dbapi.Connection` with an already
+authenticated client. The mapping's `rr:tableName` can be a fully qualified
+`project.dataset.table` name; no BigQuery graph-document table is created.
+
+```python
+from google.cloud import bigquery
+from google.cloud.bigquery import dbapi
+from trikedb import R2RMLVirtualGraph
+
+client = bigquery.Client()  # configure credentials outside the mapping
+connection = dbapi.Connection(client=client, prefer_bqstorage_client=False)
+view = R2RMLVirtualGraph("mapping.ttl", connection, dialect="bigquery")
+```
+
 Queries are virtual: each triple pattern runs SQL against the source, and
 basic bound subjects and literal columns are pushed into `WHERE` clauses.
 SPARQL joins and filters are currently evaluated by RDFLib, so this is **not**
@@ -70,6 +85,4 @@ property-graph import path. RDF and Neo4j property-graph models also differ,
 so one mapping does not automatically guarantee identical labels, properties,
 and relationship identities in both systems.
 
-The existing one-row SQL graph document store is retained for compatibility.
-It has different semantics from this virtual table mapping and is not a
-required intermediate format.
+Curated definitions stay in files; relational rows are read from the source.

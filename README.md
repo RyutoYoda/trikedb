@@ -77,7 +77,7 @@ draft PR publishing is optional.
 ```bash
 pip install trikedb          # library + CLI
 pip install 'trikedb[mcp]'   # + MCP server, so an agent can use it
-pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3/warehouse graphs
+pip install 'trikedb[all]'   # + serve, OAuth, SHACL, OWL, semantic search, S3 and virtual SQL graphs
 ```
 
 Every optional feature is an extra, so the core stays PyYAML + rdflib + pyoxigraph.
@@ -262,7 +262,7 @@ There are more, but a graph that earns its keep is usually built out of these:
 | `db.find(question, where=…)` | the retrieval an agent wants: search by meaning, then filter on exact properties |
 | `db.sparql(query)` | the full query language, when patterns are not enough |
 
-Everything else — inference, SHACL, workspaces, S3 and warehouse storage, the
+Everything else — inference, SHACL, workspaces, S3 storage and virtual SQL graphs, the
 HTTP server — is there when you need it and costs nothing until then.
 See [the reference](https://github.com/RyutoYoda/trikedb/blob/main/docs/REFERENCE.md).
 

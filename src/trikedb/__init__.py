@@ -8,4 +8,4 @@ from .db import OntologyError, Triple, TrikeDB
 from .r2rml import R2RMLVirtualGraph
 
 __version__ = "1.3.0"
-__all__ = ["TrikeDB", "Triple", "OntologyError", "__version__"]
+__all__ = ["TrikeDB", "Triple", "OntologyError", "__version__", "R2RMLVirtualGraph"]

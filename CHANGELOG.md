@@ -5,10 +5,16 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+- Remove the legacy Snowflake/BigQuery one-row graph-document backend and
+  `sql-init`. Keep curated graph definitions in files. Warehouse tables can
+  be read through the separate R2RML virtual RDF API. This is a breaking
+  change for `snowflake://` and `bigquery://` graph URLs.
+- Fix BigQuery DB-API virtual reads without bound parameters, caught by a
+  live BigQuery E2E with joined rows, source updates, and RDF export.
 - Add a read-only R2RML virtual RDF graph over DB-API tables. It queries the
   source rows on demand, supports table/column mappings and parent joins,
   and exports a standard RDF snapshot. Unsupported mapping constructs fail
-  explicitly. The one-document YAML and warehouse storage APIs stay intact.
+  explicitly. Curated YAML files remain the storage format.
 - Quote Databricks SQL identifiers with backticks. This was caught by a live
   Databricks SQL Warehouse E2E after the initial virtual-view merge.
 
