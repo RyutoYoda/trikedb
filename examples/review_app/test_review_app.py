@@ -59,6 +59,23 @@ class ReviewAppTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 409)
 
+    def test_step_action_contract_survives_editor_preview(self):
+        operation = {**self.proposal["operations"][0], "agent": {
+            "affects": [{"concept": "report-table", "operation": "create"}],
+            "executor": {"kind": "mcp", "server": "example-service",
+                         "tool": "archive_report", "parameter_map": {"id": "report_id"}},
+        }}
+        response = self.client.post("/api/preview", json={
+            **self.proposal, "operations": [operation]})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn("archive_report", response.json()["diff"])
+        self.assertIn("report-table", response.json()["diff"])
+        operation["agent"]["affects"][0]["concept"] = "missing-concept"
+        response = self.client.post("/api/preview", json={
+            **self.proposal, "operations": [operation]})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("unknown affects concept", response.text)
+
     def test_node_deletion_requires_relationship_cleanup(self):
         proposal = {
             **self.proposal,

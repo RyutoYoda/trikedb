@@ -56,6 +56,13 @@ const messages = {
     summary: "Summary",
     type: "Type",
     nextSteps: "Next step IDs (comma separated)",
+    actionSettings: "Agent action (optional)",
+    actionHelp: "Declare the expected effect and a trusted MCP binding. The workflow definition does not store credentials or invoke the tool by itself.",
+    effectsJson: "Affected concepts (JSON list)",
+    executorServer: "MCP server alias",
+    executorTool: "MCP tool",
+    parameterMapJson: "Tool parameter to input name (JSON mapping)",
+    invalidActionJson: "Use valid JSON for affected concepts and parameter mapping.",
     insertAfter: "Insert after",
     fromNode: "From node",
     toNode: "To node",
@@ -143,6 +150,13 @@ const messages = {
     summary: "概要",
     type: "種類",
     nextSteps: "次の工程ID（カンマ区切り）",
+    actionSettings: "エージェントの操作（任意）",
+    actionHelp: "変更対象と信頼済みMCPの呼び出し先を定義します。認証情報は保存されず、定義だけではツールは実行されません。",
+    effectsJson: "変更対象（JSONの配列）",
+    executorServer: "MCPサーバーの別名",
+    executorTool: "MCPツール",
+    parameterMapJson: "ツール引数と入力名（JSON）",
+    invalidActionJson: "変更対象と引数対応には正しいJSONを入力してください。",
     insertAfter: "この工程の後に追加",
     fromNode: "接続元",
     toNode: "接続先",
@@ -329,7 +343,9 @@ function view() {
           label: change.label,
           description: change.description,
           next: change.next,
+          ...(change.agent ? { agent: change.agent } : {}),
         };
+        if (change.agent && !Object.keys(change.agent).length) delete next.agent;
         if (index < 0) {
           const after = steps.find((step) => step.id === change.after);
           if (after) {
@@ -825,6 +841,18 @@ function openEdit(kind, action, id = "", target = "") {
       true,
     );
     appendField(fields, t("nextSteps"), "next", (value?.next || []).join(", "));
+    const actionSettings = item("details", "action-contract");
+    actionSettings.append(item("summary", "", t("actionSettings")),
+      item("p", "muted", t("actionHelp")));
+    appendField(actionSettings, t("effectsJson"), "affects",
+      JSON.stringify(value?.agent?.affects || [], null, 2), null, true);
+    appendField(actionSettings, t("executorServer"), "executor_server",
+      value?.agent?.executor?.server || "");
+    appendField(actionSettings, t("executorTool"), "executor_tool",
+      value?.agent?.executor?.tool || "");
+    appendField(actionSettings, t("parameterMapJson"), "parameter_map",
+      JSON.stringify(value?.agent?.executor?.parameter_map || {}, null, 2), null, true);
+    fields.append(actionSettings);
     fields.append(
       item(
         "p",
@@ -934,6 +962,25 @@ $("edit-form").addEventListener("submit", (event) => {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
+    try {
+      const previous = graph.workflows[selected]?.steps.find((step) => step.id === change.id)?.agent || {};
+      const agent = structuredClone(previous);
+      const affects = JSON.parse(values.affects || "[]");
+      const parameterMap = JSON.parse(values.parameter_map || "{}");
+      if (!Array.isArray(affects) || !parameterMap || Array.isArray(parameterMap)
+          || typeof parameterMap !== "object") throw Error();
+      if (affects.length) agent.affects = affects;
+      else delete agent.affects;
+      if (values.executor_server || values.executor_tool) agent.executor = {
+        kind: "mcp", server: values.executor_server, tool: values.executor_tool,
+        parameter_map: parameterMap,
+      };
+      else delete agent.executor;
+      change.agent = agent;
+    } catch {
+      status(t("invalidActionJson"));
+      return;
+    }
   }
   if (!addChange(change)) return;
   $("edit-dialog").close();

@@ -98,6 +98,11 @@ function applyOperations(original, operations, source) {
           description: String(operation.description || "").slice(0, 4000),
           next: operation.next.map((next) => validId(next, "next step")),
         });
+        if (Object.hasOwn(operation, "agent")) {
+          if (!operation.agent || typeof operation.agent !== "object" || Array.isArray(operation.agent)) throw new Error("Invalid agent action");
+          if (Object.keys(operation.agent).length) steps[index].agent = operation.agent;
+          else delete steps[index].agent;
+        }
       }
     } else throw new Error("Unsupported operation");
   }
@@ -114,6 +119,30 @@ function validateGraph(graph) {
     const local = new Set((workflow.steps || []).map((step) => step.id));
     for (const step of workflow.steps || []) {
       if ((step.next || []).some((next) => !local.has(next))) throw new Error("Next step is missing");
+      const agent = step.agent;
+      if (!agent) continue;
+      if (!Array.isArray(agent.affects || [])) throw new Error("Invalid affects declaration");
+      const effects = new Set();
+      for (const effect of agent.affects || []) {
+        if (!effect || typeof effect !== "object" || !graph.nodes[effect.concept]
+            || !["create", "update", "delete"].includes(effect.operation)
+            || (effect.fields !== undefined && (effect.operation === "delete" || !Array.isArray(effect.fields)
+                || effect.fields.some((field) => typeof field !== "string" || !field.trim())))) throw new Error("Invalid affects declaration");
+        const key = `${effect.concept}:${effect.operation}`;
+        if (effects.has(key)) throw new Error("Duplicate affects declaration");
+        effects.add(key);
+      }
+      if (agent.executor) {
+        const executor = agent.executor;
+        if (executor.kind !== "mcp" || !/^[A-Za-z0-9_.-]{1,100}$/.test(executor.server)
+            || !/^[A-Za-z0-9_.-]{1,100}$/.test(executor.tool)
+            || !executor.parameter_map || typeof executor.parameter_map !== "object"
+            || Array.isArray(executor.parameter_map)
+            || Object.entries(executor.parameter_map).some(([parameter, name]) =>
+                typeof name !== "string" || !/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(name)
+                || /secret|password|token|credential|api[_-]?key|private[_-]?key/i.test(parameter)
+                || /secret|password|token|credential|api[_-]?key|private[_-]?key/i.test(name))) throw new Error("Invalid executor declaration");
+      }
     }
   }
 }

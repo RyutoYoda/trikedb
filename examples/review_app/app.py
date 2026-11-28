@@ -479,6 +479,13 @@ def apply_operations(original: str, proposal: Proposal) -> str:
                 step = steps[found[0]]
                 step["label"] = _text(operation.get("label"), "step label")
                 step["description"] = str(operation.get("description") or "")[:4000]
+                if "agent" in operation:
+                    if not isinstance(operation["agent"], dict):
+                        raise HTTPException(400, "Invalid agent action")
+                    if operation["agent"]:
+                        step["agent"] = operation["agent"]
+                    else:
+                        step.pop("agent", None)
                 next_ids = operation.get("next", [])
                 if action == "create" and not next_ids:
                     next_ids = inherited_next
@@ -494,7 +501,10 @@ def apply_operations(original: str, proposal: Proposal) -> str:
         candidate = Path(directory) / "candidate.yaml"
         candidate.write_text(updated, encoding="utf-8")
         try:
-            TrikeDB(candidate, validate_on_load=True)
+            graph = TrikeDB(candidate, validate_on_load=True)
+            from trikedb.agent_workflow import _definition
+            for workflow_id in (document.get("workflows") or {}):
+                _definition(graph, workflow_id)
         except (ValueError, TypeError) as exc:
             raise HTTPException(400, f"Invalid graph: {exc}") from exc
     if updated == original:

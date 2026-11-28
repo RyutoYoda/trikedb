@@ -744,8 +744,9 @@ JS/WASM 和许可证声明；文件更大，但可从无网络的 `file://` 打�
 `TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR` 中相对路径指向的 JUnit XML，确认有测试且
 没有失败、错误或跳过。`verifier: github_actions` 会通过 API 核对已声明的
 `repository` 与 `subject_artifact` 中的提交 SHA，并要求运行成功完成。私有仓库的
-令牌只放在运行环境的 `TRIKEDB_GITHUB_TOKEN`，不写入 YAML。本工具不会执行外部
-工具或任意命令。参见[虚构的分支示例](../examples/agent_workflow_decision.yaml)。执行记录保存在
+令牌只放在运行环境的 `TRIKEDB_GITHUB_TOKEN`，不写入 YAML。可选的 `execute_step`
+仅通过宿主显式配置的可信 MCP 执行器调用声明的工具；标准服务器未配置时拒绝执行。
+`agent.affects` 声明预期影响，不能单凭工具返回值证明实际效果。参见[虚构的分支示例](../examples/agent_workflow_decision.yaml)。执行记录保存在
 本地 SQLite 中，不写入本体 YAML。在容器中应将
 `TRIKEDB_AGENT_WORKFLOW_STATE_DIR` 指向持久卷。OAuth 调用方只能恢复自己的
 执行。多个主机共享执行需要另行实现共享存储。只读 Cloudflare Worker 示例尚未

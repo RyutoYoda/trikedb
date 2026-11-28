@@ -194,9 +194,10 @@ parallel required work.
 Install `trikedb[mcp]` and serve the graph as MCP. The new `agent_workflow`
 tool searches or lists workflows, starts a run, returns steps on active routes,
 records a branch choice or a declared optional skip with a reason, checks
-supported evidence, and resumes after a restart. It does not call the
-named Snowflake, dbt, Tableau or other external tools itself. A step may have
-an `agent:` mapping with `tools`, `entry`, `outputs` and `gates`; declared
+supported evidence, and resumes after a restart. An optional `execute_step`
+action dispatches a declared MCP binding only when the embedding host supplies
+a trusted executor; the standard server fails closed without one. A step may have
+an `agent:` mapping with `tools`, `entry`, `outputs`, `gates`, `affects` and `executor`; declared
 outputs and passing test/E2E gate references are required to complete it.
 JUnit reports and GitHub Actions runs can be checked when a gate declares a
 verifier; ordinary references remain agent-reported.

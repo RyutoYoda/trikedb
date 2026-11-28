@@ -50,9 +50,13 @@ def _definition(db, workflow_id: str) -> dict:
             incoming[edge.o].add(edge.s)
             outgoing[edge.s].add(edge.o)
     steps = []
+    node_ids = set(db.nodes())
     for membership in sorted(members, key=lambda t: (t.attrs.get("order", 0), t.o)):
         meta = db.node(membership.o)
         spec = validate_agent_spec(meta.get("agent", {}), f"node {membership.o}")
+        for effect in spec.get("affects", []):
+            if effect["concept"] not in node_ids:
+                raise ValueError(f"step {membership.o!r}: unknown affects concept {effect['concept']!r}")
         skills = []
         for edge in db.triples(s=membership.o, p="USES"):
             source = db.node(edge.o)
@@ -412,10 +416,14 @@ class RunStore:
             run_id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, owner TEXT NOT NULL,
             plan TEXT NOT NULL, fingerprint TEXT NOT NULL,
             completed TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-            skill_reads TEXT NOT NULL DEFAULT '{}'
+            skill_reads TEXT NOT NULL DEFAULT '{}',
+            executions TEXT NOT NULL DEFAULT '{}'
         )""")
-        if "skill_reads" not in {column[1] for column in conn.execute("PRAGMA table_info(runs)")}:
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(runs)")}
+        if "skill_reads" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN skill_reads TEXT NOT NULL DEFAULT '{}'")
+        if "executions" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN executions TEXT NOT NULL DEFAULT '{}'")
         return conn
 
     @contextmanager
@@ -431,14 +439,14 @@ class RunStore:
         now = _stamp()
         run = {"run_id": secrets.token_urlsafe(24), "workflow_id": plan["id"],
                "owner": owner, "plan": plan, "fingerprint": _fingerprint(plan),
-               "completed": {}, "skill_reads": {}, "created_at": now, "updated_at": now}
+               "completed": {}, "skill_reads": {}, "executions": {}, "created_at": now, "updated_at": now}
         with self.transaction() as conn:
             conn.execute("""INSERT INTO runs
                 (run_id, workflow_id, owner, plan, fingerprint, completed,
-                 created_at, updated_at, skill_reads) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_at, updated_at, skill_reads, executions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                          (run["run_id"], run["workflow_id"], owner,
                           json.dumps(plan, ensure_ascii=False), run["fingerprint"],
-                          "{}", now, now, "{}"))
+                          "{}", now, now, "{}", "{}"))
         return run
 
     @staticmethod
@@ -450,6 +458,7 @@ class RunStore:
         run["plan"] = json.loads(run["plan"])
         run["completed"] = json.loads(run["completed"])
         run["skill_reads"] = json.loads(run["skill_reads"])
+        run["executions"] = json.loads(run["executions"])
         return run
 
     def get(self, run_id: str, owner: str) -> dict:
@@ -459,9 +468,10 @@ class RunStore:
     @staticmethod
     def _save(conn, run: dict) -> None:
         run["updated_at"] = _stamp()
-        conn.execute("UPDATE runs SET completed=?, skill_reads=?, updated_at=? WHERE run_id=?",
+        conn.execute("UPDATE runs SET completed=?, skill_reads=?, executions=?, updated_at=? WHERE run_id=?",
                      (json.dumps(run["completed"], ensure_ascii=False),
                       json.dumps(run["skill_reads"], ensure_ascii=False),
+                      json.dumps(run["executions"], ensure_ascii=False),
                       run["updated_at"], run["run_id"]))
 
     @staticmethod
@@ -481,6 +491,50 @@ class RunStore:
             run["skill_reads"].setdefault(step_id, {})[skill_id] = {
                 "sha256": digest, "at": _stamp(),
             }
+            self._save(conn, run)
+            return run
+
+    def reserve_execution(self, run_id: str, owner: str, step_id: str,
+                          inputs: dict, current_fingerprint: str) -> tuple[dict, dict]:
+        """Durably reserve one side effect before calling an external tool.
+
+        An interrupted call remains uncertain and cannot be retried blindly.
+        """
+        with self.transaction() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            run = self._load(conn, run_id, owner)
+            self._require_current(run, current_fingerprint)
+            step = next((s for s in _ready_steps(run) if s["id"] == step_id), None)
+            if step is None:
+                raise ValueError("step is not ready")
+            executor = step["agent"].get("executor")
+            if executor is None:
+                raise ValueError("step has no declared executor")
+            if step_id in run["executions"]:
+                raise ValueError("step execution is already recorded; reconcile an uncertain result before retrying")
+            missing_skills = {skill["id"] for skill in step.get("skills", [])} - set(
+                run["skill_reads"].get(step_id, {}))
+            if missing_skills:
+                raise ValueError(f"read required skill(s) before executing: {sorted(missing_skills)}")
+            mapping = executor["parameter_map"]
+            if not isinstance(inputs, dict) or set(inputs) != set(mapping.values()):
+                raise ValueError(f"inputs must match declared names: {sorted(mapping.values())}")
+            arguments = {parameter: inputs[name] for parameter, name in mapping.items()}
+            receipt = {"status": "in_progress", "at": _stamp(),
+                       "server": executor["server"], "tool": executor["tool"]}
+            run["executions"][step_id] = receipt
+            self._save(conn, run)
+            return executor, arguments
+
+    def finish_execution(self, run_id: str, owner: str, step_id: str,
+                         status: str) -> dict:
+        with self.transaction() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            run = self._load(conn, run_id, owner)
+            receipt = run["executions"].get(step_id)
+            if receipt is None or receipt["status"] != "in_progress":
+                raise ValueError("step has no pending execution")
+            receipt.update(status=status, ended_at=_stamp())
             self._save(conn, run)
             return run
 
@@ -547,6 +601,8 @@ class RunStore:
             )
             if missing_skills:
                 raise ValueError(f"read required skill(s) before completing: {sorted(missing_skills)}")
+            if step["agent"].get("executor") and run["executions"].get(step_id, {}).get("status") != "succeeded":
+                raise ValueError("execute the declared tool successfully before completing this step")
             required = set(step["agent"]["outputs"])
             if not isinstance(artifacts, dict) or set(artifacts) != required or any(
                 not isinstance(v, str) or not v.strip() for v in artifacts.values()
@@ -594,6 +650,7 @@ def _result(run: dict, current_fingerprint: str) -> dict:
         "run_id": run["run_id"], "workflow_id": run["workflow_id"],
         "workflow": {"label": plan["label"], "summary": plan["summary"]},
         "ready": ready, "completed": completed,
+        "executions": run["executions"],
         "finished": len(completed) == len(plan["steps"]),
         "definition_changed": run["fingerprint"] != current_fingerprint,
         "updated_at": run["updated_at"],
@@ -602,10 +659,11 @@ def _result(run: dict, current_fingerprint: str) -> dict:
 
 
 class AgentWorkflow:
-    """The single MCP-facing use case; it never executes external systems."""
+    """Run ledger and optional dispatch through an explicitly trusted adapter."""
 
-    def __init__(self, db, state_dir=None, evidence_dir=None):
+    def __init__(self, db, state_dir=None, evidence_dir=None, executor=None):
         self.db = db
+        self.executor = executor
         configured_evidence = evidence_dir or os.environ.get("TRIKEDB_AGENT_WORKFLOW_EVIDENCE_DIR")
         self.store = RunStore(_state_path(db.path, state_dir),
                               Path(configured_evidence) if configured_evidence else None)
@@ -614,7 +672,8 @@ class AgentWorkflow:
                run_id: str | None = None, step_id: str | None = None,
                artifacts: dict | None = None, evidence: list[dict] | None = None,
                query: str | None = None, target_id: str | None = None,
-               reason: str | None = None, skill_id: str | None = None) -> dict:
+               reason: str | None = None, skill_id: str | None = None,
+               inputs: dict | None = None) -> dict:
         if action == "select":
             return {"query": query, "candidates": _select_workflows(self.db, query)}
         if action == "list":
@@ -632,8 +691,8 @@ class AgentWorkflow:
             plan = _definition(self.db, workflow_id)
             run = self.store.create(plan, owner)
             return _result(run, run["fingerprint"])
-        if action not in {"next", "resume", "complete", "choose", "skip", "read_skill"}:
-            raise ValueError("action must be list, select, start, next, complete, choose, skip, read_skill or resume")
+        if action not in {"next", "resume", "complete", "choose", "skip", "read_skill", "execute_step"}:
+            raise ValueError("action must be list, select, start, next, execute_step, complete, choose, skip, read_skill or resume")
         if not run_id:
             raise ValueError(f"{action} requires run_id")
         run = self.store.get(run_id, owner)
@@ -641,6 +700,24 @@ class AgentWorkflow:
             current = _fingerprint(_definition(self.db, run["workflow_id"]))
         except ValueError:
             current = "missing"
+        if action == "execute_step":
+            if not step_id:
+                raise ValueError("execute_step requires step_id")
+            if self.executor is None:
+                raise ValueError("no trusted action executor is configured")
+            binding, arguments = self.store.reserve_execution(
+                run_id, owner, step_id, inputs if inputs is not None else {}, current)
+            try:
+                response = self.executor(binding["server"], binding["tool"], arguments, owner)
+                if response is None or response is False or getattr(response, "isError", False) or (
+                    isinstance(response, dict) and response.get("isError")
+                ):
+                    raise ValueError("declared MCP tool reported an error")
+            except Exception:
+                self.store.finish_execution(run_id, owner, step_id, "uncertain")
+                raise
+            run = self.store.finish_execution(run_id, owner, step_id, "succeeded")
+            return _result(run, current)
         if action == "read_skill":
             if not step_id or not skill_id:
                 raise ValueError("read_skill requires step_id and skill_id")

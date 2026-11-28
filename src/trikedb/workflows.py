@@ -14,7 +14,7 @@ def validate_agent_spec(value, where: str) -> dict:
     """
     if not isinstance(value, dict):
         raise ValueError(f"{where}: 'agent' must be a mapping")
-    unknown = set(value) - {"tools", "entry", "outputs", "gates", "skippable"}
+    unknown = set(value) - {"tools", "entry", "outputs", "gates", "skippable", "affects", "executor"}
     if unknown:
         raise ValueError(f"{where}: unknown agent field(s): {', '.join(sorted(unknown))}")
     result = {}
@@ -81,6 +81,40 @@ def validate_agent_spec(value, where: str) -> dict:
             raise ValueError(f"{where}.agent.gates: unexpected or missing verifier fields")
         seen.add(gate["id"])
     result["gates"] = gates
+    affects = value.get("affects", [])
+    if not isinstance(affects, list):
+        raise ValueError(f"{where}.agent.affects: must be a list")
+    seen_effects = set()
+    for effect in affects:
+        if not isinstance(effect, dict) or not {"concept", "operation"} <= set(effect) or set(effect) - {"concept", "operation", "fields"}:
+            raise ValueError(f"{where}.agent.affects: expected concept, operation and optional fields")
+        if not isinstance(effect["concept"], str) or not effect["concept"].strip() or effect["operation"] not in {"create", "update", "delete"}:
+            raise ValueError(f"{where}.agent.affects: invalid concept or operation")
+        fields = effect.get("fields", [])
+        if ("fields" in effect and (effect["operation"] == "delete" or not isinstance(fields, list)
+            or any(not isinstance(field, str) or not field.strip() for field in fields)
+            or len(fields) != len(set(fields)))):
+            raise ValueError(f"{where}.agent.affects: invalid fields")
+        key = (effect["concept"], effect["operation"])
+        if key in seen_effects:
+            raise ValueError(f"{where}.agent.affects: duplicate effect {key}")
+        seen_effects.add(key)
+    if affects:
+        result["affects"] = affects
+    if "executor" in value:
+        executor = value["executor"]
+        credential_name = re.compile(r"(?:secret|password|token|credential|api[_-]?key|private[_-]?key)", re.I)
+        if (not isinstance(executor, dict) or set(executor) != {"kind", "server", "tool", "parameter_map"}
+            or executor.get("kind") != "mcp"
+            or any(not isinstance(executor.get(key), str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", executor[key]) for key in ("server", "tool"))
+            or not isinstance(executor.get("parameter_map"), dict)
+            or any(not isinstance(key, str) or not key or not isinstance(source, str)
+                   or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,99}", source)
+                   or credential_name.search(key) or credential_name.search(source)
+                   for key, source in executor["parameter_map"].items())
+            or len(set(executor["parameter_map"].values())) != len(executor["parameter_map"])):
+            raise ValueError(f"{where}.agent.executor: expected an MCP server, tool and input-name parameter_map")
+        result["executor"] = executor
     return result
 
 

@@ -93,7 +93,18 @@ def main():
         box = dialog.bounding_box()
         assert box and box["y"] >= 0 and box["y"] + box["height"] <= 900
         assert page.locator(".step-related").is_visible()
-        page.locator('[data-close="edit-dialog"]').first.click()
+        page.locator(".action-contract summary").click()
+        page.locator('textarea[name="affects"]').fill(
+            '[{"concept":"report-table","operation":"create"}]'
+        )
+        page.locator('input[name="executor_server"]').fill("example-service")
+        page.locator('input[name="executor_tool"]').fill("create_record")
+        page.locator('textarea[name="parameter_map"]').fill('{"name":"record_name"}')
+        page.locator('#edit-form button[type="submit"]').click()
+        assert not dialog.is_visible()
+        assert page.evaluate("""() => JSON.parse(localStorage.getItem(
+          'trikedb-review-example')).operations.some(
+            operation => operation.agent?.executor?.tool === 'create_record')""")
 
         page.locator("#history-open").click()
         assert page.locator("#history-dialog").is_visible()
