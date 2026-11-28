@@ -81,6 +81,7 @@ def _identity(actor_claim=None):
 def build_server(
     path: Union[str, Path], auth=None, public_url=None, stateless: bool = False,
     graph=None, actor_claim=None, workflow_state_dir=None, workflow_evidence_dir=None,
+    workflow_executor=None,
 ):
     """The MCP server. ``auth`` is an (AuthSettings, TokenVerifier) pair from
     ``trikedb.oauth.build_auth`` — pass it to require OAuth 2.1 on HTTP
@@ -124,7 +125,8 @@ def build_server(
             raise PermissionError(f"{path} is read-only; MCP server needs write access")
     db = graph if graph is not None else TrikeDB(path, autosave=True)
     from .agent_workflow import AgentWorkflow
-    workflow_service = AgentWorkflow(db, workflow_state_dir, workflow_evidence_dir)
+    workflow_service = AgentWorkflow(db, workflow_state_dir, workflow_evidence_dir,
+                                     executor=workflow_executor)
 
     from functools import wraps
 
@@ -214,33 +216,51 @@ def build_server(
         ),
     )
 
-    @server.tool()
     @serialized
-    def agent_workflow(
+    def _agent_workflow_sync(
         action: str, workflow_id: Optional[str] = None,
         run_id: Optional[str] = None, step_id: Optional[str] = None,
         artifacts: Optional[dict[str, str]] = None,
         evidence: Optional[list[dict[str, str]]] = None,
         query: Optional[str] = None, target_id: Optional[str] = None,
         reason: Optional[str] = None, skill_id: Optional[str] = None,
+        inputs: Optional[dict] = None,
     ) -> dict:
-        """Guide an agent through a declared workflow without executing tools.
-
-        Actions: list; select(query); start(workflow_id); next(run_id);
-        complete(run_id, step_id, artifacts, evidence);
-        choose(run_id, step_id, target_id, reason); skip(run_id, step_id, reason);
-        read_skill(run_id, step_id, skill_id); resume(run_id). `ready` contains only steps on active routes whose
-        predecessors are settled. Each evidence item is
-        {gate, result: "pass", reference}; references are recorded claims, not
-        independently verified external test results unless a gate declares
-        a supported verifier. Runs survive restarts
-        in a private SQLite ledger, separate from the ontology YAML.
-        """
+        """Run the serialized graph and ledger operation in a worker thread."""
         if is_remote(db.path):
             db.reload()  # read the current remote definition before advancing a run
         return workflow_service.handle(
             action, _identity(actor_claim) or "", workflow_id, run_id,
-            step_id, artifacts, evidence, query, target_id, reason, skill_id,
+            step_id, artifacts, evidence, query, target_id, reason, skill_id, inputs,
+        )
+
+    @server.tool()
+    async def agent_workflow(
+        action: str, workflow_id: Optional[str] = None,
+        run_id: Optional[str] = None, step_id: Optional[str] = None,
+        artifacts: Optional[dict[str, str]] = None,
+        evidence: Optional[list[dict[str, str]]] = None,
+        query: Optional[str] = None, target_id: Optional[str] = None,
+        reason: Optional[str] = None, skill_id: Optional[str] = None,
+        inputs: Optional[dict] = None,
+    ) -> dict:
+        """Guide an agent through a declared workflow with optional trusted dispatch.
+
+        Actions: list; select(query); start(workflow_id); next(run_id);
+        execute_step(run_id, step_id, inputs) through a trusted configured executor;
+        complete(run_id, step_id, artifacts, evidence);
+        choose(run_id, step_id, target_id, reason); skip(run_id, step_id, reason);
+        read_skill(run_id, step_id, skill_id); resume(run_id). `ready` contains
+        steps on active routes whose predecessors are settled. Evidence items
+        are {gate, result: "pass", reference}; references are recorded claims
+        unless the gate declares a supported verifier. Runs survive restarts
+        in a private SQLite ledger separate from the ontology YAML.
+        """
+        import asyncio
+
+        return await asyncio.to_thread(
+            _agent_workflow_sync, action, workflow_id, run_id, step_id,
+            artifacts, evidence, query, target_id, reason, skill_id, inputs,
         )
 
     @server.tool()

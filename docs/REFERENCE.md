@@ -924,6 +924,13 @@ agent:
   gates:
     - {id: model-tests, kind: test, description: Run model tests, verifier: junit}
     - {id: dashboard-e2e, kind: e2e, description: Inspect the rendered view}
+  affects:
+    - {concept: example-record, operation: create}
+  executor:
+    kind: mcp
+    server: example-service
+    tool: create_record
+    parameter_map: {name: record_name}
 ```
 
 `tools`, `entry` and `outputs` are lists of unique non-empty strings. Gate IDs
@@ -932,6 +939,34 @@ are unique; each gate has an `id`, `description` and one of `test`, `e2e`,
 declarations fail on load. See
 [`examples/agent_workflow.yaml`](../examples/agent_workflow.yaml) for a fully
 fictional Snowflake → dbt → Tableau sequence.
+
+`affects` declares intended effects on existing graph concepts, using
+`create`, `update`, or `delete` and optional `fields` for create/update. It is
+documentation and validation metadata; TrikeDB cannot prove a remote side
+effect from this declaration alone. `executor` is an optional MCP tool binding.
+`parameter_map` maps downstream tool argument names to input names supplied at
+execution time. It contains no argument values or credentials. The workflow
+editor can add, update, and preview these fields in its optional action section.
+The editor publishes YAML definitions; it does not execute actions.
+
+The standard `trikedb mcp FILE` process has no downstream MCP credentials or
+tool dispatcher and therefore refuses `execute_step`. An embedding host can
+pass a trusted `workflow_executor` callback to `build_server` that accepts
+`(server, tool, arguments, owner)` and returns a non-error result. The host
+callback runs in a worker thread, so it may create its own asynchronous MCP
+client session without blocking TrikeDB's MCP event loop. The host
+must authenticate and allowlist the server/tool binding, protect any
+credentials outside YAML, and verify effects if its policy requires that.
+The run ledger reserves the step before dispatch and records a receipt without
+raw argument values. A failed or interrupted dispatch remains `uncertain` and
+cannot be retried blindly. A successful callback permits `complete`, but its
+return value alone does not prove that the declared `affects` happened. Direct
+access to other tools outside TrikeDB can bypass this workflow control.
+
+`execute_step` is an operational API, not an RDF predicate. P-Plan continues
+to describe the planned workflow and steps; a real invocation may be described
+separately with PROV-O `prov:Activity` associated with the plan and agent.
+The private SQLite run ledger is not automatically emitted as PROV-O RDF.
 
 To require a skill, connect a process step to a `type: skill` node with `USES`.
 The skill node has either a local `path` to `SKILL.md` under the graph's
@@ -969,6 +1004,7 @@ Call the **one** `agent_workflow` tool with these actions:
 | `select` | `query` | Ranked lexical matches, matched terms and a reason; no run is started |
 | `start` | `workflow_id` | New `run_id` and root `ready` steps |
 | `next` | `run_id` | Current ready steps and recorded completions |
+| `execute_step` | `run_id`, `step_id`, `inputs` | Dispatches a ready step through the host's trusted MCP adapter and records its receipt |
 | `complete` | `run_id`, `step_id`, `artifacts`, `evidence` | Records a ready step and returns newly ready steps |
 | `choose` | `run_id`, `step_id`, `target_id`, `reason` | Chooses one successor of a completed `choose_one` step and records skipped routes |
 | `skip` | `run_id`, `step_id`, `reason` | Skips a ready step declared `agent.skippable: true` |
@@ -1014,8 +1050,9 @@ same run attempt; a different successful workflow or an omitted/skipped E2E
 job cannot satisfy the gate. A configured gate verifies evidence but does not
 start CI itself.
 The verifier establishes what the report or CI API returned, not who produced
-the artifact or whether the work itself is correct. No external tool is
-executed from workflow YAML by `agent_workflow`.
+the artifact or whether the work itself is correct. A declared MCP binding is
+dispatched only by `execute_step` with a host-provided trusted executor;
+loading workflow YAML never dispatches a tool.
 
 `select` reads workflow metadata and step membership through SPARQL (PyOxigraph
 by default), then ranks literal terms from workflow IDs, labels, summaries and

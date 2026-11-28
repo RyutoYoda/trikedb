@@ -37,3 +37,21 @@ test("the Worker previews a validated YAML change and rejects stale edits", asyn
   const invalid = await request("/api/preview", { method: "POST", body: JSON.stringify({ ...proposal, operations: [{ kind: "edge", action: "add", s: "missing-node", p: "USES", o: "order-form" }] }) });
   assert.equal(invalid.status, 400);
 });
+
+test("the Worker retains an optional step action contract", async () => {
+  const step = {kind: "step", action: "create", workflow: "daily-order-report",
+    id: "archive-orders", after: "publish-report", label: "Archive orders",
+    description: "Keep a fictional copy", next: [], agent: {
+      affects: [{concept: "report-table", operation: "create"}],
+      executor: {kind: "mcp", server: "example-service", tool: "archive_report",
+        parameter_map: {id: "report_id"}},
+    }};
+  const proposal = {base_sha: data.sha, source: "Example guide",
+    reason: "Keep an audit copy", operations: [step]};
+  const preview = await request("/api/preview", {method: "POST", body: JSON.stringify(proposal)});
+  assert.equal(preview.status, 200);
+  assert.match((await preview.json()).diff, /archive_report/);
+  step.agent.affects[0].concept = "missing-concept";
+  const invalid = await request("/api/preview", {method: "POST", body: JSON.stringify(proposal)});
+  assert.equal(invalid.status, 400);
+});

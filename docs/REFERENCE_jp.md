@@ -797,7 +797,7 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 各工程の `agent:` には使用ツール `tools`、開始条件 `entry`、成果物 `outputs`、
 完了条件 `gates` を宣言できる。gate の種類は `test`、`e2e`、`review`、`manual`。
 
-操作は `list`、`select(query)`、`start`、`next`、`complete`、`choose`、
+操作は `list`、`select(query)`、`start`、`next`、`execute_step`、`complete`、`choose`、
 `skip`、`read_skill`、`resume`。`select` はSPARQL（既定はPyOxigraph）でワークフローと工程の関係を取得し、ID・ラベル・概要・工程名をPythonで字句照合して候補と
 一致語を返し、実行は開始しない。`complete` には全成果物の参照先と、各 gate の
 `pass` と証拠の参照先が必要。通常の分岐は並列の必須作業。工程に
@@ -822,7 +822,18 @@ JS/WASMとライセンス表示を埋め込む。ファイルは大きくなる�
 `subject_artifact` のコミットSHAが、成功済みの GitHub Actions run と一致する
 ことをAPIで確認する。非公開リポジトリ用トークンは実行環境の
 `TRIKEDB_GITHUB_TOKEN` に置き、YAMLには書かない。外部ツールや任意コマンドは
-実行しない。架空の[分岐サンプル](../examples/agent_workflow_decision.yaml)を参照。
+実行しない。工程の `agent.affects` には既存概念への想定変更
+（`create` / `update` / `delete`）、`agent.executor` には MCP のサーバー名・
+ツール名・入力名への引数対応を宣言できる。編集 UI から設定し、YAML 差分を確認できる。
+定義だけで実際の変更は証明されない。`execute_step` は実行可能な工程に限って、
+ホストが `build_server` に注入した信頼済み `workflow_executor` 経由で呼び出し、
+二重実行を防ぐため事前に記録する。標準の `trikedb mcp` には外部 MCP 接続や
+認証情報がなく、実行は拒否する。失敗・切断時は結果を `uncertain` とし、
+無確認の再実行を拒否する。ツールの成功応答だけでは変更の実在は確認できない。
+接続先の許可と結果の検証はホスト側の責任で、認証情報は YAML に書かない。
+これは RDF の述語ではなく実行 API。計画は P-Plan、実行事実は別途 PROV-O で
+表現できるが、SQLite の実行記録は自動で PROV-O に変換されない。
+架空の[分岐サンプル](../examples/agent_workflow_decision.yaml)を参照。
 厳格なゲートでは `workflow_id` と `required_jobs` を併記する。指定ワークフローの
 同じ実行回で、列挙したジョブがすべて成功した場合だけ完了を認める。
 実行記録は YAML と分けたローカル SQLite に保存し、コンテナでは

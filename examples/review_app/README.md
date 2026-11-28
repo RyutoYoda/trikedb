@@ -18,6 +18,8 @@ Use **Undo** and **Redo** in the top bar, or `⌘Z` / `⇧⌘Z` on macOS and `Ct
 
 Click a workflow step to edit it in a wide dialog that stays within the viewport. Its related ontology nodes appear beside the step fields, with a link action in the same dialog. The node map shows only direct relationships of the selected node; use the sidebar search or the relationship form to find any other node. When connected to GitHub, **History** shows recent commits to the selected canonical YAML file. The local demo has no canonical commit history.
 
+The optional **Agent action** section records an intended `affects` declaration and an MCP `executor` binding on a step. These fields are reviewed as YAML changes. The editor does not run the action; an embedding host must supply a trusted executor to the TrikeDB MCP server before `execute_step` can dispatch it.
+
 Stop it with:
 
 ```sh
