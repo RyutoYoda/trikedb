@@ -953,6 +953,8 @@ The standard `trikedb mcp FILE` process has no downstream MCP credentials or
 tool dispatcher and therefore refuses `execute_step`. An embedding host can
 pass a trusted `workflow_executor` callback to `build_server` that accepts
 `(server, tool, arguments, owner)` and returns a non-error result. The host
+callback runs in a worker thread, so it may create its own asynchronous MCP
+client session without blocking TrikeDB's MCP event loop. The host
 must authenticate and allowlist the server/tool binding, protect any
 credentials outside YAML, and verify effects if its policy requires that.
 The run ledger reserves the step before dispatch and records a receipt without
