@@ -5,6 +5,15 @@ Notable changes, newest first. Versions before 0.30.0 are in the
 
 ## Unreleased
 
+## 2.0.6
+
+- Declare intended effects and trusted MCP executor bindings on workflow steps,
+  including the ontology editor's Docker and Cloudflare previews.
+- Add opt-in `execute_step` dispatch with durable reservation. An uncertain
+  result blocks blind retries, and a real stdio-to-stdio MCP E2E covers tool
+  invocation and duplicate prevention. Standard MCP startup remains fail-closed
+  until a host supplies a trusted executor.
+
 ## 2.0.4
 
 - Pass all 63 R2RML cases in the pinned W3C RDB2RDF test suite on SQLite,
